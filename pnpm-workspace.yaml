@@ -3,3 +3,7 @@ packages:
   - "packages/*"
   - "tools/*"
   - "tests/*"
+
+# Dépendances autorisées à exécuter des scripts d'installation (liste minimale, revue).
+allowBuilds:
+  esbuild: true
