@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.angular/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+infrastructure/docker/.secrets/
+infrastructure/docker/data/
+*.log
+.DS_Store
+tmp/
