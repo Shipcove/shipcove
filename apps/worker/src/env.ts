@@ -1,0 +1,25 @@
+import { z } from 'zod';
+import { BaseEnvSchema, loadEnv, resolveFileVars } from '@cap/server-core';
+
+export const WorkerEnvSchema = BaseEnvSchema.extend({
+  /** Port HTTP de santé / métriques (interne). */
+  PORT: z.coerce.number().int().default(3001),
+  SANDBOX_PROVIDER: z.enum(['docker', 'kubernetes']).default('docker'),
+  DOCKER_SOCKET: z.string().default('/var/run/docker.sock'),
+  SANDBOX_NETWORK: z.string().default('cap-sandbox'),
+  /** Image officielle par défaut (si aucune image active en base). */
+  SANDBOX_IMAGE: z.string().default('cap-sandbox:0.1.0'),
+  SANDBOX_RUNTIME: z.string().optional(),
+  K8S_NAMESPACE: z.string().default('cap-sandboxes'),
+  K8S_RUNTIME_CLASS: z.string().optional(),
+  /** URL de la gateway vue depuis les sandboxes. */
+  GATEWAY_INTERNAL_URL: z.string().default('http://gateway:8081'),
+  EGRESS_PROXY_URL: z.string().default('http://gateway:3128'),
+  /** Concurrence par file. */
+  RUN_CONCURRENCY: z.coerce.number().int().min(1).max(200).default(8),
+  JOB_CONCURRENCY: z.coerce.number().int().min(1).max(200).default(8),
+  /** Répertoire temporaire du Git Broker (dépôts nus éphémères). */
+  GIT_BROKER_TMP: z.string().default('/tmp/cap-git-broker'),
+});
+export type WorkerEnv = z.infer<typeof WorkerEnvSchema>;
+export const loadWorkerEnv = () => loadEnv(WorkerEnvSchema, resolveFileVars(process.env));

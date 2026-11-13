@@ -103,6 +103,8 @@ export const llmRequests = pgTable(
       .notNull()
       .default('reserved'),
     litellmCallId: text(),
+    /** Estimation d'entrée utilisée pour la réservation (politique « usage inconnu »). */
+    estimatedInputTokens: integer(),
     inputTokens: integer(),
     outputTokens: integer(),
     cacheReadTokens: integer(),

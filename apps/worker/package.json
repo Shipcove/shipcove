@@ -1,0 +1,44 @@
+{
+  "name": "worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Workers NestJS : orchestrateur Pi, sandboxes, checkpoints, Git Broker, emails, maintenance.",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "node --env-file-if-exists=.env.local --watch-path=dist dist/main.js",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "oxlint src"
+  },
+  "dependencies": {
+    "@cap/agent-runtime": "workspace:*",
+    "@cap/contracts": "workspace:*",
+    "@cap/database": "workspace:*",
+    "@cap/sandbox": "workspace:*",
+    "@cap/secrets": "workspace:*",
+    "@cap/server-core": "workspace:*",
+    "@cap/storage": "workspace:*",
+    "@nestjs/common": "12.5.0",
+    "@nestjs/core": "12.5.0",
+    "@nestjs/platform-express": "12.5.0",
+    "drizzle-orm": "0.45.4",
+    "express": "5.3.0",
+    "nodemailer": "10.3.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "tar-stream": "3.2.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@swc/core": "1.16.22",
+    "@types/node": "26.6.6",
+    "@types/nodemailer": "8.0.2",
+    "@types/tar-stream": "3.1.5",
+    "oxlint": "1.93.0",
+    "typescript": "6.0.3",
+    "unplugin-swc": "2.0.0",
+    "vitest": "5.1.0"
+  }
+}

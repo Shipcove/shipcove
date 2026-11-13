@@ -1,0 +1,1 @@
+ALTER TABLE "llm_requests" ADD COLUMN "estimated_input_tokens" integer;

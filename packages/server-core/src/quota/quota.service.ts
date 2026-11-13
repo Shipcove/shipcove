@@ -148,6 +148,7 @@ export class QuotaService {
           litellmModel: model.litellmModel,
           coefficientId: coeff.id,
           status: 'reserved',
+          estimatedInputTokens: input.estimatedInputTokens,
         })
         .returning({ id: llmRequests.id });
       const [res] = await tx
