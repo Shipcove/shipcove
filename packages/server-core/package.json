@@ -15,7 +15,7 @@
     "lint": "oxlint src"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "3.1169.0",
+    "@aws-sdk/client-s3": "3.1160.0",
     "@cap/contracts": "workspace:*",
     "@cap/database": "workspace:*",
     "@cap/secrets": "workspace:*",

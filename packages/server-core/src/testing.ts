@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { createDatabase, runMigrations, type Database } from '@cap/database';
 
 /** Base d'intégration partagée par les tests (`TEST_DATABASE_URL`). */
-export const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL ?? 'postgres://cap:cap@localhost:5432/cap_test';
+export const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL ?? 'postgres://cap:cap@127.0.0.1:5433/cap_test';
 
 export async function createTestDatabase(): Promise<Database> {
   const db = createDatabase({ connectionString: TEST_DATABASE_URL, max: 20, applicationName: 'cap-test' });

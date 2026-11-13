@@ -190,6 +190,8 @@ export const jobs = pgTable(
     lockedBy: text(),
     lockedUntil: ts(),
     lastError: text(),
+    /** Résultat d'un job « RPC » attendu par l'API (opérations exécutées dans la sandbox). */
+    result: jsonb(),
     createdAt: createdAt(),
     finishedAt: ts(),
   },

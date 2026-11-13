@@ -7,6 +7,6 @@ packages:
 # Dépendances autorisées à exécuter des scripts d'installation (liste minimale, revue).
 allowBuilds:
   esbuild: true
-
-minimumReleaseAgeExclude:
-  - "@aws-sdk/client-s3@3.1169.0"
+  "@swc/core": true
+  # Télémétrie de swagger-ui-dist : refusée.
+  "@scarf/scarf": false

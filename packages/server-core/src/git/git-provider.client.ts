@@ -1,0 +1,295 @@
+import { Inject, Injectable } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
+import type { GitProviderKind, RemoteRepositoryDto } from '@cap/contracts';
+import type { SecretProvider } from '@cap/secrets';
+import { gitConnections, type Database } from '@cap/database';
+import { DB, SECRETS } from '../tokens.js';
+import { AppError } from '../common/errors.js';
+
+export interface RepoMetadata {
+  provider: GitProviderKind;
+  host: string;
+  fullName: string;
+  externalId: string;
+  cloneUrl: string;
+  webUrl: string;
+  defaultBranch: string;
+  private: boolean;
+}
+
+export interface PullRequestResult {
+  number: number;
+  url: string;
+  state: string;
+  headSha?: string | null;
+}
+
+export class GitProviderError extends Error {
+  constructor(
+    message: string,
+    readonly status: number | null,
+    /** `true` si le résultat distant est incertain (timeout, 5xx après envoi). */
+    readonly uncertain = false,
+  ) {
+    super(message);
+    this.name = 'GitProviderError';
+  }
+}
+
+type Conn = typeof gitConnections.$inferSelect;
+
+const isGitHub = (p: GitProviderKind) => p === 'github' || p === 'github_enterprise';
+
+/**
+ * Client des API GitHub (.com / Enterprise) et GitLab (.com / self-managed).
+ * Les jetons sont lus dans Vault au moment de l'appel et ne quittent jamais le serveur.
+ */
+@Injectable()
+export class GitProviderClient {
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    @Inject(SECRETS) private readonly secrets: SecretProvider,
+  ) {}
+
+  apiBase(provider: GitProviderKind, host: string): string {
+    if (provider === 'github') return 'https://api.github.com';
+    if (provider === 'github_enterprise') return `https://${host}/api/v3`;
+    return `https://${host}/api/v4`;
+  }
+
+  async connection(connectionId: string, userId?: string): Promise<Conn> {
+    const [c] = await this.db.select().from(gitConnections).where(eq(gitConnections.id, connectionId));
+    if (!c || c.revokedAt || (userId && c.userId !== userId)) throw new AppError('not_found', 'Connexion Git introuvable');
+    if (c.status !== 'active') throw new AppError('conflict', 'Connexion Git inactive ou expirée');
+    return c;
+  }
+
+  async token(conn: Conn): Promise<string> {
+    const t = await this.secrets.readKey(conn.secretRef, 'accessToken');
+    if (!t) throw new AppError('conflict', 'Jeton Git absent');
+    return t;
+  }
+
+  private async call<T>(conn: Conn, method: string, path: string, body?: unknown, timeoutMs = 20_000): Promise<T> {
+    const token = await this.token(conn);
+    const headers: Record<string, string> = isGitHub(conn.provider)
+      ? { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
+      : { Authorization: `Bearer ${token}` };
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    headers['User-Agent'] = 'coding-agent-platform';
+    let res: Response;
+    try {
+      res = await fetch(`${this.apiBase(conn.provider, conn.host)}${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (err) {
+      // Requête peut-être reçue par la forge : résultat incertain pour les écritures.
+      throw new GitProviderError(`Forge injoignable : ${(err as Error).message}`, null, method !== 'GET');
+    }
+    if (res.status === 204) return undefined as T;
+    const text = await res.text();
+    if (!res.ok) {
+      let msg = text.slice(0, 300);
+      try {
+        const j = JSON.parse(text) as { message?: string; error?: string };
+        msg = j.message ?? j.error ?? msg;
+      } catch {
+        /* texte brut */
+      }
+      throw new GitProviderError(`${res.status} ${msg}`, res.status, method !== 'GET' && res.status >= 500);
+    }
+    return (text ? JSON.parse(text) : undefined) as T;
+  }
+
+  /** Identité du compte (validation d'un jeton lors du rattachement). */
+  async whoAmI(provider: GitProviderKind, host: string, token: string): Promise<{ id: string; login: string; name: string | null; scopes: string[] }> {
+    const isGh = isGitHub(provider);
+    const res = await fetch(`${this.apiBase(provider, host)}${isGh ? '/user' : '/user'}`, {
+      headers: isGh ? { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'coding-agent-platform' } : { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15_000),
+    }).catch((err: Error) => {
+      throw new GitProviderError(`Forge injoignable : ${err.message}`, null);
+    });
+    if (!res.ok) throw new GitProviderError(`Jeton refusé par la forge (HTTP ${res.status})`, res.status);
+    const j = (await res.json()) as { id: number; login?: string; username?: string; name?: string };
+    const scopes = (res.headers.get('x-oauth-scopes') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    return { id: String(j.id), login: j.login ?? j.username ?? String(j.id), name: j.name ?? null, scopes };
+  }
+
+  async getRepository(conn: Conn, fullName: string): Promise<RepoMetadata> {
+    if (isGitHub(conn.provider)) {
+      const r = await this.call<{ id: number; full_name: string; clone_url: string; html_url: string; default_branch: string; private: boolean }>(
+        conn,
+        'GET',
+        `/repos/${fullName.split('/').map(encodeURIComponent).join('/')}`,
+      );
+      return { provider: conn.provider, host: conn.host, fullName: r.full_name, externalId: String(r.id), cloneUrl: r.clone_url, webUrl: r.html_url, defaultBranch: r.default_branch, private: r.private };
+    }
+    const r = await this.call<{ id: number; path_with_namespace: string; http_url_to_repo: string; web_url: string; default_branch: string | null; visibility: string }>(
+      conn,
+      'GET',
+      `/projects/${encodeURIComponent(fullName)}`,
+    );
+    return {
+      provider: conn.provider,
+      host: conn.host,
+      fullName: r.path_with_namespace,
+      externalId: String(r.id),
+      cloneUrl: r.http_url_to_repo,
+      webUrl: r.web_url,
+      defaultBranch: r.default_branch ?? 'main',
+      private: r.visibility !== 'public',
+    };
+  }
+
+  async listRepositories(conn: Conn, query?: string): Promise<RemoteRepositoryDto[]> {
+    if (isGitHub(conn.provider)) {
+      const rows = query
+        ? (await this.call<{ items: Array<Record<string, unknown>> }>(conn, 'GET', `/search/repositories?q=${encodeURIComponent(`${query} in:name fork:true user:${conn.accountLogin}`)}&per_page=50`)).items
+        : await this.call<Array<Record<string, unknown>>>(conn, 'GET', `/user/repos?per_page=100&sort=pushed&affiliation=owner,collaborator,organization_member`);
+      return rows.map((r) => ({
+        fullName: r.full_name as string,
+        defaultBranch: (r.default_branch as string) ?? 'main',
+        private: !!r.private,
+        webUrl: r.html_url as string,
+        description: (r.description as string | null) ?? null,
+      }));
+    }
+    const rows = await this.call<Array<Record<string, unknown>>>(
+      conn,
+      'GET',
+      `/projects?membership=true&per_page=100&order_by=last_activity_at${query ? `&search=${encodeURIComponent(query)}` : ''}`,
+    );
+    return rows.map((r) => ({
+      fullName: r.path_with_namespace as string,
+      defaultBranch: (r.default_branch as string) ?? 'main',
+      private: r.visibility !== 'public',
+      webUrl: r.web_url as string,
+      description: (r.description as string | null) ?? null,
+    }));
+  }
+
+  async listBranches(conn: Conn, fullName: string): Promise<string[]> {
+    if (isGitHub(conn.provider)) {
+      const rows = await this.call<Array<{ name: string }>>(conn, 'GET', `/repos/${fullName}/branches?per_page=100`);
+      return rows.map((r) => r.name);
+    }
+    const rows = await this.call<Array<{ name: string }>>(conn, 'GET', `/projects/${encodeURIComponent(fullName)}/repository/branches?per_page=100`);
+    return rows.map((r) => r.name);
+  }
+
+  async createPullRequest(conn: Conn, fullName: string, p: { source: string; target: string; title: string; body: string; draft: boolean }): Promise<PullRequestResult> {
+    if (isGitHub(conn.provider)) {
+      const r = await this.call<{ number: number; html_url: string; state: string; head: { sha: string } }>(conn, 'POST', `/repos/${fullName}/pulls`, {
+        head: p.source,
+        base: p.target,
+        title: p.title,
+        body: p.body,
+        draft: p.draft,
+      });
+      return { number: r.number, url: r.html_url, state: r.state, headSha: r.head.sha };
+    }
+    const r = await this.call<{ iid: number; web_url: string; state: string; sha: string }>(conn, 'POST', `/projects/${encodeURIComponent(fullName)}/merge_requests`, {
+      source_branch: p.source,
+      target_branch: p.target,
+      title: p.draft ? `Draft: ${p.title}` : p.title,
+      description: p.body,
+    });
+    return { number: r.iid, url: r.web_url, state: r.state, headSha: r.sha };
+  }
+
+  /** Recherche d'une PR/MR ouverte existante (réconciliation d'un résultat incertain). */
+  async findOpenPullRequest(conn: Conn, fullName: string, source: string, target: string): Promise<PullRequestResult | null> {
+    if (isGitHub(conn.provider)) {
+      const owner = fullName.split('/')[0];
+      const rows = await this.call<Array<{ number: number; html_url: string; state: string; head: { sha: string } }>>(
+        conn,
+        'GET',
+        `/repos/${fullName}/pulls?state=open&head=${encodeURIComponent(`${owner}:${source}`)}&base=${encodeURIComponent(target)}`,
+      );
+      return rows[0] ? { number: rows[0].number, url: rows[0].html_url, state: rows[0].state, headSha: rows[0].head.sha } : null;
+    }
+    const rows = await this.call<Array<{ iid: number; web_url: string; state: string; sha: string }>>(
+      conn,
+      'GET',
+      `/projects/${encodeURIComponent(fullName)}/merge_requests?state=opened&source_branch=${encodeURIComponent(source)}&target_branch=${encodeURIComponent(target)}`,
+    );
+    return rows[0] ? { number: rows[0].iid, url: rows[0].web_url, state: rows[0].state, headSha: rows[0].sha } : null;
+  }
+
+  async getPullRequest(conn: Conn, fullName: string, number: number): Promise<PullRequestResult & { merged: boolean }> {
+    if (isGitHub(conn.provider)) {
+      const r = await this.call<{ number: number; html_url: string; state: string; merged: boolean; head: { sha: string } }>(conn, 'GET', `/repos/${fullName}/pulls/${number}`);
+      return { number: r.number, url: r.html_url, state: r.state, merged: r.merged, headSha: r.head.sha };
+    }
+    const r = await this.call<{ iid: number; web_url: string; state: string; sha: string }>(conn, 'GET', `/projects/${encodeURIComponent(fullName)}/merge_requests/${number}`);
+    return { number: r.iid, url: r.web_url, state: r.state, merged: r.state === 'merged', headSha: r.sha };
+  }
+
+  async mergePullRequest(conn: Conn, fullName: string, number: number, method: 'merge' | 'squash' | 'rebase', expectedHeadSha?: string | null): Promise<{ merged: boolean; sha: string | null }> {
+    if (isGitHub(conn.provider)) {
+      const r = await this.call<{ merged: boolean; sha: string }>(conn, 'PUT', `/repos/${fullName}/pulls/${number}/merge`, {
+        merge_method: method,
+        ...(expectedHeadSha ? { sha: expectedHeadSha } : {}),
+      });
+      return { merged: r.merged, sha: r.sha };
+    }
+    const r = await this.call<{ state: string; merge_commit_sha: string | null }>(conn, 'PUT', `/projects/${encodeURIComponent(fullName)}/merge_requests/${number}/merge`, {
+      squash: method === 'squash',
+      ...(expectedHeadSha ? { sha: expectedHeadSha } : {}),
+    });
+    return { merged: r.state === 'merged', sha: r.merge_commit_sha };
+  }
+
+  async deleteBranch(conn: Conn, fullName: string, branch: string): Promise<void> {
+    if (isGitHub(conn.provider)) {
+      await this.call(conn, 'DELETE', `/repos/${fullName}/git/refs/heads/${branch.split('/').map(encodeURIComponent).join('/')}`);
+      return;
+    }
+    await this.call(conn, 'DELETE', `/projects/${encodeURIComponent(fullName)}/repository/branches/${encodeURIComponent(branch)}`);
+  }
+
+  async branchHead(conn: Conn, fullName: string, branch: string): Promise<string | null> {
+    try {
+      if (isGitHub(conn.provider)) {
+        const r = await this.call<{ object: { sha: string } }>(conn, 'GET', `/repos/${fullName}/git/ref/heads/${branch.split('/').map(encodeURIComponent).join('/')}`);
+        return r.object.sha;
+      }
+      const r = await this.call<{ commit: { id: string } }>(conn, 'GET', `/projects/${encodeURIComponent(fullName)}/repository/branches/${encodeURIComponent(branch)}`);
+      return r.commit.id;
+    } catch (err) {
+      if (err instanceof GitProviderError && err.status === 404) return null;
+      throw err;
+    }
+  }
+
+  /** États CI/CD du dernier commit d'une branche. */
+  async ciStatus(conn: Conn, fullName: string, ref: string): Promise<Array<{ name: string; status: string; url: string | null }>> {
+    if (isGitHub(conn.provider)) {
+      const r = await this.call<{ check_runs: Array<{ name: string; status: string; conclusion: string | null; html_url: string }> }>(
+        conn,
+        'GET',
+        `/repos/${fullName}/commits/${encodeURIComponent(ref)}/check-runs?per_page=50`,
+      );
+      return r.check_runs.map((c) => ({ name: c.name, status: c.conclusion ?? c.status, url: c.html_url }));
+    }
+    const rows = await this.call<Array<{ id: number; status: string; web_url: string; ref: string }>>(
+      conn,
+      'GET',
+      `/projects/${encodeURIComponent(fullName)}/pipelines?ref=${encodeURIComponent(ref)}&per_page=5`,
+    );
+    return rows.map((p) => ({ name: `pipeline #${p.id}`, status: p.status, url: p.web_url }));
+  }
+
+  /** URL HTTPS avec identifiants, **uniquement** pour usage interne côté serveur (jamais journalisée). */
+  async authenticatedCloneUrl(conn: Conn, cloneUrl: string): Promise<string> {
+    const token = await this.token(conn);
+    const u = new URL(cloneUrl);
+    u.username = isGitHub(conn.provider) ? 'x-access-token' : 'oauth2';
+    u.password = token;
+    return u.toString();
+  }
+}

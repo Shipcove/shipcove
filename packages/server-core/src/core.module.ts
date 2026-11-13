@@ -10,6 +10,8 @@ import { EventsService } from './events/events.service.js';
 import { QuotaService } from './quota/quota.service.js';
 import { NotificationService } from './notifications/notification.service.js';
 import { ObjectStorage } from './storage/object-storage.js';
+import { PgNotifier } from './events/pg-notifier.js';
+import { GitProviderClient } from './git/git-provider.client.js';
 
 
 export interface CoreModuleOptions {
@@ -73,6 +75,7 @@ export class CoreModule {
           useFactory: () => opts.secretProvider ?? createSecretProvider(opts.env),
         },
         DbLifecycle,
+        PgNotifier,
         ObjectStorage,
         AuditService,
         SettingsService,
@@ -80,12 +83,14 @@ export class CoreModule {
         EventsService,
         QuotaService,
         NotificationService,
+        GitProviderClient,
       ],
       exports: [
         ENV,
         'CAP_SERVICE_NAME',
         DB,
         SECRETS,
+        PgNotifier,
         ObjectStorage,
         AuditService,
         SettingsService,
@@ -93,6 +98,7 @@ export class CoreModule {
         EventsService,
         QuotaService,
         NotificationService,
+        GitProviderClient,
       ],
     };
   }
