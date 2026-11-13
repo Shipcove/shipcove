@@ -3,10 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Modules NestJS partagés par api, worker et gateway (serveur uniquement).",
+  "description": "Modules NestJS partag\u00e9s par api, worker et gateway (serveur uniquement).",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
@@ -43,5 +48,8 @@
     "typescript": "6.0.3",
     "unplugin-swc": "2.0.0",
     "vitest": "5.1.0"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

@@ -15,6 +15,19 @@ import { AccessService } from './access/access.service.js';
 import { TeamsController, UsersDirectoryController } from './teams/teams.controller.js';
 import { ProjectsController } from './projects/projects.controller.js';
 import { HealthController } from './health/health.controller.js';
+import { WorkspacesController } from './workspaces/workspaces.controller.js';
+import { WorkspacesService } from './workspaces/workspaces.service.js';
+import { FilesController } from './workspaces/files.controller.js';
+import { PreviewsController } from './workspaces/previews.controller.js';
+import { AttachmentsController } from './workspaces/attachments.controller.js';
+import { SandboxRpcClient } from './workspaces/sandbox-rpc.client.js';
+import { ConversationController, SharesController } from './conversations/conversation.controller.js';
+import { ApprovalsController, GitConnectionsController, WorkspaceGitController } from './git/git.controller.js';
+import { ModelsController, NotificationsController, UsageController } from './usage/usage.controller.js';
+import { AdminController } from './admin/admin.controller.js';
+import { AdminModelsController } from './admin/admin-models.controller.js';
+import { LiteLlmAdminService } from './admin/litellm.service.js';
+import { IdempotencyService } from './common/idempotency.service.js';
 
 @Module({})
 export class AppModule {
@@ -22,7 +35,28 @@ export class AppModule {
     return {
       module: AppModule,
       imports: [CoreModule.forRoot({ env, serviceName: 'api', secretProvider: opts.secretProvider })],
-      controllers: [HealthController, AuthController, MeController, TeamsController, UsersDirectoryController, ProjectsController],
+      controllers: [
+        HealthController,
+        AuthController,
+        MeController,
+        TeamsController,
+        UsersDirectoryController,
+        ProjectsController,
+        WorkspacesController,
+        ConversationController,
+        SharesController,
+        FilesController,
+        PreviewsController,
+        AttachmentsController,
+        WorkspaceGitController,
+        ApprovalsController,
+        GitConnectionsController,
+        ModelsController,
+        UsageController,
+        NotificationsController,
+        AdminController,
+        AdminModelsController,
+      ],
       providers: [
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_FILTER, useClass: HttpExceptionFilter },
@@ -32,6 +66,10 @@ export class AppModule {
         AuthService,
         ProvidersRegistry,
         AccessService,
+        WorkspacesService,
+        SandboxRpcClient,
+        IdempotencyService,
+        LiteLlmAdminService,
       ],
     };
   }

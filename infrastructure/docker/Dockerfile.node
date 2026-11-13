@@ -1,0 +1,63 @@
+# Images des applications Node (api, worker, gateway, preview) — multi-stage, pnpm uniquement.
+# Usage : docker build -f infrastructure/docker/Dockerfile.node --target api -t cap-api:0.1.0 .
+ARG NODE_IMAGE=node:26-bookworm-slim
+ARG PNPM_VERSION=12.18.0
+
+FROM ${NODE_IMAGE} AS base
+ARG PNPM_VERSION
+# Node 26 ne fournit plus Corepack : provisionnement de la version exacte de pnpm.
+RUN npm install -g "pnpm@${PNPM_VERSION}" && npm cache clean --force
+ENV PNPM_HOME=/pnpm CI=true
+WORKDIR /repo
+
+FROM base AS build
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
+COPY packages ./packages
+COPY apps/api/package.json apps/api/
+COPY apps/worker/package.json apps/worker/
+COPY apps/gateway/package.json apps/gateway/
+COPY apps/preview/package.json apps/preview/
+COPY apps/web/package.json apps/web/
+COPY tools ./tools
+RUN pnpm install --frozen-lockfile --filter "./packages/**" --filter api --filter worker --filter gateway --filter preview
+COPY apps/api ./apps/api
+COPY apps/worker ./apps/worker
+COPY apps/gateway ./apps/gateway
+COPY apps/preview ./apps/preview
+RUN pnpm --filter "./packages/**" -r build && pnpm --filter api --filter worker --filter gateway --filter preview -r build
+# Dépendances de production isolées par application.
+RUN for app in api worker gateway preview; do pnpm --filter "$app" deploy --prod --legacy "/out/$app"; done
+
+FROM ${NODE_IMAGE} AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+USER node
+
+FROM runtime AS api
+COPY --from=build --chown=node:node /out/api /app
+EXPOSE 3000
+HEALTHCHECK --interval=15s --timeout=3s --retries=5 CMD ["node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+CMD ["node", "dist/main.js"]
+
+FROM runtime AS gateway
+COPY --from=build --chown=node:node /out/gateway /app
+EXPOSE 8081 3128
+HEALTHCHECK --interval=15s --timeout=3s --retries=5 CMD ["node", "-e", "fetch('http://127.0.0.1:8081/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+CMD ["node", "dist/main.js"]
+
+FROM runtime AS preview
+COPY --from=build --chown=node:node /out/preview /app
+EXPOSE 8090
+CMD ["node", "dist/main.js"]
+
+# Le worker a besoin de git (Git Broker : bundle + push côté serveur).
+FROM ${NODE_IMAGE} AS worker
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build --chown=node:node /out/worker /app
+USER node
+EXPOSE 3001
+HEALTHCHECK --interval=15s --timeout=3s --retries=5 CMD ["node", "-e", "fetch('http://127.0.0.1:3001/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+CMD ["node", "dist/main.js"]

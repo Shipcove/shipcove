@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Schémas (Zod) et types partagés navigateur/serveur. Aucune dépendance Node ni framework.",
+  "description": "Sch\u00e9mas (Zod) et types partag\u00e9s navigateur/serveur. Aucune d\u00e9pendance Node ni framework.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -27,5 +27,8 @@
     "oxlint": "1.93.0",
     "typescript": "6.0.3",
     "vitest": "5.1.0"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

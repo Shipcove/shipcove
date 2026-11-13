@@ -8,10 +8,12 @@ import { fromUserPath } from '@cap/storage';
 import { JobRunner, PermanentJobError } from '../jobs/job-runner.service.js';
 import { CheckpointService } from '../sandbox/checkpoint.service.js';
 import { SandboxManager } from '../sandbox/sandbox-manager.service.js';
+import { RetentionService } from '../maintenance/retention.service.js';
 
 type RpcPayload =
   | { op: 'workspace.start'; workspaceId: string }
   | { op: 'workspace.stop'; workspaceId: string; reason?: string; force?: boolean }
+  | { op: 'workspace.delete'; workspaceId: string }
   | { op: 'git.status'; workspaceId: string }
   | { op: 'git.diff_head'; workspaceId: string; path?: string }
   | { op: 'git.fetch'; workspaceId: string }
@@ -32,6 +34,7 @@ export class SandboxRpcService implements OnApplicationBootstrap {
     private readonly sandboxes: SandboxManager,
     private readonly checkpoints: CheckpointService,
     private readonly events: EventsService,
+    private readonly retention: RetentionService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -46,6 +49,12 @@ export class SandboxRpcService implements OnApplicationBootstrap {
       }
       case 'workspace.stop':
         return this.sandboxes.stop(p.workspaceId, p.reason ?? 'user', { force: p.force });
+      case 'workspace.delete': {
+        // Suppression définitive demandée : la sandbox est détruite sans checkpoint final.
+        await this.sandboxes.stop(p.workspaceId, 'suppression', { force: true });
+        await this.retention.hardDeleteWorkspace(p.workspaceId);
+        return { deleted: true };
+      }
       case 'git.status':
         return this.gitStatus(p.workspaceId);
       case 'git.diff_head':

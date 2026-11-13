@@ -19,6 +19,7 @@
     "@cap/database": "workspace:*",
     "@cap/secrets": "workspace:*",
     "@cap/server-core": "workspace:*",
+    "@cap/storage": "workspace:*",
     "@nestjs/common": "12.5.0",
     "@nestjs/core": "12.5.0",
     "@nestjs/platform-express": "12.5.0",
