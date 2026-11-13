@@ -41,9 +41,11 @@ RUN curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_$
 RUN npm install -g --omit=dev "@mariozechner/pi-coding-agent@${PI_VERSION}" && npm cache clean --force
 
 # Utilisateur non privilégié.
-RUN groupadd -g 10001 agent && useradd -u 10001 -g 10001 -m -d /home/agent -s /bin/bash agent \
- && mkdir -p /workspace /workspace-state /opt/cap \
- && chown agent:agent /workspace /workspace-state
+# (le cache npm de l'installation globale, créé en root dans /home/agent, est supprimé)
+RUN rm -rf /home/agent/.npm \
+ && groupadd -g 10001 agent && useradd -u 10001 -g 10001 -m -d /home/agent -s /bin/bash agent \
+ && mkdir -p /workspace /workspace-state /opt/cap /home/agent/.pi/agent \
+ && chown -R agent:agent /workspace /workspace-state /home/agent
 
 # Composants plateforme (lecture seule pour l'agent : rootfs read-only à l'exécution).
 COPY --chown=root:root bin/ /opt/cap/bin/

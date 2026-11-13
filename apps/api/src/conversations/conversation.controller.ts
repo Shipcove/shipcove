@@ -25,6 +25,7 @@ import {
   type Database,
 } from '@cap/database';
 import { AppError, AuditService, DB, EventsService, JobsService, QuotaService } from '@cap/server-core';
+import { isUniqueViolation } from '@cap/server-core';
 import { CurrentUser, ReqCtx, type RequestContext } from '../common/decorators.js';
 import type { AuthUser } from '../common/request.js';
 import { AccessService } from '../access/access.service.js';
@@ -177,8 +178,8 @@ export class ConversationController {
           .insert(agentRuns)
           .values({ conversationId: conv.id, workspaceId: id, userId: user.id, modelId, triggerMessageId: m.id, idempotencyKey: idemKey ?? null })
           .returning()
-          .catch((err: { code?: string }) => {
-            if (err.code === '23505') throw new AppError('run_already_active', 'Un run est déjà actif : attendez sa fin, interrompez-le ou envoyez un message de guidage');
+          .catch((err: unknown) => {
+            if (isUniqueViolation(err)) throw new AppError('run_already_active', 'Un run est déjà actif : attendez sa fin, interrompez-le ou envoyez un message de guidage');
             throw err;
           });
         await tx.update(messages).set({ runId: run.id }).where(eq(messages.id, m.id));

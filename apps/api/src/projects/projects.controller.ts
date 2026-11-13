@@ -13,6 +13,7 @@ import {
 } from '@cap/contracts';
 import { projects, repositories, teamMembers, teams, workspaces, type Database, type DbOrTx } from '@cap/database';
 import { AppError, AuditService, DB, GitProviderClient, GitProviderError } from '@cap/server-core';
+import { isUniqueViolation } from '@cap/server-core';
 import { CurrentUser, ReqCtx, type RequestContext } from '../common/decorators.js';
 import type { AuthUser } from '../common/request.js';
 import { AccessService } from '../access/access.service.js';
@@ -61,8 +62,8 @@ export class ProjectsController {
           createdBy: user.id,
         })
         .returning()
-        .catch((err: { code?: string }) => {
-          if (err.code === '23505') throw new AppError('conflict', 'Un projet porte déjà ce nom dans l’équipe');
+        .catch((err: unknown) => {
+          if (isUniqueViolation(err)) throw new AppError('conflict', 'Un projet porte déjà ce nom dans l’équipe');
           throw err;
         });
       await this.audit.record({ actorId: user.id, action: 'project.create', targetType: 'project', targetId: p.id, ip: ctx.ip, metadata: { teamId: body.teamId, repository: body.repository?.fullName ?? null } }, tx);

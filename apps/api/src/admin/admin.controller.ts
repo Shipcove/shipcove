@@ -40,6 +40,7 @@ import {
   type Database,
 } from '@cap/database';
 import { AppError, AuditService, DB, JobsService, NotificationService, ObjectStorage, QuotaService, SECRETS, SettingsService, randomToken, sha256Hex } from '@cap/server-core';
+import { isUniqueViolation } from '@cap/server-core';
 import { CurrentUser, PlatformAdmin, ReqCtx, type RequestContext } from '../common/decorators.js';
 import type { AuthUser } from '../common/request.js';
 import { PasswordService } from '../auth/password.service.js';
@@ -219,8 +220,8 @@ export class AdminController {
       .insert(users)
       .values({ email: body.email.toLowerCase(), username: body.username, displayName: body.displayName, platformRole: body.platformRole, status: 'active', emailVerifiedAt: new Date() })
       .returning()
-      .catch((err: { code?: string }) => {
-        if (err.code === '23505') throw new AppError('conflict', 'Email ou identifiant déjà utilisé');
+      .catch((err: unknown) => {
+        if (isUniqueViolation(err)) throw new AppError('conflict', 'Email ou identifiant déjà utilisé');
         throw err;
       });
     if (body.password) {

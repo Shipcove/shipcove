@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { CreateSkillSchema, SkillScopeSchema, type CreateSkill, type SkillDto } from '@cap/contracts';
 import { skillInstallations, skillVersions, skills, teamMembers, type Database } from '@cap/database';
 import { AppError, AuditService, DB, SettingsService, canonicalJson, sha256Hex } from '@cap/server-core';
+import { isUniqueViolation } from '@cap/server-core';
 import { CurrentUser, ReqCtx, type RequestContext } from '../common/decorators.js';
 import type { AuthUser } from '../common/request.js';
 import { AccessService } from '../access/access.service.js';
@@ -121,8 +122,8 @@ export class SkillsController {
       .insert(skills)
       .values({ name: body.name, description: body.description, ...meta, status, source: body.source ?? null, latestVersion: 1 })
       .returning()
-      .catch((err: { code?: string }) => {
-        if (err.code === '23505') throw new AppError('conflict', 'Un skill porte déjà ce nom dans cette portée');
+      .catch((err: unknown) => {
+        if (isUniqueViolation(err)) throw new AppError('conflict', 'Un skill porte déjà ce nom dans cette portée');
         throw err;
       });
     await this.db.insert(skillVersions).values({ skillId: s.id, version: 1, files: body.files, digest: sha256Hex(canonicalJson(body.files)), analysis: { findings, scannedAt: new Date().toISOString() }, createdBy: user.id });

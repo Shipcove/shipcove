@@ -22,6 +22,7 @@ import {
 } from '@cap/sandbox';
 import { buildModelsJson, buildSettingsJson, type PiModelConfig } from '@cap/agent-runtime';
 import { AppError, DB, ENV, EventsService, SettingsService, randomToken, sha256Hex } from '@cap/server-core';
+import { isUniqueViolation } from '@cap/server-core';
 import { LeaseService } from '@cap/storage';
 import type { WorkerEnv } from '../env.js';
 import { CheckpointService } from './checkpoint.service.js';
@@ -61,10 +62,12 @@ export class SandboxManager {
     private readonly events: EventsService,
     private readonly skills: SkillsMaterializer,
   ) {
+    // La gateway (LLM + Git en lecture) est jointe directement ; tout le reste passe par le proxy d'egress.
+    const noProxyHosts = [new URL(env.GATEWAY_INTERNAL_URL).hostname];
     this.provider =
       env.SANDBOX_PROVIDER === 'kubernetes'
-        ? new KubernetesSandboxProvider({ namespace: env.K8S_NAMESPACE, egressProxyUrl: env.EGRESS_PROXY_URL, runtimeClassName: env.K8S_RUNTIME_CLASS, inCluster: true })
-        : new DockerSandboxProvider({ socketPath: env.DOCKER_SOCKET, network: env.SANDBOX_NETWORK, egressProxyUrl: env.EGRESS_PROXY_URL, runtime: env.SANDBOX_RUNTIME });
+        ? new KubernetesSandboxProvider({ namespace: env.K8S_NAMESPACE, egressProxyUrl: env.EGRESS_PROXY_URL, noProxyHosts, runtimeClassName: env.K8S_RUNTIME_CLASS, inCluster: true })
+        : new DockerSandboxProvider({ socketPath: env.DOCKER_SOCKET, network: env.SANDBOX_NETWORK, egressProxyUrl: env.EGRESS_PROXY_URL, noProxyHosts, runtime: env.SANDBOX_RUNTIME });
   }
 
   get leases(): LeaseService {
@@ -172,8 +175,8 @@ export class SandboxManager {
         resources: { cpu: cfg.cpu, memoryMb: cfg.memoryMb, diskMb: cfg.diskMb, pidsLimit: cfg.pidsLimit },
       })
       .returning()
-      .catch((err: { code?: string }) => {
-        if (err.code === '23505') throw new AppError('workspace_busy', 'Sandbox déjà en cours de démarrage');
+      .catch((err: unknown) => {
+        if (isUniqueViolation(err)) throw new AppError('workspace_busy', 'Sandbox déjà en cours de démarrage');
         throw err;
       });
     const lease = await this.leases.acquire(ws.id, `sandbox:${inst.id}`, LEASE_TTL_MS);

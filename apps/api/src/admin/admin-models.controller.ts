@@ -6,6 +6,7 @@ import { CoefficientsInputSchema, UpsertModelSchema, type ModelDto, type UpsertM
 import type { SecretProvider } from '@cap/secrets';
 import { llmModels, modelCoefficients, type Database } from '@cap/database';
 import { AppError, AuditService, DB, SECRETS } from '@cap/server-core';
+import { isUniqueViolation } from '@cap/server-core';
 import { CurrentUser, PlatformAdmin, ReqCtx, type RequestContext } from '../common/decorators.js';
 import type { AuthUser } from '../common/request.js';
 import { modelDtos } from '../usage/usage.controller.js';
@@ -49,8 +50,8 @@ export class AdminModelsController {
         allowedTeamIds: body.allowedTeamIds,
       })
       .returning()
-      .catch((err: { code?: string }) => {
-        if (err.code === '23505') throw new AppError('conflict', 'Un modèle porte déjà ce nom LiteLLM');
+      .catch((err: unknown) => {
+        if (isUniqueViolation(err)) throw new AppError('conflict', 'Un modèle porte déjà ce nom LiteLLM');
         throw err;
       });
     await this.db.insert(modelCoefficients).values({ modelId: m.id, version: 1, ...body.coefficients, createdBy: user.id });

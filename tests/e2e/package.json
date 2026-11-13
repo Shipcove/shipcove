@@ -1,0 +1,17 @@
+{
+  "name": "e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Tests de bout en bout contre une pile Docker Compose réelle (web → api → worker → sandbox Pi → gateway → LiteLLM).",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 --test-timeout=900000 *.test.mjs",
+    "test:stack": "node --test --test-concurrency=1 --test-timeout=900000 stack.test.mjs",
+    "test:ui": "node --test --test-timeout=300000 ui.test.mjs",
+    "build": "node --check client.mjs",
+    "lint": "node --check client.mjs"
+  },
+  "dependencies": {
+    "otplib": "13.6.0"
+  }
+}

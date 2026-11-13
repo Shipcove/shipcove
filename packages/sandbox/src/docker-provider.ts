@@ -19,6 +19,8 @@ export interface DockerProviderOptions {
   network: string;
   /** Proxy d'egress (gateway) injecté dans l'environnement. */
   egressProxyUrl?: string;
+  /** Hôtes internes joints directement (gateway LLM / Git) : exclus du proxy d'egress. */
+  noProxyHosts?: string[];
   /** Runtime OCI alternatif (ex. `runsc` pour gVisor) si disponible. */
   runtime?: string;
   /** Activer la limite disque (`--storage-opt size`) : nécessite overlay2 sur xfs+pquota. */
@@ -48,8 +50,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         HTTPS_PROXY: this.opts.egressProxyUrl,
         http_proxy: this.opts.egressProxyUrl,
         https_proxy: this.opts.egressProxyUrl,
-        NO_PROXY: 'localhost,127.0.0.1,::1',
-        no_proxy: 'localhost,127.0.0.1,::1',
+        NO_PROXY: ['localhost', '127.0.0.1', '::1', ...(this.opts.noProxyHosts ?? [])].join(','),
+        no_proxy: ['localhost', '127.0.0.1', '::1', ...(this.opts.noProxyHosts ?? [])].join(','),
       });
     }
     const memory = spec.resources.memoryMb * 1024 * 1024;

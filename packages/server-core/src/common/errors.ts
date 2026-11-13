@@ -49,3 +49,14 @@ export class AppError extends HttpException {
 
 export const notFound = (what = 'Ressource') => new AppError('not_found', `${what} introuvable`);
 export const forbidden = (msg = 'Accès refusé') => new AppError('forbidden', msg);
+
+/** Code d'erreur PostgreSQL (Drizzle enveloppe l'erreur du pilote dans `cause`). */
+export function pgErrorCode(err: unknown): string | undefined {
+  const e = err as { code?: string; cause?: { code?: string } } | null;
+  return e?.code ?? e?.cause?.code;
+}
+
+/** Violation de contrainte d'unicité (23505). */
+export function isUniqueViolation(err: unknown): boolean {
+  return pgErrorCode(err) === '23505';
+}

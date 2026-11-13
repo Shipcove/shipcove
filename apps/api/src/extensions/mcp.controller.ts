@@ -6,6 +6,7 @@ import { CreateMcpServerSchema, McpPermissionSchema, type CreateMcpServer, type 
 import type { SecretProvider } from '@cap/secrets';
 import { mcpPermissions, mcpServers, mcpTools, teamMembers, type Database } from '@cap/database';
 import { AppError, AuditService, DB, McpHttpClient, SECRETS, SettingsService, effectiveToolPermission, scopeVisible, type PermissionRule } from '@cap/server-core';
+import { isUniqueViolation } from '@cap/server-core';
 import { CurrentUser, ReqCtx, type RequestContext } from '../common/decorators.js';
 import type { AuthUser } from '../common/request.js';
 import { AccessService } from '../access/access.service.js';
@@ -101,8 +102,8 @@ export class McpController {
         version: body.version ?? null,
       })
       .returning()
-      .catch((err: { code?: string }) => {
-        if (err.code === '23505') throw new AppError('conflict', 'Un serveur porte déjà ce nom dans cette portée');
+      .catch((err: unknown) => {
+        if (isUniqueViolation(err)) throw new AppError('conflict', 'Un serveur porte déjà ce nom dans cette portée');
         throw err;
       });
     if (Object.keys(secretData).length) {

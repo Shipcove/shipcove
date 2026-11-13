@@ -138,11 +138,113 @@ services:
       - ../../tools/mock-llm/server.mjs:/app/server.mjs:ro
     networks: [backend]
 
+  # ----------------------------- Applications -----------------------------
+  migrate:
+    image: ${CAP_REGISTRY:-}cap-api:${CAP_VERSION:-0.1.0}
+    restart: "no"
+    command: ["node", "node_modules/@cap/database/dist/migrate-cli.js"]
+    environment:
+      DATABASE_URL_FILE: /run/secrets/database_url_api
+    secrets: [database_url_api]
+    networks: [backend]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    image: ${CAP_REGISTRY:-}cap-api:${CAP_VERSION:-0.1.0}
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      DATABASE_URL_FILE: /run/secrets/database_url_api
+      VAULT_ROLE_ID_FILE: /secrets/approle/api/role_id
+      VAULT_SECRET_ID_FILE: /secrets/approle/api/secret_id
+      COOKIE_SECURE: ${CAP_COOKIE_SECURE:-false}
+      TRUST_PROXY: "loopback, linklocal, uniquelocal"
+      BOOTSTRAP_ADMIN_EMAIL: ${CAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${CAP_ADMIN_PASSWORD:-}
+    secrets: [database_url_api]
+    volumes:
+      - ./.secrets/approle/api:/secrets/approle/api:ro
+    networks: [backend]
+    deploy:
+      replicas: ${CAP_API_REPLICAS:-2}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      bootstrap: { condition: service_completed_successfully }
+
+  worker:
+    image: ${CAP_REGISTRY:-}cap-worker:${CAP_VERSION:-0.1.0}
+    restart: unless-stopped
+    # Accès au moteur Docker pour créer les sandboxes (worker uniquement ; jamais monté dans une sandbox).
+    group_add: ["${CAP_DOCKER_GID:-999}"]
+    environment:
+      <<: *app-env
+      DATABASE_URL_FILE: /run/secrets/database_url_worker
+      VAULT_ROLE_ID_FILE: /secrets/approle/worker/role_id
+      VAULT_SECRET_ID_FILE: /secrets/approle/worker/secret_id
+      SANDBOX_PROVIDER: docker
+      SANDBOX_NETWORK: cap-sandbox
+      SANDBOX_IMAGE: ${CAP_SANDBOX_IMAGE:-cap-sandbox:0.1.0}
+      GATEWAY_INTERNAL_URL: http://gateway:8081
+      EGRESS_PROXY_URL: http://gateway:3128
+    secrets: [database_url_worker]
+    volumes:
+      - ./.secrets/approle/worker:/secrets/approle/worker:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [backend]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      bootstrap: { condition: service_completed_successfully }
+
+  gateway:
+    image: ${CAP_REGISTRY:-}cap-gateway:${CAP_VERSION:-0.1.0}
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      DATABASE_URL_FILE: /run/secrets/database_url_gateway
+      VAULT_ROLE_ID_FILE: /secrets/approle/gateway/role_id
+      VAULT_SECRET_ID_FILE: /secrets/approle/gateway/secret_id
+    secrets: [database_url_gateway]
+    volumes:
+      - ./.secrets/approle/gateway:/secrets/approle/gateway:ro
+    # Seul service (avec preview) attaché au réseau des sandboxes.
+    networks: [backend, sandbox]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      bootstrap: { condition: service_completed_successfully }
+
+  preview:
+    image: ${CAP_REGISTRY:-}cap-preview:${CAP_VERSION:-0.1.0}
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      PORT: "8090"
+      DATABASE_URL_FILE: /run/secrets/database_url_gateway
+      VAULT_ROLE_ID_FILE: /secrets/approle/preview/role_id
+      VAULT_SECRET_ID_FILE: /secrets/approle/preview/secret_id
+    secrets: [database_url_gateway]
+    volumes:
+      - ./.secrets/approle/preview:/secrets/approle/preview:ro
+    ports: ["${CAP_PREVIEW_BIND:-127.0.0.1}:${CAP_PREVIEW_PORT:-8090}:8090"]
+    networks: [backend, sandbox]
+    depends_on:
+      bootstrap: { condition: service_completed_successfully }
+
+  web:
+    image: ${CAP_REGISTRY:-}cap-web:${CAP_VERSION:-0.1.0}
+    restart: unless-stopped
+    ports: ["${CAP_HTTP_BIND:-127.0.0.1}:${CAP_HTTP_PORT:-8080}:8080"]
+    networks: [backend]
+    depends_on: [api]
+
 secrets:
   postgres_password: { file: ./.secrets/postgres_password }
   garage_rpc_secret: { file: ./.secrets/garage_rpc_secret }
   garage_admin_token: { file: ./.secrets/garage_admin_token }
   garage_metrics_token: { file: ./.secrets/garage_metrics_token }
+  database_url_api: { file: ./.secrets/database_url_api }
+  database_url_worker: { file: ./.secrets/database_url_worker }
+  database_url_gateway: { file: ./.secrets/database_url_gateway }
 
 networks:
   backend: {}

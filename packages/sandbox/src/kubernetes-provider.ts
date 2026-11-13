@@ -15,6 +15,8 @@ export interface KubernetesProviderOptions {
   /** Namespace dédié aux sandboxes (NetworkPolicy deny-all + egress vers la gateway). */
   namespace: string;
   egressProxyUrl?: string;
+  /** Hôtes internes joints directement (gateway LLM / Git) : exclus du proxy d'egress. */
+  noProxyHosts?: string[];
   /** RuntimeClass optionnelle (gVisor, Kata) pour un isolement renforcé. */
   runtimeClassName?: string;
   imagePullSecrets?: string[];
@@ -54,8 +56,8 @@ export class KubernetesSandboxProvider implements SandboxProvider {
         HTTPS_PROXY: this.opts.egressProxyUrl,
         http_proxy: this.opts.egressProxyUrl,
         https_proxy: this.opts.egressProxyUrl,
-        NO_PROXY: 'localhost,127.0.0.1,::1',
-        no_proxy: 'localhost,127.0.0.1,::1',
+        NO_PROXY: ['localhost', '127.0.0.1', '::1', ...(this.opts.noProxyHosts ?? [])].join(','),
+        no_proxy: ['localhost', '127.0.0.1', '::1', ...(this.opts.noProxyHosts ?? [])].join(','),
       });
     }
     const name = this.podName(spec.instanceId);

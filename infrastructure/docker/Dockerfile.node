@@ -11,7 +11,7 @@ ENV PNPM_HOME=/pnpm CI=true
 WORKDIR /repo
 
 FROM base AS build
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc tsconfig.base.json ./
 COPY packages ./packages
 COPY apps/api/package.json apps/api/
 COPY apps/worker/package.json apps/worker/

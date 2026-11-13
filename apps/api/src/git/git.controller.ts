@@ -15,6 +15,7 @@ import {
 import type { SecretProvider } from '@cap/secrets';
 import { gitApprovalRequests, gitConnections, gitOperations, repositories, type Database } from '@cap/database';
 import { AppError, AuditService, DB, EventsService, GitProviderClient, GitProviderError, JobFailedError, JobsService, SECRETS } from '@cap/server-core';
+import { isUniqueViolation } from '@cap/server-core';
 import { CurrentUser, ReqCtx, type RequestContext } from '../common/decorators.js';
 import type { AuthUser } from '../common/request.js';
 import { AccessService } from '../access/access.service.js';
@@ -234,8 +235,8 @@ export class GitConnectionsController {
         authType: 'pat',
       })
       .returning()
-      .catch((err: { code?: string }) => {
-        if (err.code === '23505') throw new AppError('conflict', 'Ce compte est déjà rattaché');
+      .catch((err: unknown) => {
+        if (isUniqueViolation(err)) throw new AppError('conflict', 'Ce compte est déjà rattaché');
         throw err;
       });
     const ref = await this.secrets.write(`git-connections/${row.id}`, { accessToken: body.token });
