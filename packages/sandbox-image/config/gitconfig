@@ -1,0 +1,14 @@
+# Configuration Git système de la sandbox.
+# Aucun credential helper : aucun secret de publication n'est présent dans la sandbox.
+[credential]
+	helper =
+[safe]
+	directory = /workspace
+[init]
+	defaultBranch = main
+[advice]
+	detachedHead = false
+[push]
+	autoSetupRemote = true
+[core]
+	pager = cat

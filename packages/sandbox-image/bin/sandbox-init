@@ -1,0 +1,6 @@
+#!/bin/sh
+# Processus principal de la sandbox : prépare les répertoires puis attend.
+# Pi et les outils internes sont lancés par le worker via exec (API interne d'orchestration).
+set -eu
+mkdir -p /home/agent/.pi/agent /home/agent/.cache /workspace-state/pi-sessions 2>/dev/null || true
+exec sleep infinity

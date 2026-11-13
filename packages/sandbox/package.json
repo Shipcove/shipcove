@@ -1,0 +1,28 @@
+{
+  "name": "@cap/sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Abstraction SandboxProvider + implémentations Docker et Kubernetes (serveur uniquement).",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "oxlint src"
+  },
+  "dependencies": {
+    "@kubernetes/client-node": "2.0.1",
+    "dockerode": "5.0.1"
+  },
+  "devDependencies": {
+    "@types/dockerode": "4.0.2",
+    "@types/node": "26.6.6",
+    "oxlint": "1.93.0",
+    "typescript": "6.0.3",
+    "vitest": "5.1.0"
+  }
+}

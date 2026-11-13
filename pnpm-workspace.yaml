@@ -10,3 +10,7 @@ allowBuilds:
   "@swc/core": true
   # Télémétrie de swagger-ui-dist : refusée.
   "@scarf/scarf": false
+  # Accélérations natives optionnelles (dockerode via SSH, non utilisé) : refusées.
+  ssh2: false
+  cpu-features: false
+  protobufjs: false
