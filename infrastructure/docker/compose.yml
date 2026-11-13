@@ -1,0 +1,159 @@
+# Déploiement officiel Docker Compose (non haute disponibilité).
+# Prérequis : ./scripts/init-secrets.sh (génère .secrets/). Voir docs/operations/docker-compose.md.
+name: cap
+
+x-app-env: &app-env
+  NODE_ENV: ${CAP_NODE_ENV:-production}
+  LOG_FORMAT: json
+  VAULT_ADDR: http://vault:8200
+  VAULT_AUTH_METHOD: approle
+  S3_ENDPOINT: http://garage:3900
+  S3_REGION: garage
+  LITELLM_URL: http://litellm:4000
+  PUBLIC_URL: ${CAP_PUBLIC_URL:-http://localhost:8080}
+  PREVIEW_DOMAIN: ${CAP_PREVIEW_DOMAIN:-preview.localhost}
+  PREVIEW_PUBLIC_SCHEME: ${CAP_PREVIEW_SCHEME:-http}
+  PREVIEW_PUBLIC_PORT: ${CAP_PREVIEW_PORT:-8090}
+
+services:
+  postgres:
+    image: postgres:18.7-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cap
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: cap
+    secrets: [postgres_password]
+    volumes:
+      - pg-data:/var/lib/postgresql
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+    ports: ["127.0.0.1:${CAP_PG_PORT:-5432}:5432"]
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cap -d cap"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  vault:
+    image: hashicorp/vault:2.2.2
+    restart: unless-stopped
+    command: ["server"]
+    cap_add: [IPC_LOCK]
+    environment:
+      VAULT_ADDR: http://127.0.0.1:8200
+    volumes:
+      - ./vault/vault.hcl:/vault/config/vault.hcl:ro
+      - vault-data:/vault/file
+      - vault-logs:/vault/logs
+    ports: ["127.0.0.1:${CAP_VAULT_PORT:-8200}:8200"]
+    networks: [backend]
+    healthcheck:
+      # 200 actif, 429 standby, 501 non initialisé, 503 scellé : le conteneur est vivant.
+      test: ["CMD-SHELL", "wget -qO- 'http://127.0.0.1:8200/v1/sys/health?uninitcode=200&sealedcode=200&standbyok=true' >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  garage:
+    image: dxflrs/garage:v2.5.0
+    restart: unless-stopped
+    secrets: [garage_rpc_secret, garage_admin_token, garage_metrics_token]
+    volumes:
+      - ./garage/garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+    ports: ["127.0.0.1:${CAP_S3_PORT:-3900}:3900"]
+    networks: [backend]
+
+  bootstrap:
+    image: node:26-bookworm-slim
+    restart: "no"
+    command: ["node", "/bootstrap/bootstrap.mjs"]
+    environment:
+      VAULT_ADDR: http://vault:8200
+      GARAGE_ADMIN_URL: http://garage:3903
+      SECRETS_DIR: /secrets
+    volumes:
+      - ./bootstrap:/bootstrap:ro
+      - ./.secrets:/secrets
+    networks: [backend]
+    depends_on:
+      vault: { condition: service_healthy }
+      garage: { condition: service_started }
+
+  vault-unsealer:
+    image: node:26-bookworm-slim
+    restart: unless-stopped
+    command: ["node", "/bootstrap/bootstrap.mjs"]
+    environment:
+      VAULT_ADDR: http://vault:8200
+      GARAGE_ADMIN_URL: http://garage:3903
+      SECRETS_DIR: /secrets
+      WATCH_UNSEAL: "1"
+    volumes:
+      - ./bootstrap:/bootstrap:ro
+      - ./.secrets:/secrets
+    networks: [backend]
+    depends_on:
+      bootstrap: { condition: service_completed_successfully }
+
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.109.1
+    restart: unless-stopped
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    env_file: [./.secrets/litellm.env]
+    environment:
+      STORE_MODEL_IN_DB: "True"
+      LITELLM_LOG: ERROR
+      NO_DOCS: "True"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    ports: ["127.0.0.1:${CAP_LITELLM_PORT:-4000}:4000"]
+    networks: [backend]
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  # SMTP de développement / recette (désactivable). En production, configurer un SMTP réel dans l'admin.
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    profiles: ["dev"]
+    ports: ["127.0.0.1:${CAP_MAILPIT_UI_PORT:-8025}:8025", "127.0.0.1:${CAP_SMTP_PORT:-1025}:1025"]
+    networks: [backend]
+
+  # Fournisseur LLM factice pour la recette et les tests e2e (jamais en production).
+  mock-llm:
+    image: node:26-bookworm-slim
+    restart: unless-stopped
+    profiles: ["dev"]
+    command: ["node", "/app/server.mjs"]
+    volumes:
+      - ../../tools/mock-llm/server.mjs:/app/server.mjs:ro
+    networks: [backend]
+
+secrets:
+  postgres_password: { file: ./.secrets/postgres_password }
+  garage_rpc_secret: { file: ./.secrets/garage_rpc_secret }
+  garage_admin_token: { file: ./.secrets/garage_admin_token }
+  garage_metrics_token: { file: ./.secrets/garage_metrics_token }
+
+networks:
+  backend: {}
+  # Réseau des sandboxes : AUCUNE route vers l'extérieur ni vers le backend.
+  sandbox:
+    name: cap-sandbox
+    internal: true
+
+volumes:
+  pg-data: {}
+  vault-data: {}
+  vault-logs: {}
+  garage-meta: {}
+  garage-data: {}

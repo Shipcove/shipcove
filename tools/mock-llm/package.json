@@ -1,0 +1,13 @@
+{
+  "name": "@cap/mock-llm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Fournisseur LLM factice compatible OpenAI (tests et recette uniquement).",
+  "scripts": {
+    "start": "node server.mjs",
+    "build": "node --check server.mjs",
+    "test": "node --test",
+    "lint": "node --check server.mjs"
+  }
+}

@@ -1,0 +1,10 @@
+# Configuration LiteLLM. Les modèles sont gérés par la console d'administration de la plateforme
+# (API /model/new de LiteLLM, STORE_MODEL_IN_DB=True). Aucune clé provider ici.
+general_settings:
+  store_model_in_db: true
+  disable_spend_logs: false
+litellm_settings:
+  drop_params: true
+  request_timeout: 600
+  num_retries: 0          # les retries sont contrôlés par Pi / la gateway (pas de rejeu aveugle)
+  telemetry: false
