@@ -15,6 +15,7 @@ import { AccessService } from './access/access.service.js';
 import { TeamsController, UsersDirectoryController } from './teams/teams.controller.js';
 import { ProjectsController } from './projects/projects.controller.js';
 import { HealthController } from './health/health.controller.js';
+import { PlatformConfigController } from './health/platform-config.controller.js';
 import { WorkspacesController } from './workspaces/workspaces.controller.js';
 import { WorkspacesService } from './workspaces/workspaces.service.js';
 import { FilesController } from './workspaces/files.controller.js';
@@ -28,6 +29,8 @@ import { AdminController } from './admin/admin.controller.js';
 import { AdminModelsController } from './admin/admin-models.controller.js';
 import { LiteLlmAdminService } from './admin/litellm.service.js';
 import { IdempotencyService } from './common/idempotency.service.js';
+import { SkillsController } from './extensions/skills.controller.js';
+import { McpController } from './extensions/mcp.controller.js';
 
 @Module({})
 export class AppModule {
@@ -37,6 +40,7 @@ export class AppModule {
       imports: [CoreModule.forRoot({ env, serviceName: 'api', secretProvider: opts.secretProvider })],
       controllers: [
         HealthController,
+        PlatformConfigController,
         AuthController,
         MeController,
         TeamsController,
@@ -56,6 +60,8 @@ export class AppModule {
         NotificationsController,
         AdminController,
         AdminModelsController,
+        SkillsController,
+        McpController,
       ],
       providers: [
         { provide: APP_GUARD, useClass: AuthGuard },

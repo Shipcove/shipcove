@@ -14,3 +14,7 @@ allowBuilds:
   ssh2: false
   cpu-features: false
   protobufjs: false
+  # Binaires précompilés fournis via dépendances optionnelles : pas de compilation de repli.
+  "@parcel/watcher": false
+  lmdb: false
+  msgpackr-extract: false

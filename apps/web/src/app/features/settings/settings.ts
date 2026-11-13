@@ -1,0 +1,156 @@
+import { ChangeDetectionStrategy, Component, OnInit, inject, input, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
+import type { GitConnectionDto, SessionInfo } from '@cap/contracts';
+import { Api } from '../../core/api.service';
+import { AuthStore } from '../../core/auth.store';
+import { ToastService } from '../../core/toast.service';
+import { Icon } from '../../shared/icon';
+import { AgoPipe } from '../../shared/pipes';
+
+type Tab = 'profile' | 'security' | 'git';
+
+@Component({
+  selector: 'cap-settings',
+  imports: [FormsModule, RouterLink, Icon, AgoPipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <div class="h-full overflow-y-auto"><div class="mx-auto max-w-3xl px-6 py-8">
+      <h1 class="text-2xl font-semibold">Paramètres</h1>
+      <nav class="mt-4 flex gap-1 border-b border-stone-200 dark:border-stone-800">
+        @for (t of tabs; track t.id) {
+          <button class="px-3 py-2 text-sm" [class]="current() === t.id ? 'border-b-2 border-accent-600 font-medium' : 'text-stone-500'" (click)="current.set(t.id)">{{ t.label }}</button>
+        }
+      </nav>
+      @switch (current()) {
+        @case ('profile') {
+          <div class="card mt-4 space-y-1 p-4 text-sm">
+            <div><span class="text-stone-500">Nom :</span> {{ auth.me()?.displayName }}</div>
+            <div><span class="text-stone-500">Identifiant :</span> {{ auth.me()?.username }}</div>
+            <div><span class="text-stone-500">Email :</span> {{ auth.me()?.email }} @if (!auth.me()?.emailVerified) { <span class="text-amber-600">(non vérifié)</span> }</div>
+            <div><span class="text-stone-500">Rôle :</span> {{ auth.me()?.platformRole === 'platform_admin' ? 'Administrateur plateforme' : 'Utilisateur' }}</div>
+            <div><span class="text-stone-500">Équipes :</span> @for (t of auth.me()?.teams ?? []; track t.id) { <a [routerLink]="['/teams', t.id]" class="mr-2 underline">{{ t.name }}</a> }</div>
+          </div>
+        }
+        @case ('security') {
+          <form class="card mt-4 space-y-2 p-4" (ngSubmit)="changePassword()">
+            <div class="font-medium">Changer le mot de passe</div>
+            <input class="input" type="password" name="cur" autocomplete="current-password" placeholder="Mot de passe actuel" [(ngModel)]="currentPassword" />
+            <input class="input" type="password" name="new" autocomplete="new-password" placeholder="Nouveau mot de passe (12 caractères min.)" [(ngModel)]="newPassword" />
+            <button class="btn-primary">Enregistrer</button>
+          </form>
+          <div class="card mt-4 p-4">
+            <div class="font-medium">Double authentification (TOTP)</div>
+            @if (auth.me()?.mfaEnabled) {
+              <p class="mt-1 text-sm text-emerald-700">Activée.</p>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button class="btn-secondary" (click)="regenerate()">Régénérer les codes de récupération</button>
+                <input class="input !w-56" type="password" name="mfapw" placeholder="Mot de passe pour désactiver" [(ngModel)]="disablePassword" />
+                <button class="btn-secondary text-red-600" (click)="disableMfa()">Désactiver</button>
+              </div>
+              @if (codes().length) { <div class="mt-3 grid grid-cols-2 gap-1 rounded bg-stone-100 p-2 font-mono text-sm dark:bg-stone-800">@for (c of codes(); track c) { <span>{{ c }}</span> }</div> }
+            } @else {
+              <p class="mt-1 text-sm text-stone-500">Non activée.</p>
+              <a routerLink="/auth/mfa-enroll" [queryParams]="{ next: '/settings' }" class="btn-primary mt-2">Activer</a>
+            }
+          </div>
+          <div class="card mt-4 p-4">
+            <div class="flex items-center"><div class="font-medium">Sessions actives</div><button class="btn-ghost ml-auto text-xs" (click)="revokeOthers()">Fermer les autres sessions</button></div>
+            @for (s of sessions(); track s.id) {
+              <div class="flex items-center gap-2 border-t border-stone-100 py-2 text-sm dark:border-stone-800">
+                <div class="min-w-0 flex-1"><div class="truncate">{{ s.userAgent ?? 'Navigateur inconnu' }}</div><div class="text-xs text-stone-500">{{ s.ip }} · {{ s.authMethod }} · vue {{ s.lastSeenAt | ago }}</div></div>
+                @if (s.current) { <span class="badge bg-emerald-100 text-emerald-800">Actuelle</span> } @else { <button class="btn-ghost text-xs" (click)="revoke(s)">Révoquer</button> }
+              </div>
+            }
+          </div>
+        }
+        @case ('git') {
+          <p class="mt-4 text-sm text-stone-500">Rattachez un ou plusieurs comptes GitHub / GitLab, indépendamment de votre méthode de connexion. Les jetons sont conservés dans Vault et ne sont jamais transmis aux sandboxes.</p>
+          <div class="card mt-4 divide-y divide-stone-100 dark:divide-stone-800">
+            @for (c of connections(); track c.id) {
+              <div class="flex items-center gap-2 px-4 py-3 text-sm"><cap-icon name="git" /><span class="font-medium">{{ c.accountLogin }}</span><span class="text-stone-500">{{ c.host }} · {{ c.status }}</span>
+                <button class="btn-ghost ml-auto text-xs text-red-600" (click)="removeConnection(c)">Détacher</button></div>
+            } @empty { <p class="px-4 py-3 text-sm text-stone-500">Aucune connexion Git.</p> }
+          </div>
+          @if (oauth().length) {
+            <div class="mt-3 flex gap-2">@for (o of oauth(); track o.id) { <a class="btn-secondary" [href]="'/api/v1/me/git-connections/oauth/' + o.id + '/start'">Connecter via {{ o.name }}</a> }</div>
+          }
+          <form class="card mt-4 grid gap-2 p-4 md:grid-cols-3" (ngSubmit)="addToken()">
+            <div class="font-medium md:col-span-3">Ajouter un jeton d’accès personnel</div>
+            <select class="input" name="prov" [(ngModel)]="provider"><option value="github">GitHub.com</option><option value="github_enterprise">GitHub Enterprise</option><option value="gitlab">GitLab.com</option><option value="gitlab_self_managed">GitLab self-managed</option></select>
+            <input class="input" name="host" placeholder="Hôte (self-hosted)" [(ngModel)]="host" [disabled]="provider === 'github' || provider === 'gitlab'" />
+            <input class="input" type="password" name="tok" placeholder="Jeton" [(ngModel)]="token" />
+            <button class="btn-primary md:col-span-3 md:w-fit">Rattacher</button>
+          </form>
+        }
+      }
+    </div></div>
+  `,
+  host: { class: 'block h-full' },
+})
+export class SettingsPage implements OnInit {
+  readonly tab = input<Tab>();
+  protected readonly auth = inject(AuthStore);
+  private readonly api = inject(Api);
+  private readonly toast = inject(ToastService);
+  protected readonly tabs: Array<{ id: Tab; label: string }> = [
+    { id: 'profile', label: 'Profil' },
+    { id: 'security', label: 'Sécurité' },
+    { id: 'git', label: 'Connexions Git' },
+  ];
+  protected readonly current = signal<Tab>('profile');
+  protected readonly sessions = signal<SessionInfo[]>([]);
+  protected readonly connections = signal<GitConnectionDto[]>([]);
+  protected readonly oauth = signal<Array<{ id: string; name: string }>>([]);
+  protected readonly codes = signal<string[]>([]);
+  protected currentPassword = '';
+  protected newPassword = '';
+  protected disablePassword = '';
+  protected provider = 'github';
+  protected host = '';
+  protected token = '';
+
+  async ngOnInit() {
+    if (this.tab()) this.current.set(this.tab()!);
+    this.sessions.set(await this.api.get<SessionInfo[]>('/auth/sessions'));
+    this.connections.set(await this.api.get<GitConnectionDto[]>('/me/git-connections'));
+    this.oauth.set(await this.api.get<Array<{ id: string; name: string }>>('/me/git-connections/oauth/providers').catch(() => []));
+  }
+
+  private async act(fn: () => Promise<unknown>, ok?: string) {
+    try {
+      await fn();
+      if (ok) this.toast.show(ok, 'success');
+      await this.ngOnInit();
+    } catch (e) {
+      this.toast.error(e);
+    }
+  }
+  protected changePassword() {
+    return this.act(() => this.api.post('/auth/password/change', { currentPassword: this.currentPassword, newPassword: this.newPassword }), 'Mot de passe modifié');
+  }
+  protected async regenerate() {
+    try {
+      this.codes.set((await this.api.post<{ codes: string[] }>('/auth/mfa/recovery-codes')).codes);
+    } catch (e) {
+      this.toast.error(e);
+    }
+  }
+  protected async disableMfa() {
+    await this.act(() => this.api.post('/auth/mfa/disable', { password: this.disablePassword }), 'Double authentification désactivée');
+    await this.auth.load();
+  }
+  protected revoke(s: SessionInfo) {
+    return this.act(() => this.api.delete(`/auth/sessions/${s.id}`));
+  }
+  protected revokeOthers() {
+    return this.act(() => this.api.post('/auth/sessions/revoke-others'), 'Autres sessions fermées');
+  }
+  protected async addToken() {
+    await this.act(() => this.api.post('/me/git-connections/token', { provider: this.provider, host: this.host || 'github.com', token: this.token }), 'Compte rattaché');
+    this.token = '';
+  }
+  protected removeConnection(c: GitConnectionDto) {
+    return this.act(() => this.api.delete(`/me/git-connections/${c.id}`));
+  }
+}
