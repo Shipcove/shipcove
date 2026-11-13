@@ -1,0 +1,47 @@
+{
+  "name": "@cap/server-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Modules NestJS partagés par api, worker et gateway (serveur uniquement).",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "oxlint src"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1169.0",
+    "@cap/contracts": "workspace:*",
+    "@cap/database": "workspace:*",
+    "@cap/secrets": "workspace:*",
+    "decimal.js": "10.6.0",
+    "drizzle-orm": "0.45.4",
+    "pg": "8.23.1",
+    "zod": "4.6.7"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^12.5.0",
+    "@nestjs/core": "^12.5.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/common": "12.5.0",
+    "@nestjs/core": "12.5.0",
+    "@nestjs/testing": "12.5.0",
+    "@swc/core": "1.16.22",
+    "@types/node": "26.6.6",
+    "@types/pg": "8.23.1",
+    "oxlint": "1.93.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "typescript": "6.0.3",
+    "unplugin-swc": "2.0.0",
+    "vitest": "5.1.0"
+  }
+}
