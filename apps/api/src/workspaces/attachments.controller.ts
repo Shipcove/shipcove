@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
-import net from 'node:net';
-import { Controller, Delete, Get, HttpCode, Inject, Param, Post, Res, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, Inject, Injectable, Param, Post, Res, UploadedFiles, UseGuards, UseInterceptors, type CanActivate, type ExecutionContext } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
@@ -13,6 +12,7 @@ import { AppError, AuditService, DB, ObjectStorage, SettingsService } from '@cap
 import { CurrentUser } from '../common/decorators.js';
 import type { AuthUser } from '../common/request.js';
 import { AccessService } from '../access/access.service.js';
+import { clamScan, inspectArchive } from './attachment-inspection.js';
 
 const uuid = { schema: z.uuid() };
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
@@ -27,13 +27,34 @@ interface UploadedFile {
   buffer: Buffer;
 }
 
+/** Plafond absolu par fichier (le réglage administrateur est borné à cette valeur). */
+const HARD_MAX_FILE_MB = 500;
+
+/**
+ * Refuse une requête trop volumineuse AVANT que Multer ne charge les fichiers en mémoire :
+ * `Content-Length` obligatoire et borné par les réglages (nombre × taille max + marge multipart).
+ */
+@Injectable()
+export class UploadSizeGuard implements CanActivate {
+  constructor(private readonly settings: SettingsService) {}
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const req = context.switchToHttp().getRequest<{ headers: Record<string, string | undefined> }>();
+    const cfg = await this.settings.section('attachments');
+    const length = Number(req.headers['content-length']);
+    if (!Number.isFinite(length) || length <= 0) throw new AppError('validation_failed', 'En-tête Content-Length requis', undefined, 411);
+    const max = cfg.maxFilesPerMessage * cfg.maxFileMb * 1024 * 1024 + 1024 * 1024;
+    if (length > max) throw new AppError('attachment_rejected', `Envoi trop volumineux (max ${cfg.maxFilesPerMessage} × ${cfg.maxFileMb} Mo)`, undefined, 413);
+    return true;
+  }
+}
+
 /**
  * Pièces jointes (SPEC §16.3) :
  * - type réel détecté par signature (le type déclaré n'est pas cru) ;
  * - taille et nombre bornés par l'administration ;
- * - les archives ne sont JAMAIS décompressées côté serveur : elles sont déposées telles quelles
- *   dans la sandbox, où une éventuelle extraction est soumise aux limites CPU/RAM/disque ;
- * - analyse antivirus via clamd si `CLAMAV_HOST` est configuré ;
+ * - les archives ne sont JAMAIS extraites côté serveur : elles sont inspectées (nombre d'entrées,
+ *   taille décompressée, chemins dangereux) puis déposées telles quelles dans la sandbox ;
+ * - analyse antivirus via clamd si `CLAMAV_HOST` est configuré, en échec fermé ;
  * - stockées dans un bucket distinct des snapshots, accessibles au seul propriétaire.
  */
 @ApiTags('attachments')
@@ -48,7 +69,8 @@ export class AttachmentsController {
   ) {}
 
   @Post()
-  @UseInterceptors(FilesInterceptor('files', 50, { limits: { fileSize: 500 * 1024 * 1024 } }))
+  @UseGuards(UploadSizeGuard)
+  @UseInterceptors(FilesInterceptor('files', 50, { limits: { fileSize: HARD_MAX_FILE_MB * 1024 * 1024, files: 50, fields: 10, parts: 60 } }))
   async upload(@Param('id', uuid) id: string, @UploadedFiles() files: UploadedFile[], @CurrentUser() user: AuthUser): Promise<AttachmentDto[]> {
     await this.access.requireWorkspaceOwner(user, id);
     const cfg = await this.settings.section('attachments');
@@ -67,10 +89,15 @@ export class AttachmentsController {
       else if (kind === 'archive' && !cfg.allowArchives) [status, reason] = ['rejected', 'Archives non autorisées'];
       else if (kind === 'binary' && !ALLOWED_BINARY.has(mime)) [status, reason] = ['rejected', `Type non autorisé (${mime})`];
       else if (detected && f.mimetype.startsWith('image/') && !IMAGE_TYPES.has(mime)) [status, reason] = ['rejected', 'Type déclaré incohérent avec le contenu'];
-      let scan: Record<string, unknown> = { engine: null, skipped: true };
+      if (status === 'ready' && kind === 'archive') {
+        const verdict = inspectArchive(f.buffer, mime, { maxEntries: cfg.maxArchiveEntries, maxExpandedBytes: cfg.maxArchiveExpandedMb * 1024 * 1024 });
+        if (!verdict.ok) [status, reason] = ['rejected', verdict.reason];
+      }
+      let scan: Record<string, unknown> = { engine: null, status: 'disabled' };
       if (status === 'ready') {
         scan = await clamScan(f.buffer);
-        if (scan.infected) [status, reason] = ['rejected', `Logiciel malveillant détecté (${scan.signature})`];
+        if (scan.status === 'infected') [status, reason] = ['rejected', `Logiciel malveillant détecté (${scan.signature})`];
+        else if (scan.status === 'error') [status, reason] = ['rejected', 'Analyse antivirus indisponible : fichier refusé par précaution'];
       }
       const sha = createHash('sha256').update(f.buffer).digest('hex');
       const [row] = await this.db
@@ -143,36 +170,4 @@ function isProbablyText(buf: Buffer): boolean {
   } catch {
     return false;
   }
-}
-
-/** Analyse clamd (protocole INSTREAM) si `CLAMAV_HOST` est défini. */
-async function clamScan(buf: Buffer): Promise<Record<string, unknown>> {
-  const host = process.env.CLAMAV_HOST;
-  if (!host) return { engine: null, skipped: true };
-  const port = Number(process.env.CLAMAV_PORT ?? 3310);
-  return new Promise((resolve) => {
-    const sock = net.connect(port, host);
-    let out = '';
-    sock.setTimeout(30_000, () => {
-      sock.destroy();
-      resolve({ engine: 'clamav', error: 'timeout', infected: false, skipped: true });
-    });
-    sock.on('connect', () => {
-      sock.write('zINSTREAM\0');
-      for (let i = 0; i < buf.length; i += 64 * 1024) {
-        const chunk = buf.subarray(i, i + 64 * 1024);
-        const len = Buffer.alloc(4);
-        len.writeUInt32BE(chunk.length);
-        sock.write(len);
-        sock.write(chunk);
-      }
-      sock.write(Buffer.alloc(4));
-    });
-    sock.on('data', (d) => (out += d.toString()));
-    sock.on('end', () => {
-      const infected = /FOUND/.test(out);
-      resolve({ engine: 'clamav', infected, signature: infected ? out.replace(/^stream: /, '').replace(/ FOUND.*$/s, '') : null, scannedAt: new Date().toISOString() });
-    });
-    sock.on('error', (e) => resolve({ engine: 'clamav', error: e.message, infected: false, skipped: true }));
-  });
 }

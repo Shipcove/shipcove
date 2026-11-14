@@ -246,7 +246,8 @@ export class AdminNotifications implements OnInit {
         <td class="text-right"><button class="btn-ghost !py-0.5 text-xs" (click)="saveRetention(r)">Enregistrer</button></td></tr>
       }</tbody>
     </table></div>
-    <h2 class="mt-6 mb-2 text-sm font-semibold text-stone-500 uppercase">Dernières purges</h2>
+    <div class="mt-6 mb-2 flex items-center"><h2 class="text-sm font-semibold text-stone-500 uppercase">Dernières purges</h2>
+      <button class="btn-secondary ml-auto !py-1 text-xs" (click)="runRetention()" title="Exécutée aussi automatiquement toutes les heures">Lancer la purge maintenant</button></div>
     <div class="card max-h-64 overflow-auto"><table class="table">
       <thead><tr><th>Date</th><th>Type</th><th>Statut</th><th>Statistiques</th></tr></thead>
       <tbody>@for (j of jobs(); track j['id']) { <tr><td class="text-xs">{{ j['createdAt'] | ago }}</td><td>{{ j['dataType'] ?? j['kind'] }}</td><td>{{ j['status'] }}</td><td class="text-xs">{{ stats(j['stats']) }}</td></tr> }</tbody>
@@ -277,6 +278,16 @@ export class AdminAudit implements OnInit {
   }
   protected stats(s: unknown) {
     return JSON.stringify(s);
+  }
+  protected async runRetention() {
+    if (!confirm('Lancer maintenant la purge selon les durées de rétention ? Les données expirées seront supprimées définitivement (sauf gel légal).')) return;
+    try {
+      await this.api.post('/admin/retention/run');
+      this.toast.show('Purge lancée : les résultats apparaissent ci-dessous', 'success');
+      setTimeout(() => void this.api.get<Row[]>('/admin/deletion-jobs').then((j) => this.jobs.set(j)), 5000);
+    } catch (e) {
+      this.toast.error(e);
+    }
   }
   protected async saveRetention(r: { dataType: string; retentionDays: number | null; legalHold: boolean }) {
     try {

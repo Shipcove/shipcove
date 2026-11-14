@@ -371,6 +371,15 @@ export class AdminController {
     return { ok: true };
   }
 
+  /** Purge de rétention immédiate (exécutée par un worker, sous le même verrou que la purge horaire). */
+  @Post('retention/run')
+  @HttpCode(202)
+  async runRetention(@CurrentUser() user: AuthUser, @ReqCtx() ctx: RequestContext) {
+    const id = await this.jobs.enqueue('retention.run', { requestedBy: user.id }, { dedupeKey: 'retention.run', maxAttempts: 1 });
+    await this.audit.record({ actorId: user.id, action: 'admin.retention_run', ip: ctx.ip });
+    return { jobId: id };
+  }
+
   @Get('deletion-jobs')
   async deletionJobs() {
     const { deletionJobs } = await import('@cap/database');

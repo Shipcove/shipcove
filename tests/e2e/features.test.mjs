@@ -1,10 +1,11 @@
 // Parcours fonctionnels complémentaires (SPEC §25) sur la pile Compose réelle :
 // édition manuelle et conflits (n°9), skills/MCP (n°13), pièces jointes, notifications, rétention (n°15).
 // Prérequis : pile démarrée, modèle par défaut créé (stack.test.mjs).
-import { test, before, after } from 'node:test';
+import { test, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { Client, adminClient, uid } from './client.mjs';
+import { execFileSync } from 'node:child_process';
+import { BASE, Client, adminClient, uid } from './client.mjs';
 
 const STATE_FILE = new URL('./.e2e-state.json', import.meta.url);
 const state = existsSync(STATE_FILE) ? JSON.parse(readFileSync(STATE_FILE, 'utf8')) : {};
@@ -36,13 +37,23 @@ async function run(client, wsId, text) {
   return sent.body.runId;
 }
 
+const opened = [];
 async function workspace(client, name) {
   const p = await client.post('/projects', { teamId: ctx.teamId, name: `${name} ${uid()}` });
   assert.equal(p.status, 201, JSON.stringify(p.body));
   const w = await client.post('/workspaces', { projectId: p.body.id, name });
   assert.equal(w.status, 201, JSON.stringify(w.body));
+  opened.push({ client, id: w.body.id });
   return w.body;
 }
+
+// Libère les sandboxes entre scénarios (limite par défaut : 3 sandboxes actives par utilisateur).
+afterEach(async () => {
+  while (opened.length) {
+    const { client, id } = opened.pop();
+    await client.post(`/workspaces/${id}/stop`).catch(() => undefined);
+  }
+});
 
 const setEditing = (enabled) => ctx.admin.req('PATCH', '/admin/settings', { section: 'editor', values: { manualEditingEnabled: enabled } });
 
@@ -245,4 +256,223 @@ test('MCP : outil stdio exécuté dans la sandbox, secret injecté depuis Vault,
   assert.equal((await ctx.dev.put(`/mcp-servers/${hidden.body.id}/permissions`, { toolName: 'echo', scope: 'personal', effect: 'deny' })).status, 404);
 
   await ctx.admin.del(`/mcp-servers/${srv}`);
+});
+
+/** Envoi multipart (FormData) avec les cookies et le jeton CSRF du client. */
+async function upload(client, wsId, files) {
+  const form = new FormData();
+  for (const f of files) form.append('files', new Blob([f.data], { type: f.type }), f.name);
+  const res = await fetch(`${BASE}/api/v1/workspaces/${wsId}/attachments`, {
+    method: 'POST',
+    headers: { 'X-CSRF-Token': client.csrf, Cookie: [...client.cookies].map(([k, v]) => `${k}=${v}`).join('; ') },
+    body: form,
+  });
+  return { status: res.status, body: await res.json().catch(() => null) };
+}
+
+const PNG_1PX = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082', 'hex');
+
+/** ZIP « stored » minimal (voir aussi apps/api/.../attachment-inspection.spec.ts). */
+function zip(entries) {
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  for (const e of entries) {
+    const name = Buffer.from(e.name);
+    const data = Buffer.from(e.data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(name.length, 28);
+    central.writeUInt32LE(offset, 42);
+    locals.push(local, name, data);
+    centrals.push(central, name);
+    offset += 30 + name.length + data.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(cd.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, cd, eocd]);
+}
+
+const setAttachments = (values) => ctx.admin.req('PATCH', '/admin/settings', { section: 'attachments', values });
+
+test('pièces jointes : type réel, exécutables et archives dangereuses refusés, taille bornée, cloisonnement, remise à Pi', async () => {
+  const ws = await workspace(ctx.dev, 'Pièces jointes');
+  const r = await upload(ctx.dev, ws.id, [
+    { name: 'notes.txt', type: 'text/plain', data: 'contenu-de-la-piece-jointe\n' },
+    { name: 'pixel.png', type: 'image/png', data: PNG_1PX },
+    { name: 'outil.exe', type: 'application/octet-stream', data: Buffer.from('MZ\x90\x00binaire') },
+    { name: 'fausse-image.png', type: 'image/png', data: zip([{ name: 'a.txt', data: 'a' }]) },
+    { name: 'sain.zip', type: 'application/zip', data: zip([{ name: 'src/a.txt', data: 'a' }]) },
+    { name: 'slip.zip', type: 'application/zip', data: zip([{ name: '../../home/agent/.bashrc', data: 'x' }]) },
+    { name: 'inconnu.bin', type: 'application/octet-stream', data: Buffer.from([0, 1, 2, 3, 255, 254]) },
+  ]);
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const by = Object.fromEntries(r.body.map((a) => [a.fileName, a]));
+  assert.equal(by['notes.txt'].status, 'ready');
+  assert.equal(by['notes.txt'].kind, 'text');
+  assert.equal(by['pixel.png'].status, 'ready');
+  assert.equal(by['pixel.png'].mimeType, 'image/png');
+  assert.equal(by['outil.exe'].status, 'rejected');
+  assert.equal(by['fausse-image.png'].status, 'rejected', 'type déclaré incohérent avec le contenu');
+  assert.equal(by['sain.zip'].status, 'ready', JSON.stringify(by['sain.zip']));
+  assert.equal(by['slip.zip'].status, 'rejected');
+  assert.match(by['slip.zip'].rejectionReason, /Chemin dangereux/);
+  assert.equal(by['inconnu.bin'].status, 'rejected');
+
+  // Bombe gzip : 10 Mo de zéros compressés en quelques Ko, limite abaissée à 5 Mo.
+  assert.equal((await setAttachments({ maxArchiveExpandedMb: 5 })).status, 200);
+  try {
+    const { gzipSync } = await import('node:zlib');
+    const bomb = await upload(ctx.dev, ws.id, [{ name: 'bombe.gz', type: 'application/gzip', data: gzipSync(Buffer.alloc(10 * 1024 * 1024)) }]);
+    assert.equal(bomb.body[0].status, 'rejected', JSON.stringify(bomb.body));
+    assert.match(bomb.body[0].rejectionReason, /décompressée/);
+    // Envoi trop volumineux refusé avant lecture en mémoire.
+    await setAttachments({ maxFileMb: 1, maxFilesPerMessage: 1 });
+    const big = await upload(ctx.dev, ws.id, [{ name: 'gros.txt', type: 'text/plain', data: 'x'.repeat(3 * 1024 * 1024) }]);
+    assert.equal(big.status, 413, JSON.stringify(big.body));
+  } finally {
+    await setAttachments({ maxArchiveExpandedMb: 200, maxFileMb: 20, maxFilesPerMessage: 10 });
+  }
+
+  // Téléchargement : propriétaire uniquement, jamais interprété par le navigateur.
+  const dl = await fetch(`${BASE}/api/v1/workspaces/${ws.id}/attachments/${by['notes.txt'].id}`, { headers: { Cookie: [...ctx.dev.cookies].map(([k, v]) => `${k}=${v}`).join('; ') } });
+  assert.equal(dl.status, 200);
+  assert.equal(dl.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(dl.headers.get('x-frame-options'), 'DENY', 'un seul X-Frame-Options');
+  assert.equal(dl.headers.get('content-type'), 'application/octet-stream');
+  assert.match(dl.headers.get('content-security-policy'), /sandbox/);
+  const other = await newUser();
+  assert.ok([403, 404].includes((await other.get(`/workspaces/${ws.id}/attachments/${by['notes.txt'].id}`)).status));
+  assert.ok([403, 404].includes((await upload(other, ws.id, [{ name: 'x.txt', type: 'text/plain', data: 'x' }])).status));
+
+  // Pièce jointe remise à Pi dans la sandbox, puis non réutilisable.
+  const conv = await ctx.dev.get(`/workspaces/${ws.id}/conversation`);
+  const sent = await ctx.dev.post(
+    `/workspaces/${ws.id}/messages`,
+    { text: `Lis la pièce jointe. [[tool:bash {"command":"cat /workspace/.cap/attachments/${by['notes.txt'].id}/notes.txt"}]]`, attachmentIds: [by['notes.txt'].id] },
+    { 'Idempotency-Key': `f-${uid()}` },
+  );
+  assert.equal(sent.status, 201, JSON.stringify(sent.body));
+  const events = await ctx.dev.events(ws.id, conv.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === sent.body.runId, 420_000);
+  assert.equal(events.at(-1).type, 'run.completed', JSON.stringify(events.at(-1)));
+  assert.match(events.find((e) => e.type === 'tool.completed')?.data.output ?? JSON.stringify(events.map((e) => e.type)), /contenu-de-la-piece-jointe/);
+  const reuse = await ctx.dev.post(`/workspaces/${ws.id}/messages`, { text: 'encore', attachmentIds: [by['notes.txt'].id] }, { 'Idempotency-Key': `f-${uid()}` });
+  assert.equal(reuse.status, 422, JSON.stringify(reuse.body));
+  // Une pièce jointe refusée ne peut pas être envoyée.
+  const rejected = await ctx.dev.post(`/workspaces/${ws.id}/messages`, { text: 'exe', attachmentIds: [by['outil.exe'].id] }, { 'Idempotency-Key': `f-${uid()}` });
+  assert.equal(rejected.status, 422, JSON.stringify(rejected.body));
+  ctx.attachWs = ws;
+  ctx.attachmentId = by['pixel.png'].id;
+});
+
+const MAILPIT = process.env.CAP_MAILPIT_URL ?? 'http://127.0.0.1:8025';
+async function mails(to) {
+  const r = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:${to}`)}`);
+  return (await r.json()).messages ?? [];
+}
+async function waitFor(fn, timeoutMs = 60_000) {
+  const end = Date.now() + timeoutMs;
+  for (;;) {
+    const v = await fn();
+    if (v) return v;
+    if (Date.now() > end) return null;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
+test('notifications : in-app et email (Mailpit) selon les préférences', async () => {
+  const user = await newUser();
+  const ws = await workspace(user, 'Notifications');
+  // run.completed : in-app seul par défaut ; on active l'email.
+  assert.equal((await user.put('/notifications/preferences', { type: 'run.completed', inApp: true, email: true })).status, 204);
+  await run(user, ws.id, 'Bonjour');
+  const inApp = await waitFor(async () => (await user.get('/notifications')).body.items.find((n) => n.type === 'run.completed'));
+  assert.ok(inApp, 'notification in-app');
+  assert.equal(inApp.link, `/workspaces/${ws.id}`);
+  const mail = await waitFor(async () => (await mails(user.email)).find((m) => /Tâche terminée/.test(m.Subject)));
+  assert.ok(mail, `email reçu par ${user.email}`);
+  // Le contenu de la conversation n'est pas recopié dans l'email.
+  const full = await (await fetch(`${MAILPIT}/api/v1/message/${mail.ID}`)).json();
+  assert.doesNotMatch(full.Text ?? '', /Réponse factice/);
+
+  // Email désactivé : plus aucun envoi, l'in-app reste.
+  await user.put('/notifications/preferences', { type: 'run.completed', inApp: true, email: false });
+  const before = (await mails(user.email)).length;
+  await run(user, ws.id, 'Deuxième');
+  await waitFor(async () => (await user.get('/notifications')).body.items.filter((n) => n.type === 'run.completed').length >= 2);
+  await new Promise((r) => setTimeout(r, 5000));
+  assert.equal((await mails(user.email)).length, before, 'aucun nouvel email');
+  // Marquage comme lu.
+  assert.equal((await user.post('/notifications/read', {})).status, 204);
+  assert.equal((await user.get('/notifications?unread=true')).body.unreadCount, 0);
+  ctx.notifUser = user;
+});
+
+/** Requête SQL directe (vieillissement artificiel des données pour tester la rétention). */
+function sql(query) {
+  return execFileSync('docker', ['exec', '-i', 'cap-postgres-1', 'psql', '-U', 'cap', '-d', 'cap', '-tAc', query], { encoding: 'utf8' }).trim();
+}
+
+test('rétention : purge déclenchée par l’administrateur, gel légal respecté, reprise de conversation préservée', async () => {
+  const user = ctx.notifUser;
+  const ws = ctx.attachWs;
+  // Données « anciennes » : notifications de l'utilisateur, pièce jointe, événements d'audit.
+  sql(`update notifications set created_at = now() - interval '3 days' where user_id = '${user.id}'`);
+  sql(`update attachments set created_at = now() - interval '3 days' where id = '${ctx.attachmentId}'`);
+  const marker = `retention-test-${uid()}`;
+  sql(`insert into audit_events (action, outcome, occurred_at) values ('${marker}', 'success', now() - interval '3 days')`);
+  const policies = [
+    { dataType: 'notifications', retentionDays: 1, legalHold: false },
+    { dataType: 'attachments', retentionDays: 1, legalHold: false },
+    { dataType: 'audit', retentionDays: 1, legalHold: true },
+    { dataType: 'checkpoints', retentionDays: 1, legalHold: false },
+  ];
+  // Un non-administrateur ne fixe pas les durées.
+  assert.equal((await ctx.dev.put('/admin/retention', policies[0])).status, 403);
+  try {
+    for (const p of policies) assert.equal((await ctx.admin.put('/admin/retention', p)).status, 200);
+    const startedAt = new Date().toISOString();
+    assert.equal((await ctx.admin.post('/admin/retention/run')).status, 202);
+    const jobs = await waitFor(async () => {
+      const list = (await ctx.admin.get('/admin/deletion-jobs')).body.filter((j) => j.kind === 'retention_purge' && j.createdAt >= startedAt);
+      const types = new Set(list.filter((j) => j.status !== 'running').map((j) => j.dataType));
+      return ['notifications', 'attachments', 'audit', 'checkpoints'].every((t) => types.has(t)) ? list : null;
+    }, 120_000);
+    assert.ok(jobs, 'purge exécutée');
+    assert.equal(jobs.find((j) => j.dataType === 'audit').status, 'blocked', 'gel légal');
+    assert.equal(sql(`select count(*) from audit_events where action = '${marker}'`), '1', 'audit gelé conservé');
+    assert.equal(jobs.find((j) => j.dataType === 'notifications').status, 'succeeded');
+    assert.equal((await user.get('/notifications')).body.items.length, 0, 'notifications anciennes purgées');
+    assert.equal((await ctx.dev.get(`/workspaces/${ws.id}/attachments/${ctx.attachmentId}`)).status, 404, 'pièce jointe purgée');
+    // La génération courante (fichiers + session Pi) est conservée : la conversation reprend.
+    await run(ctx.dev, ws.id, 'Toujours là ? [[tool:bash {"command":"ls /workspace"}]]');
+  } finally {
+    for (const p of policies) await ctx.admin.put('/admin/retention', { dataType: p.dataType, retentionDays: null, legalHold: false });
+    sql(`delete from audit_events where action = '${marker}'`);
+  }
+});
+
+test('limite de sandboxes actives par utilisateur : le run échoue avec un message explicite', async () => {
+  const user = await newUser();
+  const ws = [];
+  for (let i = 0; i < 4; i++) ws.push(await workspace(user, `Limite ${i}`));
+  for (let i = 0; i < 3; i++) await run(user, ws[i].id, `Run ${i}`);
+  const conv = await user.get(`/workspaces/${ws[3].id}/conversation`);
+  const sent = await user.post(`/workspaces/${ws[3].id}/messages`, { text: 'Quatrième' }, { 'Idempotency-Key': `f-${uid()}` });
+  const events = await user.events(ws[3].id, conv.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === sent.body.runId, 240_000);
+  const end = events.at(-1);
+  assert.equal(end.type, 'run.failed');
+  assert.match(end.data.error, /Limite de 3 sandbox/, end.data.error);
 });

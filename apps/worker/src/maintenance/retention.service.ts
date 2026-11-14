@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { and, eq, isNotNull, lt, sql } from 'drizzle-orm';
 import type { RetentionDataType } from '@cap/contracts';
 import {
@@ -15,7 +15,8 @@ import {
   workspaces,
   type Database,
 } from '@cap/database';
-import { AuditService, DB, ObjectStorage } from '@cap/server-core';
+import { AuditService, DB, ObjectStorage, sha256Hex } from '@cap/server-core';
+import { JobRunner } from '../jobs/job-runner.service.js';
 import { CheckpointService } from '../sandbox/checkpoint.service.js';
 
 /**
@@ -26,7 +27,7 @@ import { CheckpointService } from '../sandbox/checkpoint.service.js';
  *   et les messages ne sont supprimés qu'avec leur workspace.
  */
 @Injectable()
-export class RetentionService {
+export class RetentionService implements OnApplicationBootstrap {
   private readonly logger = new Logger('Retention');
 
   constructor(
@@ -34,7 +35,35 @@ export class RetentionService {
     private readonly storage: ObjectStorage,
     private readonly checkpoints: CheckpointService,
     private readonly audit: AuditService,
+    private readonly runner: JobRunner,
   ) {}
+
+  onApplicationBootstrap(): void {
+    // Purge demandée par un administrateur : même verrou consultatif que la tâche horaire.
+    this.runner.register('retention.run', () => this.runExclusive(), { concurrency: 1, leaseMs: 30 * 60_000 });
+  }
+
+  async runExclusive(): Promise<Record<string, number>> {
+    const lockId = Number.parseInt(sha256Hex('cap-task:retention').slice(0, 12), 16);
+    const client = await this.db.$client.connect();
+    try {
+      // Attente bornée du verrou si la purge horaire est en cours.
+      for (let i = 0; i < 60; i++) {
+        const r = await client.query<{ ok: boolean }>('select pg_try_advisory_lock($1) as ok', [lockId]);
+        if (r.rows[0].ok) {
+          try {
+            return await this.runAll();
+          } finally {
+            await client.query('select pg_advisory_unlock($1)', [lockId]);
+          }
+        }
+        await new Promise((res) => setTimeout(res, 1000));
+      }
+      throw new Error('Purge déjà en cours');
+    } finally {
+      client.release();
+    }
+  }
 
   async runAll(): Promise<Record<string, number>> {
     const policies = await this.db.select().from(retentionPolicies);

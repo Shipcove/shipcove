@@ -44,6 +44,9 @@ export class AppError extends HttpException {
     status?: number,
   ) {
     super({ error: { code, message, details } }, status ?? STATUS[code] ?? HttpStatus.BAD_REQUEST);
+    // HttpException ne reprend pas le message d'une réponse objet (« App Error ») : message réel
+    // nécessaire hors HTTP (worker, journaux, erreurs de run affichées à l'utilisateur).
+    this.message = message;
   }
 }
 
