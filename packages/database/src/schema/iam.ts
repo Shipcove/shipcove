@@ -56,6 +56,32 @@ export const authProviders = pgTable(
   (t) => [uniqueIndex('auth_providers_name_uq').on(t.name)],
 );
 
+/**
+ * État d'une redirection SSO en cours (OIDC/OAuth : state + nonce + PKCE ; SAML : RelayState).
+ * Usage unique et durée de vie courte ; stocké en base pour fonctionner avec plusieurs instances API.
+ */
+export const authFlows = pgTable(
+  'auth_flows',
+  {
+    id: pk(),
+    providerId: uuid()
+      .notNull()
+      .references(() => authProviders.id, { onDelete: 'cascade' }),
+    /** Empreinte SHA-256 du `state` / RelayState transmis au fournisseur. */
+    stateHash: text().notNull(),
+    nonce: text(),
+    codeVerifier: text(),
+    /** Chemin relatif de retour après connexion. */
+    returnTo: text().notNull().default('/'),
+    /** Rattachement d'une identité externe à l'utilisateur connecté (sinon : connexion). */
+    linkUserId: uuid().references(() => users.id, { onDelete: 'cascade' }),
+    expiresAt: ts().notNull(),
+    usedAt: ts(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('auth_flows_state_uq').on(t.stateHash), index().on(t.expiresAt)],
+);
+
 /** Identités externes rattachées à un utilisateur interne (jamais de fusion par email). */
 export const authIdentities = pgTable(
   'auth_identities',

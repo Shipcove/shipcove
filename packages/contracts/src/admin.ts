@@ -129,42 +129,6 @@ export const RetentionPolicySchema = z.object({
 
 /* ---------- Fournisseurs d'authentification ---------- */
 
-export const OidcConfigSchema = z.object({
-  issuer: z.url(),
-  clientId: z.string().min(1).max(500),
-  clientSecret: z.string().max(4000).optional(),
-  scopes: z.array(z.string()).default(['openid', 'profile', 'email']),
-  /** Claim exigeant la MFA côté IdP (ex. `amr` contient `mfa`). */
-  requireMfaClaim: z.boolean().default(false),
-});
-export const SamlConfigSchema = z.object({
-  entryPoint: z.url(),
-  issuer: z.string().min(1).max(500),
-  idpCert: z.string().min(20).max(20000),
-  emailAttribute: z.string().default('email'),
-  nameAttribute: z.string().default('displayName'),
-  wantAssertionsSigned: z.boolean().default(true),
-});
-export const LdapConfigSchema = z.object({
-  url: z.string().regex(/^ldaps?:\/\//),
-  bindDn: z.string().max(1000),
-  bindPassword: z.string().max(4000).optional(),
-  searchBase: z.string().max(1000),
-  searchFilter: z.string().max(1000).default('(|(uid={{username}})(sAMAccountName={{username}}))'),
-  emailAttribute: z.string().default('mail'),
-  nameAttribute: z.string().default('cn'),
-  usernameAttribute: z.string().default('uid'),
-  startTls: z.boolean().default(false),
-});
-export const OAuthGitConfigSchema = z.object({
-  /** github.com / gitlab.com ou hôte self-hosted. */
-  host: z.string().min(3).max(255),
-  clientId: z.string().min(1).max(500),
-  clientSecret: z.string().max(4000).optional(),
-  /** Autoriser aussi l'usage pour la connexion (login), en plus du rattachement Git. */
-  allowLogin: z.boolean().default(true),
-});
-
 export const UpsertAuthProviderSchema = z.object({
   type: AuthProviderTypeSchema.exclude(['local']),
   name: z.string().min(1).max(120),
@@ -173,6 +137,108 @@ export const UpsertAuthProviderSchema = z.object({
   autoProvision: z.boolean().default(true),
   config: z.record(z.string(), z.unknown()),
 });
+
+/**
+ * Politique MFA d'un fournisseur fédéré :
+ * - `auto` : MFA locale exigée selon la politique plateforme, sauf si le fournisseur atteste une MFA (amr / AuthnContext) ;
+ * - `require_idp` : connexion refusée si le fournisseur n'atteste pas de MFA ;
+ * - `trust_idp` : le fournisseur impose lui-même la MFA (aucune MFA locale) ;
+ * - `local` : politique MFA locale toujours appliquée.
+ */
+export const FederatedMfaSchema = z.enum(['auto', 'require_idp', 'trust_idp', 'local']);
+
+const httpUrl = z.url({ protocol: /^https?$/ });
+
+export const OidcConfigSchema = z.object({
+  issuer: httpUrl,
+  clientId: z.string().min(1).max(500),
+  scopes: z.array(z.string().min(1).max(100)).max(30).default(['openid', 'profile', 'email']),
+  usernameClaim: z.string().max(100).default('preferred_username'),
+  emailClaim: z.string().max(100).default('email'),
+  nameClaim: z.string().max(100).default('name'),
+  mfa: FederatedMfaSchema.default('auto'),
+  /** Émetteur en HTTP (développement / tests uniquement). */
+  allowInsecureHttp: z.boolean().default(false),
+});
+
+export const SamlConfigSchema = z.object({
+  /** URL SSO (HTTP-Redirect) du fournisseur d'identité. */
+  entryPoint: httpUrl,
+  /** Identifiant (entityID) de la plateforme côté fournisseur. */
+  issuer: z.string().min(1).max(500),
+  /** Certificat(s) de signature du fournisseur (PEM ou base64). */
+  idpCert: z.union([z.string().min(20), z.array(z.string().min(20)).min(1)]),
+  idpIssuer: z.string().max(500).optional(),
+  emailAttribute: z.string().max(200).default('email'),
+  nameAttribute: z.string().max(200).default('displayName'),
+  usernameAttribute: z.string().max(200).default('username'),
+  wantAssertionsSigned: z.boolean().default(true),
+  wantAuthnResponseSigned: z.boolean().default(false),
+  mfa: FederatedMfaSchema.default('auto'),
+});
+
+export const LdapConfigSchema = z.object({
+  url: z.string().regex(/^ldaps?:\/\/[^\s]+$/, 'URL ldap:// ou ldaps://'),
+  bindDn: z.string().min(1).max(500),
+  searchBase: z.string().min(1).max(500),
+  /** `{{username}}` est remplacé par l'identifiant saisi, échappé (RFC 4515). */
+  searchFilter: z
+    .string()
+    .min(3)
+    .max(1000)
+    .refine((s) => s.includes('{{username}}'), 'Le filtre doit contenir {{username}}')
+    .default('(|(uid={{username}})(sAMAccountName={{username}}))'),
+  usernameAttribute: z.string().max(100).default('uid'),
+  emailAttribute: z.string().max(100).default('mail'),
+  nameAttribute: z.string().max(100).default('cn'),
+  startTls: z.boolean().default(false),
+  tlsRejectUnauthorized: z.boolean().default(true),
+  timeoutMs: z.number().int().min(500).max(60_000).default(8000),
+  mfa: z.enum(['local']).default('local'),
+});
+
+export const GitHubOAuthConfigSchema = z.object({
+  /** `github.com` ou hôte GitHub Enterprise Server. */
+  host: z.string().min(1).max(255).default('github.com'),
+  clientId: z.string().min(1).max(500),
+  allowLogin: z.boolean().default(true),
+  /** Restreint la connexion aux membres de ces organisations (vide = tous). */
+  allowedOrganizations: z.array(z.string().min(1).max(100)).max(50).default([]),
+  mfa: z.enum(['local']).default('local'),
+});
+
+export const GitLabOAuthConfigSchema = z.object({
+  /** `gitlab.com` ou instance auto-hébergée. */
+  host: z.string().min(1).max(255).default('gitlab.com'),
+  clientId: z.string().min(1).max(500),
+  allowLogin: z.boolean().default(true),
+  /** Restreint la connexion aux membres de ces groupes (chemin complet ; vide = tous). */
+  allowedGroups: z.array(z.string().min(1).max(255)).max(50).default([]),
+  mfa: z.enum(['local']).default('local'),
+});
+
+export const AUTH_PROVIDER_CONFIG_SCHEMAS = {
+  oidc: OidcConfigSchema,
+  saml: SamlConfigSchema,
+  ldap: LdapConfigSchema,
+  github: GitHubOAuthConfigSchema,
+  gitlab: GitLabOAuthConfigSchema,
+} as const;
+
+/** Champs secrets acceptés à l'enregistrement (écrits dans Vault, jamais renvoyés). */
+export const AUTH_PROVIDER_SECRET_FIELDS: Record<keyof typeof AUTH_PROVIDER_CONFIG_SCHEMAS, readonly string[]> = {
+  oidc: ['clientSecret'],
+  saml: ['privateKey'],
+  ldap: ['bindPassword'],
+  github: ['clientSecret'],
+  gitlab: ['clientSecret'],
+};
+
+export type OidcConfig = z.infer<typeof OidcConfigSchema>;
+export type SamlConfig = z.infer<typeof SamlConfigSchema>;
+export type LdapConfig = z.infer<typeof LdapConfigSchema>;
+export type GitHubOAuthConfig = z.infer<typeof GitHubOAuthConfigSchema>;
+export type GitLabOAuthConfig = z.infer<typeof GitLabOAuthConfigSchema>;
 
 export interface AuthProviderAdminDto {
   id: string;
@@ -184,6 +250,19 @@ export interface AuthProviderAdminDto {
   secretConfigured: boolean;
   lastTestAt: string | null;
   lastTestResult: string | null;
+  /** URL de rappel à déclarer chez le fournisseur (OIDC / OAuth : redirect URI ; SAML : ACS). */
+  callbackUrl: string;
+}
+
+/** Identité externe rattachée au compte courant. */
+export interface LinkedIdentityDto {
+  id: string;
+  providerId: string;
+  provider: string;
+  type: string;
+  email: string | null;
+  lastLoginAt: string | null;
+  createdAt: string;
 }
 
 export const SmtpConfigSchema = z.object({

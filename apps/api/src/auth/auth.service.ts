@@ -426,11 +426,11 @@ export class AuthService implements OnApplicationBootstrap {
     return rows[0].userId;
   }
 
-  private async recordAttempt(key: string, userId: string | null, ctx: RequestContext, success: boolean, reason: string) {
+  async recordAttempt(key: string, userId: string | null, ctx: RequestContext, success: boolean, reason: string) {
     await this.db.insert(authAttempts).values({ key, userId, ip: ctx.ip, kind: key.split(':')[0], success, reason });
   }
 
-  private async checkIpRateLimit(ip: string | null): Promise<void> {
+  async checkIpRateLimit(ip: string | null): Promise<void> {
     if (!ip) return;
     const [{ n }] = await this.db
       .select({ n: count() })

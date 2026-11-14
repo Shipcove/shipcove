@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
-import type { GitConnectionDto, SessionInfo } from '@cap/contracts';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import type { AuthProviderPublic, AuthProvidersResponse, GitConnectionDto, LinkedIdentityDto, SessionInfo } from '@cap/contracts';
+import { SSO_ERRORS } from '../auth/login';
 import { Api } from '../../core/api.service';
 import { AuthStore } from '../../core/auth.store';
 import { ToastService } from '../../core/toast.service';
@@ -54,6 +55,22 @@ type Tab = 'profile' | 'security' | 'git';
               <a routerLink="/auth/mfa-enroll" [queryParams]="{ next: '/settings' }" class="btn-primary mt-2">Activer</a>
             }
           </div>
+          <div class="card mt-4 p-4" aria-label="Identités de connexion">
+            <div class="font-medium">Identités de connexion</div>
+            <p class="mt-1 text-sm text-stone-500">Comptes d’entreprise ou Git permettant de vous connecter. Un compte n’est jamais associé automatiquement par son adresse email : rattachez-le ici.</p>
+            @for (i of identities(); track i.id) {
+              <div class="mt-2 flex items-center gap-2 border-t border-stone-100 pt-2 text-sm dark:border-stone-800">
+                <div class="min-w-0 flex-1"><div class="font-medium">{{ i.provider }} <span class="text-xs font-normal text-stone-500">{{ typeLabel(i.type) }}</span></div>
+                  <div class="text-xs text-stone-500">{{ i.email ?? '—' }} · {{ i.lastLoginAt ? 'dernière connexion ' + (i.lastLoginAt | ago) : 'jamais utilisée' }}</div></div>
+                <button class="btn-ghost text-xs text-red-600" (click)="unlink(i)">Retirer</button>
+              </div>
+            } @empty { <p class="mt-2 text-sm text-stone-500">Aucune identité externe rattachée.</p> }
+            @if (linkable().length) {
+              <div class="mt-3 flex flex-wrap gap-2">
+                @for (p of linkable(); track p.id) { <a class="btn-secondary" [href]="linkUrl(p)">Rattacher {{ p.name }}</a> }
+              </div>
+            }
+          </div>
           <div class="card mt-4 p-4">
             <div class="flex items-center"><div class="font-medium">Sessions actives</div><button class="btn-ghost ml-auto text-xs" (click)="revokeOthers()">Fermer les autres sessions</button></div>
             @for (s of sessions(); track s.id) {
@@ -103,6 +120,11 @@ export class SettingsPage implements OnInit {
   protected readonly connections = signal<GitConnectionDto[]>([]);
   protected readonly oauth = signal<Array<{ id: string; name: string }>>([]);
   protected readonly codes = signal<string[]>([]);
+  protected readonly identities = signal<LinkedIdentityDto[]>([]);
+  /** Fournisseurs à redirection activés (LDAP : connexion directe, pas de rattachement par redirection). */
+  protected readonly linkable = signal<AuthProviderPublic[]>([]);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   protected currentPassword = '';
   protected newPassword = '';
   protected disablePassword = '';
@@ -115,6 +137,29 @@ export class SettingsPage implements OnInit {
     this.sessions.set(await this.api.get<SessionInfo[]>('/auth/sessions'));
     this.connections.set(await this.api.get<GitConnectionDto[]>('/me/git-connections'));
     this.oauth.set(await this.api.get<Array<{ id: string; name: string }>>('/me/git-connections/oauth/providers').catch(() => []));
+    this.identities.set(await this.api.get<LinkedIdentityDto[]>('/auth/identities').catch(() => []));
+    const providers = await this.api.get<AuthProvidersResponse>('/auth/providers').catch(() => null);
+    const linked = new Set(this.identities().map((i) => i.providerId));
+    this.linkable.set((providers?.providers ?? []).filter((p) => p.startUrl && !linked.has(p.id)));
+    // Retour d'un rattachement SSO.
+    const q = this.route.snapshot.queryParamMap;
+    if (q.get('linked') || q.get('sso_error')) {
+      this.current.set('security');
+      if (q.get('linked')) this.toast.show('Identité rattachée à votre compte', 'success');
+      else this.toast.show(SSO_ERRORS[q.get('sso_error')!] ?? SSO_ERRORS['sso_failed'], 'error', 8000);
+      void this.router.navigate([], { queryParams: { tab: 'security' }, replaceUrl: true });
+    }
+  }
+
+  protected linkUrl(p: AuthProviderPublic): string {
+    return `${p.startUrl}?link=1&returnTo=${encodeURIComponent('/settings?tab=security')}`;
+  }
+  protected typeLabel(t: string): string {
+    return ({ oidc: 'OIDC', saml: 'SAML', ldap: 'Annuaire LDAP', github: 'GitHub', gitlab: 'GitLab' } as Record<string, string>)[t] ?? t;
+  }
+  protected unlink(i: LinkedIdentityDto) {
+    if (!confirm(`Retirer l’identité ${i.provider} ?`)) return;
+    return this.act(() => this.api.delete(`/auth/identities/${i.id}`), 'Identité retirée');
   }
 
   private async act(fn: () => Promise<unknown>, ok?: string) {

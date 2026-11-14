@@ -43,6 +43,13 @@
       "when": 1794648493020,
       "tag": "0005_message_queue",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794651183766,
+      "tag": "0006_auth_flows",
+      "breakpoints": true
     }
   ]
 }

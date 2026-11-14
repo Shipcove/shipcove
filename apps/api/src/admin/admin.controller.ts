@@ -277,10 +277,11 @@ export class AdminController {
   @HttpCode(204)
   async deleteUser(@Param('userId', uuid) id: string, @CurrentUser() user: AuthUser, @ReqCtx() ctx: RequestContext) {
     if (id === user.id) throw new AppError('conflict', 'Impossible de supprimer votre propre compte');
+    // Identifiant anonymisé dérivé de l'UUID complet : le préfixe d'un UUIDv7 (horodatage) n'est pas unique.
     await this.db.transaction(async (tx) => {
       await tx
         .update(users)
-        .set({ status: 'deleted', deletedAt: new Date(), email: `deleted-${id}@invalid`, username: `deleted-${id.slice(0, 8)}`, displayName: 'Utilisateur supprimé' })
+        .set({ status: 'deleted', deletedAt: new Date(), email: `deleted-${id}@invalid`, username: `deleted-${id.replaceAll('-', '')}`, displayName: 'Utilisateur supprimé' })
         .where(eq(users.id, id));
       await tx.delete(authIdentities).where(eq(authIdentities.userId, id));
       await tx.delete(localCredentials).where(eq(localCredentials.userId, id));

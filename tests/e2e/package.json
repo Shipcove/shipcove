@@ -8,6 +8,9 @@
     "test": "node --test --test-concurrency=1 --test-timeout=900000 *.test.mjs",
     "test:stack": "node --test --test-concurrency=1 --test-timeout=900000 stack.test.mjs",
     "test:ui": "node --test --test-timeout=300000 ui.test.mjs",
+    "test:sso": "node --test --test-concurrency=1 --test-timeout=300000 sso.test.mjs",
+    "sso:up": "docker compose -f sso/compose.sso.yml up -d --wait",
+    "sso:down": "docker compose -f sso/compose.sso.yml down",
     "build": "node --check client.mjs",
     "lint": "node --check client.mjs",
     "browsers": "playwright install chromium"

@@ -1,0 +1,47 @@
+# Fournisseurs d'identité de TEST (jamais pour la production) : Keycloak (OIDC + SAML) et OpenLDAP.
+# Rattachés au réseau de la pile Compose (`cap_backend`) pour être joignables par l'API.
+#   docker compose -f tests/e2e/sso/compose.sso.yml up -d --wait
+# Le navigateur des tests résout `keycloak` vers 127.0.0.1 (--host-resolver-rules) : l'émetteur
+# OIDC et l'URL SAML sont ainsi identiques pour l'API (réseau Docker) et pour le navigateur.
+name: cap-sso-test
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    command: ["start-dev", "--import-realm", "--http-port=18080"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin-test-only
+      KC_HOSTNAME: http://keycloak:18080
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./keycloak-realm.json:/opt/keycloak/data/import/cap-realm.json:ro
+    ports: ["127.0.0.1:18080:18080"]
+    networks: [cap_backend]
+    healthcheck:
+      # Le port de gestion (9000) expose /health/ready.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  openldap:
+    image: osixia/openldap:1.5.0
+    command: ["--copy-service"]
+    environment:
+      LDAP_ORGANISATION: Example
+      LDAP_DOMAIN: example.test
+      LDAP_ADMIN_PASSWORD: ldap-admin-test-only
+      LDAP_TLS: "false"
+    volumes:
+      - ./ldap-seed.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/50-seed.ldif:ro
+    networks: [cap_backend]
+    healthcheck:
+      test: ["CMD-SHELL", "ldapsearch -x -H ldap://127.0.0.1 -b dc=example,dc=test -D cn=admin,dc=example,dc=test -w ldap-admin-test-only '(uid=bob)' | grep -q 'numEntries: 1'"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
+networks:
+  cap_backend:
+    external: true

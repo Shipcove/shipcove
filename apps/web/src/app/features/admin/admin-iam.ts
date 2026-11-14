@@ -2,26 +2,24 @@ import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@ang
 import { FormsModule } from '@angular/forms';
 import { Api } from '../../core/api.service';
 import { ToastService } from '../../core/toast.service';
+import type { AuthProviderAdminDto } from '@cap/contracts';
 import { SettingsSection } from './settings-section';
 
-interface ProviderAdmin {
-  id: string;
-  type: string;
-  name: string;
-  enabled: boolean;
-  autoProvision: boolean;
-  config: Record<string, unknown>;
-  secretConfigured: boolean;
-  lastTestAt: string | null;
-  lastTestResult: string | null;
-}
-
 const TEMPLATES: Record<string, object> = {
-  oidc: { issuer: 'https://keycloak.exemple.com/realms/entreprise', clientId: 'coding-platform', scopes: ['openid', 'profile', 'email'], requireMfaClaim: false },
-  saml: { entryPoint: 'https://idp.exemple.com/sso', issuer: 'coding-platform', idpCert: '-----BEGIN CERTIFICATE-----…', emailAttribute: 'email', nameAttribute: 'displayName', wantAssertionsSigned: true },
-  ldap: { url: 'ldaps://ldap.exemple.com', bindDn: 'cn=svc,dc=exemple,dc=com', searchBase: 'ou=people,dc=exemple,dc=com', searchFilter: '(|(uid={{username}})(sAMAccountName={{username}}))', emailAttribute: 'mail', nameAttribute: 'cn', usernameAttribute: 'uid', startTls: false },
-  github: { host: 'github.com', clientId: '', allowLogin: true },
-  gitlab: { host: 'gitlab.com', clientId: '', allowLogin: true },
+  oidc: { issuer: 'https://keycloak.exemple.com/realms/entreprise', clientId: 'coding-platform', scopes: ['openid', 'profile', 'email'], usernameClaim: 'preferred_username', emailClaim: 'email', nameClaim: 'name', mfa: 'auto' },
+  saml: { entryPoint: 'https://idp.exemple.com/realms/entreprise/protocol/saml', issuer: 'coding-platform', idpCert: 'MIIC…', emailAttribute: 'email', nameAttribute: 'displayName', usernameAttribute: 'username', wantAssertionsSigned: true, wantAuthnResponseSigned: false, mfa: 'auto' },
+  ldap: { url: 'ldaps://ldap.exemple.com', bindDn: 'cn=svc,dc=exemple,dc=com', searchBase: 'ou=people,dc=exemple,dc=com', searchFilter: '(|(uid={{username}})(sAMAccountName={{username}}))', usernameAttribute: 'uid', emailAttribute: 'mail', nameAttribute: 'cn', startTls: false, tlsRejectUnauthorized: true },
+  github: { host: 'github.com', clientId: '', allowLogin: true, allowedOrganizations: [] },
+  gitlab: { host: 'gitlab.com', clientId: '', allowLogin: true, allowedGroups: [] },
+};
+
+/** Champ secret par type (écrit dans Vault, jamais relu par l'interface). */
+const SECRET_FIELD: Record<string, { key: string; label: string; multiline?: boolean }> = {
+  oidc: { key: 'clientSecret', label: 'Secret client (vide pour un client public)' },
+  saml: { key: 'privateKey', label: 'Clé privée PEM de signature des requêtes (facultatif)', multiline: true },
+  ldap: { key: 'bindPassword', label: 'Mot de passe du compte de service' },
+  github: { key: 'clientSecret', label: 'Secret client OAuth' },
+  gitlab: { key: 'clientSecret', label: 'Secret client OAuth' },
 };
 
 @Component({
@@ -46,7 +44,10 @@ const TEMPLATES: Record<string, object> = {
             </span>
           </div>
           @if (p.lastTestResult) { <div class="mt-1 text-xs text-stone-500">Dernier test : {{ p.lastTestResult }}</div> }
-          <div class="mt-1 text-xs text-stone-500">URL de rappel : <code>{{ callback(p) }}</code></div>
+          @if (p.type !== 'ldap') {
+            <div class="mt-1 text-xs text-stone-500">{{ p.type === 'saml' ? 'URL ACS' : 'URL de redirection' }} à déclarer chez le fournisseur : <code class="select-all">{{ p.callbackUrl }}</code></div>
+          }
+          @if (p.type === 'saml') { <div class="mt-1 text-xs text-stone-500">Métadonnées SP : <a class="underline" [href]="'/api/v1/auth/sso/' + p.id + '/metadata'" target="_blank" rel="noopener">télécharger</a></div> }
         </div>
       } @empty { <p class="text-sm text-stone-500">Aucun fournisseur externe configuré (la connexion locale suffit).</p> }
     </div>
@@ -59,7 +60,12 @@ const TEMPLATES: Record<string, object> = {
       </div>
       <label class="label">Configuration (JSON, sans secret)</label>
       <textarea class="input font-mono text-xs" rows="8" name="cfg" [(ngModel)]="configText"></textarea>
-      <input class="input" type="password" name="sec" placeholder="Secret (client secret / mot de passe de liaison) — stocké dans Vault" [(ngModel)]="secret" />
+      @if (secretField().multiline) {
+        <textarea class="input font-mono text-xs" rows="4" name="sec" [placeholder]="secretField().label + ' — stocké dans Vault'" [(ngModel)]="secret"></textarea>
+      } @else {
+        <input class="input" type="password" name="sec" autocomplete="off" [placeholder]="secretField().label + ' — stocké dans Vault'" [(ngModel)]="secret" />
+      }
+      <p class="text-xs text-stone-500">MFA (<code>mfa</code>) : <b>auto</b> = la MFA locale s’applique sauf si le fournisseur atteste une MFA ; <b>require_idp</b> = MFA du fournisseur obligatoire ; <b>trust_idp</b> = le fournisseur impose la MFA ; <b>local</b> = toujours la politique locale. Laisser le secret vide conserve le secret existant.</p>
       <div class="flex gap-2"><button class="btn-primary">Enregistrer</button>@if (editing()) { <button type="button" class="btn-secondary" (click)="reset()">Annuler</button> }</div>
     </form>
   `,
@@ -67,22 +73,22 @@ const TEMPLATES: Record<string, object> = {
 export class AdminIam implements OnInit {
   private readonly api = inject(Api);
   private readonly toast = inject(ToastService);
-  protected readonly providers = signal<ProviderAdmin[]>([]);
+  protected readonly providers = signal<AuthProviderAdminDto[]>([]);
   protected readonly editing = signal<string | null>(null);
   protected form = { type: 'oidc', name: '', autoProvision: true };
   protected configText = JSON.stringify(TEMPLATES['oidc'], null, 2);
   protected secret = '';
 
   async ngOnInit() {
-    this.providers.set(await this.api.get<ProviderAdmin[]>('/admin/auth-providers').catch(() => []));
+    this.providers.set(await this.api.get<AuthProviderAdminDto[]>('/admin/auth-providers').catch(() => []));
   }
-  protected callback(p: ProviderAdmin) {
-    return `${location.origin}/api/v1/auth/sso/${p.id}/callback`;
+  protected secretField() {
+    return SECRET_FIELD[this.form.type];
   }
   protected useTemplate() {
     this.configText = JSON.stringify(TEMPLATES[this.form.type], null, 2);
   }
-  protected edit(p: ProviderAdmin) {
+  protected edit(p: AuthProviderAdminDto) {
     this.editing.set(p.id);
     this.form = { type: p.type, name: p.name, autoProvision: p.autoProvision };
     this.configText = JSON.stringify(p.config, null, 2);
@@ -91,6 +97,7 @@ export class AdminIam implements OnInit {
   protected reset() {
     this.editing.set(null);
     this.form = { type: 'oidc', name: '', autoProvision: true };
+    this.secret = '';
     this.useTemplate();
   }
   private async act(fn: () => Promise<unknown>, ok?: string) {
@@ -110,22 +117,23 @@ export class AdminIam implements OnInit {
       this.toast.show('JSON invalide', 'error');
       return;
     }
-    if (this.secret) config = { ...config, [this.form.type === 'ldap' ? 'bindPassword' : 'clientSecret']: this.secret };
-    const body = { ...this.form, enabled: false, config };
+    if (this.secret) config = { ...config, [SECRET_FIELD[this.form.type].key]: this.secret };
+    const enabled = this.providers().find((p) => p.id === this.editing())?.enabled ?? false;
+    const body = { ...this.form, enabled, config };
     const id = this.editing();
     await this.act(() => (id ? this.api.put(`/admin/auth-providers/${id}`, body) : this.api.post('/admin/auth-providers', body)), 'Fournisseur enregistré');
     this.reset();
   }
-  protected toggle(p: ProviderAdmin) {
+  protected toggle(p: AuthProviderAdminDto) {
     return this.act(() => this.api.post(`/admin/auth-providers/${p.id}/${p.enabled ? 'disable' : 'enable'}`));
   }
-  protected test(p: ProviderAdmin) {
+  protected test(p: AuthProviderAdminDto) {
     return this.act(async () => {
       const r = await this.api.post<{ ok: boolean; detail: string }>(`/admin/auth-providers/${p.id}/test`);
       this.toast.show(r.detail, r.ok ? 'success' : 'error', 8000);
     });
   }
-  protected remove(p: ProviderAdmin) {
+  protected remove(p: AuthProviderAdminDto) {
     if (confirm(`Supprimer ${p.name} ?`)) return this.act(() => this.api.delete(`/admin/auth-providers/${p.id}`));
     return;
   }
