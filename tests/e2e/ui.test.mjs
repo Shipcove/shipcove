@@ -81,6 +81,29 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     await page.waitForSelector('text=Terminé : 1 action(s) exécutée(s).', { timeout: 240_000 });
     await page.waitForSelector('cap-tool-card');
 
+    // Alignement vertical du « + », de l'input et du bouton d'envoi ; pas de dictée vocale.
+    await page.waitForSelector('button[aria-label="Envoyer"]', { timeout: 30_000 });
+    const centers = await page.evaluate(() => {
+      const c = (el) => {
+        const r = el.getBoundingClientRect();
+        return r.top + r.height / 2;
+      };
+      return [c(document.querySelector('button[aria-label="Ajouter"]')), c(document.querySelector('textarea[aria-label="Message"]')), c(document.querySelector('button[aria-label="Envoyer"]'))];
+    });
+    assert.ok(Math.max(...centers) - Math.min(...centers) <= 1, `alignement : ${centers.join(', ')}`);
+    assert.equal(await page.locator('button[aria-label="Dicter"]').count(), 0, 'dictée vocale supprimée');
+
+    // Message envoyé pendant une génération : mis en file d'attente, traité ensuite.
+    await page.fill('textarea[aria-label="Message"]', 'Tâche longue. [[sleep:6000]]');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('text=Pi travaille…');
+    await page.fill('textarea[aria-label="Message"]', 'Message en attente');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('[aria-label="Messages en file d\'attente"] >> text=Message en attente', { timeout: 30_000 });
+    await page.screenshot({ path: new URL('composer-queue.png', OUT).pathname });
+    await page.waitForSelector('text=Réponse factice : Message en attente', { timeout: 120_000 });
+    await page.waitForSelector('[aria-label="Messages en file d\'attente"]', { state: 'detached', timeout: 30_000 });
+
     // Composer : menu « + », modèle / effort, mode, consommation.
     await page.click('button[aria-label="Ajouter"]');
     await page.waitForSelector('text=Ajouter des fichiers ou des photos');

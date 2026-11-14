@@ -68,6 +68,8 @@ export interface AgentEventDataMap {
   'compaction.started': { reason: string };
   'compaction.completed': { tokensBefore: number | null };
   'model.changed': { modelId: string; modelName: string };
+  /** File d'attente : messages envoyés pendant une génération, traités chacun par un run à la fin du run courant. */
+  'queue.updated': { messages: Array<{ messageId: string; text: string }> };
 }
 
 export type AgentEventType = keyof AgentEventDataMap;
@@ -107,4 +109,5 @@ export const AGENT_EVENT_TYPES = [
   'compaction.started',
   'compaction.completed',
   'model.changed',
+  'queue.updated',
 ] as const satisfies readonly AgentEventType[];

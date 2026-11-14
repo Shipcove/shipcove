@@ -31,6 +31,7 @@ export type RuntimeEvent =
   | { type: 'compaction_start'; reason: string }
   | { type: 'compaction_end'; tokensBefore: number | null; error: string | null }
   | { type: 'retry'; attempt: number; maxAttempts: number; error: string }
+  | { type: 'queue'; followUp: string[]; steering: string[] }
   | { type: 'process_exit'; code: number | null; stderr: string };
 
 /** Requête de l'extension « platform bridge » (dialogue bloquant côté agent). */

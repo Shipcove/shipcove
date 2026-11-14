@@ -84,7 +84,7 @@ export const SendMessageSchema = z.object({
   attachmentIds: z.array(z.uuid()).max(20).default([]),
   /** Modèle pour ce run (sinon celui du workspace). */
   modelId: z.uuid().optional(),
-  /** Pendant un run actif : `steer` (avant le prochain appel LLM) ou `follow_up`. */
+  /** Pendant un run actif : `steer` (avant le prochain appel LLM) ou `follow_up` (file d'attente durable : nouveau run à la fin du run courant). */
   delivery: z.enum(['new_run', 'steer', 'follow_up']).default('new_run'),
 });
 export type SendMessage = z.infer<typeof SendMessageSchema>;
@@ -162,6 +162,8 @@ export interface ConversationDto {
   ownerId: string;
   messages: MessageDto[];
   runs: RunDto[];
+  /** Messages en file d'attente (hors fil), dans l'ordre de traitement. */
+  queued: Array<{ messageId: string; text: string }>;
   /** Dernier id d'événement SSE persisté (pour reprendre le flux). */
   lastEventId: number;
   context: { tokens: number | null; contextWindow: number | null; percent: number | null };

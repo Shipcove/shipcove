@@ -24,7 +24,7 @@ import {
   users,
   type Database,
 } from '@cap/database';
-import { AppError, AuditService, DB, EventsService, JobsService, QuotaService } from '@cap/server-core';
+import { AppError, AuditService, DB, EventsService, JobsService, QuotaService, RunQueueService } from '@cap/server-core';
 import { isUniqueViolation } from '@cap/server-core';
 import { CurrentUser, ReqCtx, type RequestContext } from '../common/decorators.js';
 import type { AuthUser } from '../common/request.js';
@@ -46,6 +46,7 @@ export class ConversationController {
     private readonly quotas: QuotaService,
     private readonly audit: AuditService,
     private readonly workspacesService: WorkspacesService,
+    private readonly runQueue: RunQueueService,
   ) {}
 
   /** Conversation complète (lecture : propriétaire ou partage nominatif actif). */
@@ -57,7 +58,7 @@ export class ConversationController {
     const msgs = await this.db
       .select()
       .from(messages)
-      .where(and(eq(messages.conversationId, conv.id), isNull(messages.deletedAt)))
+      .where(and(eq(messages.conversationId, conv.id), isNull(messages.deletedAt), eq(messages.pendingDelivery, false)))
       .orderBy(asc(messages.createdAt));
     const ids = msgs.map((m) => m.id);
     const runs = await this.db
@@ -121,6 +122,7 @@ export class ConversationController {
         error: r.error,
         pausedReason: r.pausedReason,
       })),
+      queued: await this.runQueue.list(conv.id),
       lastEventId,
       context: {
         tokens: conv.contextTokens,
@@ -158,7 +160,19 @@ export class ConversationController {
           throw new AppError('attachment_rejected', `Le modèle ${model.displayName} n’accepte pas les images`);
         }
       }
-      if (body.delivery !== 'new_run') {
+      if (body.delivery === 'follow_up') {
+        // File d'attente durable : le message sera traité par un nouveau run à la fin du run courant.
+        const queued = await this.db.transaction(async (tx) => {
+          const [m] = await tx.insert(messages).values({ conversationId: conv.id, role: 'user', authorId: user.id, text: body.text, pendingDelivery: true }).returning();
+          if (body.attachmentIds.length) await tx.update(attachments).set({ messageId: m.id }).where(inArray(attachments.id, body.attachmentIds));
+          await this.events.emit(id, 'queue.updated', { messages: await this.runQueue.list(conv.id, tx) }, null, tx);
+          return m;
+        });
+        // Le run a pu se terminer entre-temps (ou aucun n'était actif) : promotion immédiate.
+        const runId = await this.runQueue.startNext(conv.id);
+        return { messageId: queued.id, runId, queued: runId === null };
+      }
+      if (body.delivery === 'steer') {
         const [active] = await this.db
           .select()
           .from(agentRuns)
@@ -225,6 +239,7 @@ export class ConversationController {
         .returning();
       if (!p) throw new AppError('conflict', 'Aucun run actif à interrompre');
       await this.events.emit(id, 'run.interrupted', { runId, reason: 'Annulé par l’utilisateur' }, runId);
+      await this.runQueue.startNext(p.conversationId);
       return { status: 'interrupted' };
     }
     await this.db.execute(sql`select pg_notify('cap_run_control', ${JSON.stringify({ runId, action: 'interrupt' })})`);

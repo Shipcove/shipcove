@@ -46,6 +46,8 @@ export class WorkspaceStore {
   /** Incrémenté à chaque changement de fichiers (rafraîchit le panneau Modifications). */
   readonly filesVersion = signal(0);
   readonly lastEventId = signal(0);
+  /** Messages envoyés pendant une génération : chacun lancera un run à la fin du run courant. */
+  readonly queued = signal<Array<{ messageId: string; text: string }>>([]);
 
   readonly activeRun = computed(() => this.runs().find((r) => ['queued', 'running', 'interrupting', 'paused_quota'].includes(r.status)) ?? null);
   readonly isOwner = computed(() => this.workspace()?.access === 'owner');
@@ -84,6 +86,7 @@ export class WorkspaceStore {
     const c = await this.api.get<ConversationDto>(`/workspaces/${ws.id}/conversation`);
     this.messages.set(c.messages);
     this.runs.set(c.runs);
+    this.queued.set(c.queued ?? []);
     this.lastEventId.set(c.lastEventId);
     this.context.set({ tokens: c.context.tokens, contextWindow: c.context.contextWindow });
     const paused = c.runs.find((r) => r.status === 'paused_quota');
@@ -239,6 +242,9 @@ export class WorkspaceStore {
         this.bumpFiles();
         return;
       }
+      case 'queue.updated':
+        this.queued.set((d['messages'] as Array<{ messageId: string; text: string }>) ?? []);
+        return;
       case 'quota.paused':
         this.quotaPaused.set({ window: d['window'] as string, resetsAt: d['resetsAt'] as string | null });
         this.runs.update((l) => l.map((r) => (r.id === e.runId ? { ...r, status: 'paused_quota' } : r)));

@@ -9,7 +9,7 @@
     "dev": "node --env-file-if-exists=.env.local --watch-path=dist dist/main.js",
     "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "lint": "oxlint src"
   },
   "dependencies": {

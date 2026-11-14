@@ -154,6 +154,11 @@ export const messages = pgTable(
     role: text({ enum: ['user', 'assistant', 'system'] }).notNull(),
     authorId: uuid().references(() => users.id, { onDelete: 'set null' }),
     text: text().notNull().default(''),
+    /**
+     * Message envoyé pendant une génération : en file d'attente, il déclenchera un nouveau run
+     * à la fin du run courant (file durable, indépendante du processus Pi).
+     */
+    pendingDelivery: boolean().notNull().default(false),
     thinking: text(),
     model: text(),
     stopReason: text(),

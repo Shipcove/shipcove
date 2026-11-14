@@ -289,6 +289,13 @@ export class PiAgentRuntime implements AgentRuntime {
         this.emit({ type: 'compaction_end', tokensBefore: r?.tokensBefore ?? null, error: (msg.errorMessage as string) ?? null });
         return;
       }
+      case 'queue_update':
+        this.emit({
+          type: 'queue',
+          followUp: ((msg.followUp as unknown[]) ?? []).map(String),
+          steering: ((msg.steering as unknown[]) ?? []).map(String),
+        });
+        return;
       case 'auto_retry_start':
         this.emit({ type: 'retry', attempt: Number(msg.attempt), maxAttempts: Number(msg.maxAttempts), error: String(msg.errorMessage ?? '') });
         return;

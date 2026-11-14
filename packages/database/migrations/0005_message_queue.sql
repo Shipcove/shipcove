@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ADD COLUMN "pending_delivery" boolean DEFAULT false NOT NULL;

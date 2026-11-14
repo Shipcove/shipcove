@@ -12,6 +12,7 @@ import { NotificationService } from './notifications/notification.service.js';
 import { ObjectStorage } from './storage/object-storage.js';
 import { PgNotifier } from './events/pg-notifier.js';
 import { GitProviderClient } from './git/git-provider.client.js';
+import { RunQueueService } from './runs/run-queue.service.js';
 
 
 export interface CoreModuleOptions {
@@ -84,6 +85,7 @@ export class CoreModule {
         QuotaService,
         NotificationService,
         GitProviderClient,
+        RunQueueService,
       ],
       exports: [
         ENV,
@@ -99,6 +101,7 @@ export class CoreModule {
         QuotaService,
         NotificationService,
         GitProviderClient,
+        RunQueueService,
       ],
     };
   }

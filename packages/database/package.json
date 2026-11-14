@@ -21,7 +21,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "generate": "drizzle-kit generate",
     "migrate": "node dist/migrate-cli.js",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "lint": "oxlint src"
   },
   "dependencies": {

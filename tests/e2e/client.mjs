@@ -99,7 +99,16 @@ export async function adminClient(state) {
     if (ok.status !== 200) throw new Error(`MFA confirm ${JSON.stringify(ok.body)}`);
   } else if (r.body?.status === 'mfa_required') {
     if (!state.totp) throw new Error('Secret TOTP admin inconnu : réinitialisez la base de test');
-    const v = await c.post('/auth/mfa/verify', { code: await generate({ secret: state.totp, epoch: Math.floor(Date.now() / 1000) + 30 }) });
+    // Anti-rejeu : un code déjà consommé (exécution précédente < 1 min) est refusé ;
+    // on essaie les fenêtres acceptées (courante, suivante, précédente), puis on attend la suivante.
+    let v;
+    for (let attempt = 0; attempt < 2 && v?.body?.status !== 'authenticated'; attempt++) {
+      if (attempt) await new Promise((res) => setTimeout(res, 30_000));
+      for (const shift of [0, 30, -30]) {
+        v = await c.post('/auth/mfa/verify', { code: await generate({ secret: state.totp, epoch: Math.floor(Date.now() / 1000) + shift }) });
+        if (v.body?.status === 'authenticated') break;
+      }
+    }
     if (v.body?.status !== 'authenticated') throw new Error(`MFA ${JSON.stringify(v.body)}`);
   } else if (r.body?.status !== 'authenticated') {
     throw new Error(`Login admin : ${r.status} ${JSON.stringify(r.body)}`);

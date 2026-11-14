@@ -12,7 +12,7 @@ import {
   type Database,
 } from '@cap/database';
 import { PI_PROVIDER, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
-import { DB, ENV, EventsService, NotificationService, ObjectStorage, PgNotifier, QuotaService, redactString, type NewEvent } from '@cap/server-core';
+import { DB, ENV, EventsService, NotificationService, ObjectStorage, PgNotifier, QuotaService, RunQueueService, redactString, type NewEvent } from '@cap/server-core';
 import { toUserPath } from '@cap/storage';
 import type { WorkerEnv } from '../env.js';
 import { JobRunner } from '../jobs/job-runner.service.js';
@@ -72,6 +72,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     private readonly quotas: QuotaService,
     private readonly storage: ObjectStorage,
     private readonly bridge: BridgeRpcService,
+    private readonly runQueue: RunQueueService,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -100,11 +101,11 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       await ctx.runtime.abort();
       return;
     }
-    if ((msg.action === 'steer' || msg.action === 'follow_up') && msg.messageId) {
+    // Les messages « à la suite » passent par la file durable (RunQueueService), pas par Pi.
+    if (msg.action === 'steer' && msg.messageId) {
       const [m] = await this.db.select().from(messages).where(eq(messages.id, msg.messageId));
       if (!m) return;
-      if (msg.action === 'steer') await ctx.runtime.steer(m.text).catch((e) => this.logger.warn(`steer: ${e.message}`));
-      else await ctx.runtime.followUp(m.text).catch((e) => this.logger.warn(`follow_up: ${e.message}`));
+      await ctx.runtime.steer(m.text).catch((e) => this.logger.warn(`steer: ${e.message}`));
     }
   }
 
@@ -328,6 +329,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           ? { type: 'run.interrupted', runId, data: { runId, reason: error ?? 'interrompu' } }
           : { type: 'run.failed', runId, data: { runId, error: error ?? 'échec', retryable: true } };
     await this.events.append(workspaceId, [ev]);
+    // Messages envoyés pendant ce run : le suivant de la file démarre un nouveau run.
+    await this.runQueue.startNext(run.conversationId).catch((e: Error) => this.logger.warn(`file d'attente : ${e.message}`));
     if (status !== 'interrupted') {
       const [w] = await this.db.select({ name: workspaces.name }).from(workspaces).where(eq(workspaces.id, workspaceId));
       await this.notifications.notify({
@@ -483,6 +486,9 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           await this.sandboxes.touch(ctx.workspaceId);
           break;
         }
+        case 'queue':
+          // File interne de Pi (guidage) : non exposée, la file utilisateur est durable côté plateforme.
+          break;
         case 'compaction_start':
           this.push(ctx, { type: 'compaction.started', runId: ctx.runId, data: { reason: e.reason } });
           break;

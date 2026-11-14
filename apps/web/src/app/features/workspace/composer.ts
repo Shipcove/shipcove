@@ -27,20 +27,10 @@ const MODES: Array<{ id: AgentMode; label: string; description: string }> = [
 /** Nombre de modèles affichés directement (les autres sont sous « Plus de modèles »). */
 const TOP_MODELS = 4;
 
-interface SpeechRecognitionLike {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  start(): void;
-  stop(): void;
-  onresult: ((e: { resultIndex: number; results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }> }) => void) | null;
-  onend: (() => void) | null;
-  onerror: (() => void) | null;
-}
-
 /**
  * Zone de saisie : pièces jointes (vignettes), menu « + » (fichiers, commandes slash, connecteurs),
- * dictée vocale, envoi / guidage / interruption ; barre d'état : modèle + effort, mode, consommation.
+ * envoi (mis en file d'attente pendant une génération) et interruption ;
+ * barre d'état : modèle + effort, mode, consommation.
  */
 @Component({
   selector: 'cap-composer',
@@ -91,7 +81,19 @@ interface SpeechRecognitionLike {
           </div>
         }
 
-        <div class="flex items-end gap-1 px-2 py-2">
+        @if (store.queued().length) {
+          <div class="space-y-1 px-3 pt-3" aria-label="Messages en file d'attente">
+            @for (q of store.queued(); track q.messageId) {
+              <div class="flex items-center gap-2 rounded-lg bg-stone-100 px-3 py-1.5 text-sm dark:bg-stone-800">
+                <span class="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent-500"></span>
+                <span class="min-w-0 flex-1 truncate">{{ q.text }}</span>
+                <span class="shrink-0 text-xs text-stone-500">En file d’attente</span>
+              </div>
+            }
+          </div>
+        }
+
+        <div class="flex items-center gap-1 px-2 py-2">
           <div class="relative">
             <button class="btn-ghost !rounded-lg !p-1.5" [class.bg-stone-200]="menu() === 'plus'" [class.dark:bg-stone-700]="menu() === 'plus'" (click)="toggle('plus', $event)" aria-label="Ajouter" [disabled]="!store.isOwner()"><cap-icon name="plus" [size]="18" /></button>
             @if (menu() === 'plus') {
@@ -103,18 +105,14 @@ interface SpeechRecognitionLike {
             }
           </div>
           <input #fileInput type="file" multiple class="hidden" (change)="onFiles($event)" />
-          <textarea #textarea class="block h-9 max-h-60 flex-1 resize-none self-center overflow-y-auto bg-transparent px-2 pt-2 pb-1 text-[0.95rem] leading-6 placeholder:text-stone-400 focus:outline-none" rows="1"
-            [placeholder]="running() ? 'Guider Pi pendant son exécution…' : 'Tapez / pour les commandes.'" [(ngModel)]="text" name="text"
+          <textarea #textarea class="block h-9 max-h-60 flex-1 resize-none overflow-y-auto bg-transparent px-2 py-1.5 text-[0.95rem] leading-6 placeholder:text-stone-400 focus:outline-none" rows="1"
+            [placeholder]="running() ? 'Message mis en file d’attente jusqu’à la fin de la tâche en cours…' : 'Tapez / pour les commandes.'" [(ngModel)]="text" name="text"
             (ngModelChange)="onTextChange()" (keydown)="onKey($event)" (paste)="onPaste($event)" [disabled]="!store.isOwner()" aria-label="Message"></textarea>
           @if (running()) {
             <button class="btn-ghost !rounded-lg !p-1.5" (click)="interrupt()" [disabled]="store.activeRun()?.status === 'interrupting'" aria-label="Interrompre" title="Interrompre"><span class="block h-3.5 w-3.5 rounded-sm bg-current"></span></button>
           }
-          @if (text.trim()) {
-            <button class="btn-ghost !rounded-lg !p-1.5" (click)="submit()" [disabled]="!canSend()" [attr.aria-label]="running() ? 'Envoyer comme guidage' : 'Envoyer'" [title]="running() ? 'Guider Pi (avant son prochain appel)' : 'Envoyer (Entrée)'"><cap-icon name="enter" [size]="18" /></button>
-          }
-          @if (speechSupported) {
-            <button class="btn-ghost !rounded-lg !p-1.5" [class.text-red-600]="listening()" (click)="toggleDictation()" [attr.aria-pressed]="listening()" [attr.aria-label]="listening() ? 'Arrêter la dictée' : 'Dicter'" [title]="listening() ? 'Arrêter la dictée' : 'Dicter'"><cap-icon name="mic" [size]="18" /></button>
-          }
+          <button class="btn-ghost !rounded-lg !p-1.5" (click)="submit()" [disabled]="!canSend() || !text.trim()"
+            [attr.aria-label]="running() ? 'Mettre en file d’attente' : 'Envoyer'" [title]="running() ? 'Mettre en file d’attente (Entrée)' : 'Envoyer (Entrée)'"><cap-icon name="enter" [size]="18" /></button>
         </div>
       </div>
 
@@ -246,14 +244,12 @@ export class Composer {
   protected readonly previews = signal<Record<string, string>>({});
   protected readonly dragging = signal(false);
   protected readonly sending = signal(false);
-  protected readonly listening = signal(false);
   private readonly skills = signal<SkillDto[]>([]);
-  private recognition: SpeechRecognitionLike | null = null;
   protected readonly efforts = EFFORTS;
   protected readonly modes = MODES;
-  protected readonly speechSupported = typeof window !== 'undefined' && !!((window as unknown as Record<string, unknown>)['SpeechRecognition'] ?? (window as unknown as Record<string, unknown>)['webkitSpeechRecognition']);
 
-  protected readonly running = computed(() => ['running', 'queued'].includes(this.store.activeRun()?.status ?? ''));
+  /** Run actif (démarrage, génération, pause quota) : les nouveaux messages vont en file d'attente. */
+  protected readonly running = computed(() => this.store.activeRun() !== null);
   protected readonly canSend = computed(() => this.store.isOwner() && !this.sending());
   protected readonly isModelMenu = computed(() => ['model', 'effort', 'more'].includes(this.menu() ?? ''));
   protected readonly topModels = computed(() => this.orderedModels().slice(0, TOP_MODELS));
@@ -417,7 +413,8 @@ export class Composer {
     const ready = this.attachments().filter((a) => a.status === 'ready');
     this.sending.set(true);
     try {
-      await this.store.send(text, ready.map((a) => a.id), this.running() ? 'steer' : 'new_run');
+      // Pendant une génération, le message est mis en file d'attente (traité à la fin de la tâche en cours).
+      await this.store.send(text, ready.map((a) => a.id), this.running() ? 'follow_up' : 'new_run');
       this.text = '';
       this.textSig.set('');
       this.attachments.set([]);
@@ -436,35 +433,6 @@ export class Composer {
 
   protected async resume() {
     await this.store.resume().catch((e) => this.toast.error(e));
-  }
-
-  /* ----------------------------- Dictée vocale ----------------------------- */
-
-  protected toggleDictation(): void {
-    if (this.listening()) {
-      this.recognition?.stop();
-      return;
-    }
-    const Ctor = ((window as unknown as Record<string, unknown>)['SpeechRecognition'] ?? (window as unknown as Record<string, unknown>)['webkitSpeechRecognition']) as new () => SpeechRecognitionLike;
-    const rec = new Ctor();
-    rec.lang = 'fr-FR';
-    rec.continuous = true;
-    rec.interimResults = false;
-    rec.onresult = (e) => {
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const r = e.results[i];
-        if (r.isFinal) this.text = `${this.text}${this.text && !this.text.endsWith(' ') ? ' ' : ''}${r[0].transcript.trim()}`;
-      }
-      this.autosize();
-    };
-    rec.onend = () => this.listening.set(false);
-    rec.onerror = () => {
-      this.listening.set(false);
-      this.toast.show('Dictée indisponible (autorisation du micro refusée ?)', 'error');
-    };
-    this.recognition = rec;
-    this.listening.set(true);
-    rec.start();
   }
 
   /* ---------------------------- Pièces jointes ---------------------------- */

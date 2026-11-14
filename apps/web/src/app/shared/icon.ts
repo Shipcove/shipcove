@@ -47,7 +47,6 @@ const PATHS: Record<string, string> = {
   lock: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4',
   code: 'm16 18 6-6-6-6M8 6l-6 6 6 6',
   enter: 'M20 4v7a4 4 0 0 1-4 4H4M9 10l-5 5 5 5',
-  mic: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3M19 10v2a7 7 0 0 1-14 0v-2M12 19v3',
   list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
   maximize: 'M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7',
   minimize: 'M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7',

@@ -89,6 +89,7 @@ export async function loginAdmin(app: NestExpressApplication): Promise<{ client:
   const r = await client.post('/auth/login', { login: 'admin@example.test', password: 'Admin-Password-123!' });
   if (r.body.status !== 'mfa_enrollment_required') throw new Error(`login admin: ${JSON.stringify(r.body)}`);
   const e = await client.post('/auth/mfa/totp/enroll');
+  if (!e.body?.secret) throw new Error(`enroll: ${e.status} ${JSON.stringify(e.body)}`);
   const code = await generate({ secret: e.body.secret });
   const c = await client.post('/auth/mfa/totp/confirm', { code });
   if (c.status !== 200) throw new Error(`confirm: ${JSON.stringify(c.body)}`);
