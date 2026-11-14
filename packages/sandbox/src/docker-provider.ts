@@ -4,12 +4,16 @@ import {
   SANDBOX_LABEL,
   SANDBOX_USER,
   SandboxError,
+  execCollect,
   type ExecOptions,
   type ExecProcess,
   type SandboxHandle,
   type SandboxInfo,
   type SandboxProvider,
   type SandboxSpec,
+  type ExecResult,
+  type ServiceSpec,
+  type ServiceState,
 } from './sandbox-provider.js';
 
 export interface DockerProviderOptions {
@@ -236,11 +240,117 @@ export class DockerSandboxProvider implements SandboxProvider {
   }
 
   async destroy(handle: SandboxHandle): Promise<void> {
+    // Les services partagent le réseau de la sandbox : supprimés d'abord.
+    await this.removeServices(handle).catch(() => undefined);
     try {
       await this.docker.getContainer(handle.externalId).remove({ force: true, v: true });
     } catch (err) {
       if ((err as { statusCode?: number }).statusCode !== 404) throw new SandboxError(`Destruction impossible : ${(err as Error).message}`, true);
     }
+  }
+
+  /* ------------------------------ Services d'appui ------------------------------ */
+
+  private async serviceContainers(handle: SandboxHandle) {
+    return this.docker.listContainers({ all: true, filters: { label: ['cap.service=true', `cap.sandbox=${handle.externalId}`] } });
+  }
+
+  /**
+   * Services dans l'espace réseau de la sandbox (`NetworkMode: container:`) : joignables sur
+   * localhost depuis la sandbox seulement, sans autre accès réseau que le sien. Conteneurs
+   * durcis (capacités minimales pour les images officielles qui abandonnent root au démarrage),
+   * limites mémoire / CPU / processus, données éphémères.
+   */
+  async startServices(handle: SandboxHandle, services: ServiceSpec[]): Promise<void> {
+    for (const svc of services) {
+      await this.ensureImage(svc.image);
+      const memory = svc.memoryMb * 1024 * 1024;
+      try {
+        const c = await this.docker.createContainer({
+          name: `cap-svc-${handle.externalId.slice(0, 12)}-${svc.name}`,
+          Image: svc.image,
+          Env: Object.entries(svc.env).map(([k, v]) => `${k}=${v}`),
+          Labels: { 'cap.service': 'true', 'cap.sandbox': handle.externalId, 'cap.service.name': svc.name, 'cap.service.key': svc.key, 'cap.service.hash': svc.specHash },
+          HostConfig: {
+            NetworkMode: `container:${handle.externalId}`,
+            CapDrop: ['ALL'],
+            CapAdd: ['CHOWN', 'SETUID', 'SETGID', 'DAC_OVERRIDE', 'FOWNER'],
+            SecurityOpt: ['no-new-privileges:true'],
+            Privileged: false,
+            Init: true,
+            Memory: memory,
+            MemorySwap: memory,
+            NanoCpus: Math.round(svc.cpu * 1e9),
+            PidsLimit: svc.pidsLimit,
+            ...(this.opts.runtime ? { Runtime: this.opts.runtime } : {}),
+            RestartPolicy: { Name: 'no' },
+            LogConfig: { Type: 'json-file', Config: { 'max-size': '5m', 'max-file': '1' } },
+          },
+        });
+        await c.start();
+      } catch (err) {
+        throw new SandboxError(`Service ${svc.name} : démarrage impossible (${(err as Error).message})`, true);
+      }
+    }
+  }
+
+  private async ensureImage(image: string): Promise<void> {
+    try {
+      await this.docker.getImage(image).inspect();
+      return;
+    } catch {
+      /* absente : téléchargement */
+    }
+    await new Promise<void>((resolve, reject) => {
+      this.docker.pull(image, (err: Error | null, stream: NodeJS.ReadableStream) => {
+        if (err) return reject(new SandboxError(`Image ${image} introuvable : ${err.message}`));
+        this.docker.modem.followProgress(stream, (e: Error | null) => (e ? reject(new SandboxError(`Téléchargement de ${image} : ${e.message}`)) : resolve()));
+      });
+    });
+  }
+
+  async removeService(handle: SandboxHandle, name: string): Promise<void> {
+    for (const r of (await this.serviceContainers(handle)).filter((x) => x.Labels['cap.service.name'] === name)) {
+      await this.docker
+        .getContainer(r.Id)
+        .remove({ force: true, v: true })
+        .catch((err: { statusCode?: number; message: string }) => {
+          if (err.statusCode !== 404) throw new SandboxError(`Suppression du service : ${err.message}`, true);
+        });
+    }
+  }
+
+  async removeServices(handle: SandboxHandle): Promise<void> {
+    for (const r of await this.serviceContainers(handle)) {
+      await this.docker
+        .getContainer(r.Id)
+        .remove({ force: true, v: true })
+        .catch((err: { statusCode?: number; message: string }) => {
+          if (err.statusCode !== 404) throw new SandboxError(`Suppression du service : ${err.message}`, true);
+        });
+    }
+  }
+
+  async listServices(handle: SandboxHandle): Promise<ServiceState[]> {
+    return (await this.serviceContainers(handle)).map((r) => ({ name: r.Labels['cap.service.name'], key: r.Labels['cap.service.key'] ?? r.Labels['cap.service.name'], specHash: r.Labels['cap.service.hash'], running: r.State === 'running' }));
+  }
+
+  private async serviceId(handle: SandboxHandle, name: string): Promise<string> {
+    const row = (await this.serviceContainers(handle)).find((r) => r.Labels['cap.service.name'] === name);
+    if (!row) throw new SandboxError(`Service ${name} introuvable`);
+    return row.Id;
+  }
+
+  async serviceExec(handle: SandboxHandle, name: string, argv: string[], timeoutMs = 10_000): Promise<ExecResult> {
+    const id = await this.serviceId(handle, name);
+    // Utilisateur par défaut de l'image du service (l'utilisateur « agent » n'y existe pas).
+    return execCollect(this, { ...handle, externalId: id }, argv, { timeoutMs, maxBytes: 256 * 1024, user: '', workdir: '/' });
+  }
+
+  async serviceLogs(handle: SandboxHandle, name: string, tail: number): Promise<string> {
+    const id = await this.serviceId(handle, name);
+    const buf = (await this.docker.getContainer(id).logs({ stdout: true, stderr: true, tail, follow: false })) as unknown as Buffer;
+    return demuxLogs(buf);
   }
 
   async list() {
@@ -267,3 +377,16 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
   }
 }
+
+/** Journaux Docker hors TTY : trames [flux(1) 0 0 0 taille(4)] + contenu. */
+function demuxLogs(buf: Buffer): string {
+  const out: Buffer[] = [];
+  let i = 0;
+  while (i + 8 <= buf.length) {
+    const size = buf.readUInt32BE(i + 4);
+    out.push(buf.subarray(i + 8, i + 8 + size));
+    i += 8 + size;
+  }
+  return i === 0 ? buf.toString('utf8') : Buffer.concat(out).toString('utf8');
+}
+

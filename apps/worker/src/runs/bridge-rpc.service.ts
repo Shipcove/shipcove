@@ -1,11 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { BridgeRequest } from '@cap/agent-runtime';
-import { redactString } from '@cap/server-core';
+import { EnvironmentService, redactString } from '@cap/server-core';
 import { toUserPath } from '@cap/storage';
 import { CheckpointService } from '../sandbox/checkpoint.service.js';
 import { SandboxManager } from '../sandbox/sandbox-manager.service.js';
 import { GitBrokerService } from '../git/git-broker.service.js';
 import { McpBridgeService } from '../mcp/mcp-bridge.service.js';
+import { ServicesService } from '../sandbox/services.service.js';
 import type { RunContext } from './run-orchestrator.service.js';
 
 /**
@@ -21,6 +22,8 @@ export class BridgeRpcService {
     private readonly sandboxes: SandboxManager,
     private readonly git: GitBrokerService,
     private readonly mcp: McpBridgeService,
+    private readonly services: ServicesService,
+    private readonly environment: EnvironmentService,
   ) {}
 
   async handle(ctx: RunContext, req: BridgeRequest): Promise<string> {
@@ -58,6 +61,29 @@ export class BridgeRpcService {
         }
         case 'mcp.call': {
           const text = await this.mcp.call(ctx, String(params?.server), String(params?.tool), (params?.arguments as Record<string, unknown>) ?? {});
+          return JSON.stringify({ ok: true, text });
+        }
+        case 'services.catalog':
+          return JSON.stringify({ ok: true, text: await this.services.catalogText() });
+        case 'services.status':
+          return JSON.stringify({ ok: true, text: await this.services.status(ctx.sandbox) });
+        case 'services.start': {
+          const env = await this.environment.forWorkspace(ctx.workspaceId);
+          const p = params ?? {};
+          const text = await this.services.start(ctx.sandbox, env, {
+            service: String(p.service ?? ''),
+            name: typeof p.name === 'string' ? p.name : undefined,
+            env: p.env && typeof p.env === 'object' ? Object.fromEntries(Object.entries(p.env as Record<string, unknown>).map(([k, v]) => [k, String(v)])) : undefined,
+            memoryMb: typeof p.memoryMb === 'number' ? p.memoryMb : undefined,
+          });
+          await this.sandboxes.touch(ctx.workspaceId);
+          return JSON.stringify({ ok: true, text });
+        }
+        case 'services.stop':
+          return JSON.stringify({ ok: true, text: await this.services.stop(ctx.sandbox, String(params?.name ?? '')) });
+        case 'services.logs': {
+          const env = await this.environment.forWorkspace(ctx.workspaceId);
+          const text = await this.services.logs(ctx.sandbox, env, String(params?.name ?? params?.service ?? ''), Number(params?.lines ?? 100) || 100);
           return JSON.stringify({ ok: true, text });
         }
         default:

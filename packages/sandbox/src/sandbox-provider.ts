@@ -70,8 +70,36 @@ export interface ExecResult {
   stderr: Buffer;
 }
 
+/** Service d'appui (base de données, file…) partageant le réseau de la sandbox (`localhost`). */
+export interface ServiceSpec {
+  name: string;
+  /** Clé du catalogue d'origine (ex. `postgres`). */
+  key: string;
+  image: string;
+  env: Record<string, string>;
+  memoryMb: number;
+  cpu: number;
+  pidsLimit: number;
+  /** Empreinte de la configuration : un changement entraîne la recréation. */
+  specHash: string;
+}
+
+export interface ServiceState {
+  name: string;
+  key: string;
+  specHash: string;
+  running: boolean;
+}
+
 export interface SandboxProvider {
   readonly kind: 'docker' | 'kubernetes';
+  /** Services d'appui : démarrés dans le réseau de la sandbox, détruits avec elle. */
+  startServices(handle: SandboxHandle, services: ServiceSpec[]): Promise<void>;
+  removeService(handle: SandboxHandle, name: string): Promise<void>;
+  removeServices(handle: SandboxHandle): Promise<void>;
+  listServices(handle: SandboxHandle): Promise<ServiceState[]>;
+  serviceExec(handle: SandboxHandle, name: string, argv: string[], timeoutMs?: number): Promise<ExecResult>;
+  serviceLogs(handle: SandboxHandle, name: string, tail: number): Promise<string>;
   create(spec: SandboxSpec): Promise<SandboxHandle>;
   start(handle: SandboxHandle): Promise<SandboxHandle>;
   inspect(handle: SandboxHandle): Promise<SandboxInfo>;

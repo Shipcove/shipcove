@@ -6,12 +6,13 @@ import { Api } from '../../core/api.service';
 import { ToastService } from '../../core/toast.service';
 import { AgoPipe, BytesPipe } from '../../shared/pipes';
 import { SettingsSection } from './settings-section';
+import { AdminServices } from './admin-services';
 
 type Row = Record<string, never>;
 
 @Component({
   selector: 'cap-admin-sandboxes',
-  imports: [FormsModule, SettingsSection, AgoPipe],
+  imports: [FormsModule, SettingsSection, AgoPipe, AdminServices],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h1 class="text-xl font-semibold">Sandboxes & previews</h1>
@@ -23,6 +24,7 @@ type Row = Record<string, never>;
         <cap-settings-section section="attachments" title="Pièces jointes" />
       </div>
     </div>
+    <cap-admin-services />
     <h2 class="mt-6 mb-2 text-sm font-semibold text-stone-500 uppercase">Instances</h2>
     <div class="card overflow-x-auto"><table class="table">
       <thead><tr><th>Workspace</th><th>Propriétaire</th><th>Statut</th><th>Fournisseur</th><th>Activité</th><th></th></tr></thead>

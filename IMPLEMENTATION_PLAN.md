@@ -39,6 +39,8 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
 - ☑ Retour en arrière des fichiers (« Revenir avant ce message », annulable)
 - ☑ Environnement par projet : variables et secrets (équipe / projet, Vault, masquage y compris
   vers le LLM), script de préparation, image de sandbox (docs/operations/project-environment.md)
+- ☑ Services lancés par l'agent à la demande (catalogue administrateur : PostgreSQL, Redis, RabbitMQ…),
+  sur localhost de la sandbox, isolés (docs/operations/services.md) · ⚠ Docker uniquement
 
 ## Lot 4 — Contrôles
 - ☑ Ledger, coefficients versionnés, fenêtres 5 h / 7 j, plafonds équipe, exemptions, pause/reprise
@@ -59,10 +61,10 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
 - ☐ Helm chart + manifestes Kubernetes ; tests résilience / charge
 
 ## Tests
-- `tests/e2e` (`pnpm test`, pile Compose réelle, 40 scénarios) :
+- `tests/e2e` (`pnpm test`, pile Compose réelle, 41 scénarios) :
   - pile (8) et interface Playwright (1) ;
   - SSO contre Keycloak + OpenLDAP (7) ;
-  - fonctionnels (12) : retour en arrière, variables et secrets, préparation et image par projet, édition manuelle et conflits, skills, MCP, pièces jointes, notifications
+  - fonctionnels (13) : services à la demande, retour en arrière, variables et secrets, préparation et image par projet, édition manuelle et conflits, skills, MCP, pièces jointes, notifications
     email, rétention, limite de sandboxes, appels LLM concurrents (plafond, facturation unique),
     utilisateur de plusieurs équipes ;
   - Git contre GitLab CE (7) : forges administrées, rattachement OAuth dans le navigateur,
@@ -91,3 +93,5 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
   et l'arrêt d'une instance provoquait des 502/504).
 - 2026-11-14 : PO-5, connexions Git par OAuth administré (docs/operations/git-forges.md).
 - 2026-11-14 : retour en arrière, variables / secrets et préparation par projet.
+- 2026-11-14 : services d'appui lancés par l'agent ; correctif : les erreurs des outils de la
+  plateforme étaient affichées comme des succès (Pi ignore `isError`, seule une exception compte).

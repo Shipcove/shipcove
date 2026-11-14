@@ -140,3 +140,32 @@ export const previewPorts = pgTable(
       .where(sql`${t.closedAt} is null`),
   ],
 );
+
+/**
+ * Catalogue des services d'appui (bases de données, files de messages…) approuvés par
+ * l'administrateur plateforme (images, variables par défaut, mémoire). Pi les démarre à la
+ * demande, dans le réseau de sa sandbox ; rien n'est lancé tant qu'il ne le demande pas.
+ */
+export const serviceCatalog = pgTable(
+  'service_catalog',
+  {
+    id: pk(),
+    /** Identifiant court (ex. `postgres`), proposé comme nom de service. */
+    key: text().notNull(),
+    name: text().notNull(),
+    /** Référence d'image (idéalement verrouillée par digest). */
+    image: text().notNull(),
+    /** Port d'écoute documenté (joignable sur localhost depuis la sandbox). */
+    port: integer(),
+    /** Commande de santé exécutée dans le conteneur du service (code 0 = prêt). */
+    healthCommand: jsonb().$type<string[]>().notNull().default([]),
+    defaultEnv: jsonb().$type<Record<string, string>>().notNull().default({}),
+    defaultMemoryMb: integer().notNull().default(512),
+    maxMemoryMb: integer().notNull().default(2048),
+    enabled: boolean().notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('service_catalog_key_uq').on(t.key)],
+);
+

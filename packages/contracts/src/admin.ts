@@ -52,6 +52,8 @@ export const PlatformSettingsSchema = z.object({
           'objects.githubusercontent.com',
         ]),
       checkpointExcludes: z.array(z.string().max(255)).default([]),
+      /** Nombre maximal de services d'appui lancés par Pi dans une même sandbox. */
+      maxServicesPerWorkspace: z.number().int().min(0).max(10).default(4),
       /** Durée maximale du script de préparation d'un projet. */
       setupTimeoutMinutes: z.number().int().min(1).max(120).default(20),
     })

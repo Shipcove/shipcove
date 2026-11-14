@@ -762,3 +762,86 @@ test('préparation de l’environnement : script par projet, une fois par sandbo
     sql(`update sandbox_images set status = 'revoked' where id = '${imageId}'`);
   }
 });
+
+test('services lancés par l’agent : rien sans demande, démarrage à la demande sur localhost, secret du projet, limites, isolation', async () => {
+  const lead = await newUser('team_admin');
+  const p = await lead.post('/projects', { teamId: ctx.teamId, name: `Services ${uid()}` });
+  const pid = p.body.id;
+  await lead.put(`/projects/${pid}/environment/variables`, { name: 'PG_SECRET', value: 'Mot-De-Passe-Pg-2026', secret: true });
+  // Catalogue : géré par l'administrateur seulement.
+  assert.equal((await lead.get('/admin/service-catalog')).status, 403);
+  const catalog = (await ctx.admin.get('/admin/service-catalog')).body;
+  assert.ok(['postgres', 'redis', 'rabbitmq'].every((k) => catalog.some((c) => c.key === k && c.enabled)));
+
+  const w = await lead.post('/workspaces', { projectId: pid, name: 'Services' });
+  const wsId = w.body.id;
+  opened.push({ client: lead, id: wsId });
+  const tools = async (text) => {
+    const conv = await lead.get(`/workspaces/${wsId}/conversation`);
+    const sent = await lead.post(`/workspaces/${wsId}/messages`, { text }, { 'Idempotency-Key': `f-${uid()}` });
+    const evs = await lead.events(wsId, conv.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === sent.body.runId, 600_000);
+    assert.equal(evs.at(-1).type, 'run.completed', JSON.stringify(evs.at(-1)));
+    return evs.filter((e) => e.type === 'tool.completed').map((e) => e.data);
+  };
+  const svc = (args) => `[[tool:platform_services ${JSON.stringify(args)}]]`;
+  const sandboxId = () => sql(`select external_id from sandbox_instances where workspace_id = '${wsId}' and status = 'running'`);
+  const serviceContainers = (sbx) => execFileSync('docker', ['ps', '-aq', '--filter', 'label=cap.service=true', '--filter', `label=cap.sandbox=${sbx}`], { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
+
+  // Rien ne démarre tant que l'agent ne le demande pas.
+  let out = await tools(`Statut. ${svc({ action: 'status' })}`);
+  assert.match(out[0].output, /Aucun service lancé/);
+  assert.match(out[0].output, /postgres/);
+  assert.equal(serviceContainers(sandboxId()).length, 0);
+
+  // Démarrage à la demande, joignable sur localhost depuis la sandbox.
+  out = await tools(`Redis. ${svc({ action: 'start', service: 'redis' })} [[tool:bash {"command":"exec 3<>/dev/tcp/127.0.0.1/6379; printf 'PING\\\\r\\\\n' >&3; head -c 7 <&3"}]]`);
+  assert.equal(out[0].isError, false, out[0].output);
+  assert.match(out[0].output, /prêt/);
+  assert.match(out[1].output, /\+PONG/);
+
+  // PostgreSQL avec un secret du projet référencé sans être connu de l'agent.
+  out = await tools(`Postgres. ${svc({ action: 'start', service: 'postgres', env: { POSTGRES_PASSWORD: '${PG_SECRET}' } })} ${svc({ action: 'logs', name: 'postgres', lines: 50 })} [[tool:bash {"command":"exec 3<>/dev/tcp/127.0.0.1/5432 && echo port-ouvert"}]]`);
+  assert.equal(out[0].isError, false, out[0].output);
+  assert.match(out[1].output, /ready to accept connections/);
+  assert.match(out[2].output, /port-ouvert/);
+  assert.ok(!JSON.stringify(out).includes('Mot-De-Passe-Pg-2026'), 'secret jamais exposé');
+  const pgEnv = execFileSync('docker', ['inspect', '-f', '{{json .Config.Env}}', `cap-svc-${sandboxId().slice(0, 12)}-postgres`], { encoding: 'utf8' });
+  assert.match(pgEnv, /POSTGRES_PASSWORD=Mot-De-Passe-Pg-2026/, 'secret résolu côté plateforme');
+
+  // Limite par sandbox, service inconnu ou désactivé.
+  await ctx.admin.req('PATCH', '/admin/settings', { section: 'sandbox', values: { maxServicesPerWorkspace: 2 } });
+  const redis = catalog.find((c) => c.key === 'redis');
+  const { id: _id, ...redisBody } = redis;
+  await ctx.admin.put(`/admin/service-catalog/${redis.id}`, { ...redisBody, enabled: false });
+  try {
+    out = await tools(`Encore. ${svc({ action: 'start', service: 'rabbitmq' })} ${svc({ action: 'start', service: 'mongodb' })} ${svc({ action: 'start', service: 'redis', name: 'redis-2' })}`);
+    assert.equal(out[0].isError, true);
+    assert.match(out[0].output, /Limite de 2 services/);
+    assert.equal(out[1].isError, true);
+    assert.match(out[1].output, /non disponible/);
+    assert.equal(out[2].isError, true, 'service désactivé par l’administrateur');
+  } finally {
+    await ctx.admin.req('PATCH', '/admin/settings', { section: 'sandbox', values: { maxServicesPerWorkspace: 4 } });
+    await ctx.admin.put(`/admin/service-catalog/${redis.id}`, { ...redisBody, enabled: true });
+  }
+
+  // Isolation : la sandbox d'un autre utilisateur ne voit pas ces services.
+  const other = await newUser();
+  const p2 = await other.post('/projects', { teamId: ctx.teamId, name: `Autre ${uid()}` });
+  const w2 = await other.post('/workspaces', { projectId: p2.body.id, name: 'Autre' });
+  opened.push({ client: other, id: w2.body.id });
+  const conv2 = await other.get(`/workspaces/${w2.body.id}/conversation`);
+  const sent2 = await other.post(`/workspaces/${w2.body.id}/messages`, { text: 'Isolation [[tool:bash {"command":"(exec 3<>/dev/tcp/127.0.0.1/6379) 2>/dev/null && echo joignable || echo injoignable"}]]' }, { 'Idempotency-Key': `f-${uid()}` });
+  const evs2 = await other.events(w2.body.id, conv2.body.lastEventId, (e) => e.type === 'run.completed' && e.runId === sent2.body.runId, 300_000);
+  assert.match(evs2.find((e) => e.type === 'tool.completed').data.output, /injoignable/);
+
+  // Arrêt d'un service, puis de la sandbox : plus aucun conteneur de service.
+  out = await tools(`Stop. ${svc({ action: 'stop', name: 'redis' })} ${svc({ action: 'status' })}`);
+  assert.match(out[0].output, /arrêté/);
+  assert.doesNotMatch(out[1].output, /redis/);
+  const sbx = sandboxId();
+  assert.equal(serviceContainers(sbx).length, 1);
+  await lead.post(`/workspaces/${wsId}/stop`);
+  for (let i = 0; i < 30 && serviceContainers(sbx).length; i++) await new Promise((r) => setTimeout(r, 1000));
+  assert.equal(serviceContainers(sbx).length, 0, 'services supprimés avec la sandbox');
+});

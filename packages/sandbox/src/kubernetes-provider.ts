@@ -9,6 +9,9 @@ import {
   type SandboxInfo,
   type SandboxProvider,
   type SandboxSpec,
+  type ExecResult,
+  type ServiceSpec,
+  type ServiceState,
 } from './sandbox-provider.js';
 
 export interface KubernetesProviderOptions {
@@ -32,6 +35,25 @@ export interface KubernetesProviderOptions {
  */
 export class KubernetesSandboxProvider implements SandboxProvider {
   readonly kind = 'kubernetes' as const;
+
+  /*
+   * Services d'appui : prévus sous forme de conteneurs annexes du Pod de la sandbox (même
+   * localhost). Non disponibles tant que ce provider n'est pas validé sur un cluster de référence.
+   */
+  async startServices(_handle: SandboxHandle, services: ServiceSpec[]): Promise<void> {
+    if (services.length) throw new SandboxError('Les services d’appui ne sont pas encore disponibles sur Kubernetes');
+  }
+  async removeService(): Promise<void> {}
+  async removeServices(): Promise<void> {}
+  async listServices(): Promise<ServiceState[]> {
+    return [];
+  }
+  async serviceExec(): Promise<ExecResult> {
+    throw new SandboxError('Services d’appui indisponibles sur Kubernetes');
+  }
+  async serviceLogs(): Promise<string> {
+    throw new SandboxError('Services d’appui indisponibles sur Kubernetes');
+  }
   private readonly kc: k8s.KubeConfig;
   private readonly core: k8s.CoreV1Api;
   private readonly execApi: k8s.Exec;

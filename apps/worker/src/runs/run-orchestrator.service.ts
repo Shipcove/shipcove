@@ -19,6 +19,7 @@ import { JobRunner } from '../jobs/job-runner.service.js';
 import { CheckpointService } from '../sandbox/checkpoint.service.js';
 import { SandboxManager, type ActiveSandbox } from '../sandbox/sandbox-manager.service.js';
 import { SetupService } from '../sandbox/setup.service.js';
+import { ServicesService } from '../sandbox/services.service.js';
 import { BridgeRpcService } from './bridge-rpc.service.js';
 
 const RUN_LEASE_MS = 60_000;
@@ -80,6 +81,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     private readonly runQueue: RunQueueService,
     private readonly environment: EnvironmentService,
     private readonly setup: SetupService,
+    private readonly services: ServicesService,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -151,8 +153,10 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       await this.finish(runId, ws.id, 'failed', `Sandbox indisponible : ${(err as Error).message}`);
       return { status: 'failed' };
     }
-    // Script de préparation du projet : nouvelle sandbox ou script modifié.
     let setupNote: string | null = null;
+    // Catalogue des services d'appui que Pi peut lancer lui-même (rien ne démarre sans sa demande).
+    await this.services.writeCatalog(sandbox).catch((e: Error) => this.logger.warn(`Catalogue des services : ${e.message}`));
+    // Script de préparation du projet : nouvelle sandbox ou script modifié.
     if (await this.setup.needed(sandbox)) {
       await this.systemMessage(ws.id, conv.id, runId, 'Préparation de l’environnement du projet…', { kind: 'setup', status: 'running' });
       const r = await this.setup.run(sandbox, await this.environment.forWorkspace(ws.id, { fresh: true }));

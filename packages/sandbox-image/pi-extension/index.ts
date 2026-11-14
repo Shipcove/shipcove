@@ -29,7 +29,15 @@ async function rpc(ctx: ExtensionContext, method: string, params: unknown): Prom
   }
 }
 
-const text = (t: string, isError = false) => ({ content: [{ type: 'text' as const, text: t }], details: {}, isError });
+const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }], details: {} });
+/**
+ * Réponse de la plateforme : Pi ne tient pas compte d'un champ `isError` renvoyé par un outil,
+ * seule une exception marque l'appel en échec (affiché comme tel et transmis au modèle).
+ */
+const reply = (r: { ok: boolean; text: string }) => {
+  if (!r.ok) throw new Error(r.text);
+  return text(r.text);
+};
 
 interface McpToolConfig {
   server: string;
@@ -72,7 +80,7 @@ export default function platformBridge(pi: ExtensionAPI) {
         remoteBranch: params.remote_branch ?? params.local_branch,
         force: params.force ?? false,
       });
-      return text(r.text, !r.ok);
+      return reply(r);
     },
   });
 
@@ -99,7 +107,7 @@ export default function platformBridge(pi: ExtensionAPI) {
         body: params.body ?? '',
         draft: params.draft ?? false,
       });
-      return text(r.text, !r.ok);
+      return reply(r);
     },
   });
 
@@ -113,7 +121,7 @@ export default function platformBridge(pi: ExtensionAPI) {
     }),
     async execute(toolCallId, params, _signal, _onUpdate, ctx) {
       const r = await rpc(ctx, 'git.request', { toolCallId, action: 'merge', number: params.number, method: params.method ?? 'merge' });
-      return text(r.text, !r.ok);
+      return reply(r);
     },
   });
 
@@ -124,7 +132,7 @@ export default function platformBridge(pi: ExtensionAPI) {
     parameters: Type.Object({ branch: Type.String() }),
     async execute(toolCallId, params, _signal, _onUpdate, ctx) {
       const r = await rpc(ctx, 'git.request', { toolCallId, action: 'delete_remote_branch', branch: params.branch });
-      return text(r.text, !r.ok);
+      return reply(r);
     },
   });
 
@@ -135,11 +143,53 @@ export default function platformBridge(pi: ExtensionAPI) {
     parameters: Type.Object({ ref: Type.String({ description: 'Branche ou SHA' }) }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const r = await rpc(ctx, 'git.ci_status', { ref: params.ref });
-      return text(r.text, !r.ok);
+      return reply(r);
     },
   });
 
-  // 3. Pont MCP : la liste des outils autorisés est fournie par le worker au démarrage.
+  // 3. Services d'appui (bases de données, caches, files…) : catalogue approuvé par
+  //    l'administrateur ; Pi les lance lui-même quand il en a besoin, rien ne démarre sans lui.
+  let catalog: Array<{ key: string; name: string; image: string; port: number | null; defaultEnv: Record<string, string>; maxMemoryMb: number }> = [];
+  try {
+    catalog = JSON.parse(readFileSync('/run/cap/services.json', 'utf8')) as typeof catalog;
+  } catch {
+    catalog = [];
+  }
+  if (catalog.length) {
+    const listing = catalog
+      .map((c) => `${c.key} — ${c.name}${c.port ? `, localhost:${c.port}` : ''}${Object.keys(c.defaultEnv).length ? ` (défaut : ${Object.entries(c.defaultEnv).map(([k, v]) => `${k}=${v}`).join(', ')})` : ''}`)
+      .join(' ; ');
+    pi.registerTool({
+      name: 'platform_services',
+      label: 'Services d’appui (bases de données, caches, files)',
+      description:
+        'Lance à la demande des services d’appui dans le réseau de la sandbox (joignables sur localhost), pour exécuter ' +
+        'l’application ou ses tests. Disponibles : ' + listing + '. ' +
+        'Actions : « start » (service = clé, name optionnel pour une 2e instance, env pour les variables du conteneur — ' +
+        '« ${NOM} » reprend une variable ou un secret du projet sans que tu en connaisses la valeur —, memoryMb), ' +
+        '« stop » (name), « status », « logs » (name, lines), « catalog ». Les services durent autant que la sandbox ; leurs ' +
+        'données sont éphémères (refais les migrations / données de test après un redémarrage).',
+      promptSnippet: 'Lancer PostgreSQL, Redis, RabbitMQ… à la demande sur localhost (catalogue de la plateforme)',
+      promptGuidelines: [
+        'When the code or its tests need a database, cache or message broker, start it with platform_services instead of installing or running it yourself; Docker is not available in the sandbox.',
+        'Only start the services you actually need, and reuse a running one (action « status »).',
+      ],
+      parameters: Type.Object({
+        action: Type.Union([Type.Literal('start'), Type.Literal('stop'), Type.Literal('status'), Type.Literal('logs'), Type.Literal('catalog')]),
+        service: Type.Optional(Type.String({ description: 'Clé du catalogue (start)' })),
+        name: Type.Optional(Type.String({ description: 'Nom de l’instance (start, stop, logs)' })),
+        env: Type.Optional(Type.Record(Type.String(), Type.String(), { description: 'Variables du conteneur (start)' })),
+        memoryMb: Type.Optional(Type.Number({ description: 'Mémoire en Mo (start)' })),
+        lines: Type.Optional(Type.Number({ description: 'Lignes de journal (logs, défaut 100)' })),
+      }),
+      async execute(_id, params, _signal, _onUpdate, ctx) {
+        const r = await rpc(ctx, `services.${params.action}`, { service: params.service, name: params.name ?? params.service, env: params.env, memoryMb: params.memoryMb, lines: params.lines });
+        return reply(r);
+      },
+    });
+  }
+
+  // 4. Pont MCP : la liste des outils autorisés est fournie par le worker au démarrage.
   let mcpTools: McpToolConfig[] = [];
   try {
     mcpTools = JSON.parse(readFileSync('/run/cap/mcp-tools.json', 'utf8')) as McpToolConfig[];
@@ -155,7 +205,7 @@ export default function platformBridge(pi: ExtensionAPI) {
       parameters: Type.Unsafe<Record<string, unknown>>(tool.inputSchema ?? { type: 'object' }),
       async execute(_id, params, _signal, _onUpdate, ctx) {
         const r = await rpc(ctx, 'mcp.call', { server: tool.server, tool: tool.name, arguments: params });
-        return text(r.text, !r.ok);
+        return reply(r);
       },
     });
   }
