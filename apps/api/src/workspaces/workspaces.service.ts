@@ -30,6 +30,8 @@ export class WorkspacesService {
       syncState: w.syncState,
       branch: w.branch,
       modelId: w.modelId,
+      thinkingLevel: w.thinkingLevel,
+      agentMode: w.agentMode,
       conversationId: c?.id ?? '',
       activeRunId: run?.id ?? null,
       activeRunStatus: run?.status ?? null,

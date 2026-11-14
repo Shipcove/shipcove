@@ -27,7 +27,25 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
   // Préparation via l'API : utilisateur, équipe, projet, workspace.
   const admin = await adminClient(state);
   const models = await admin.get('/admin/models');
-  assert.ok(models.body.some((m) => m.isDefault), 'modèle par défaut requis (lancer stack.test.mjs d’abord)');
+  const mock = models.body.find((m) => m.isDefault);
+  assert.ok(mock, 'modèle par défaut requis (lancer stack.test.mjs d’abord)');
+  // Le modèle factice est déclaré « avec raisonnement » pour exercer le réglage d'effort.
+  if (!mock.supportsReasoning) {
+    const r = await admin.put(`/admin/models/${mock.id}`, {
+      litellmModel: mock.litellmModel,
+      displayName: mock.displayName,
+      litellmParams: mock.litellmParams,
+      contextWindow: mock.contextWindow,
+      maxOutputTokens: mock.maxOutputTokens,
+      supportsImages: mock.supportsImages,
+      supportsReasoning: true,
+      enabled: true,
+      isDefault: true,
+      allowedTeamIds: mock.allowedTeamIds,
+      coefficients: { input: mock.coefficients.input, output: mock.coefficients.output, cacheRead: mock.coefficients.cacheRead, cacheWrite: mock.coefficients.cacheWrite },
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+  }
   const slug = `ui-${uid()}`;
   const team = await admin.post('/teams', { name: `UI ${slug}`, slug });
   const username = `ui${uid()}`;
@@ -62,6 +80,36 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     await page.keyboard.press('Enter');
     await page.waitForSelector('text=Terminé : 1 action(s) exécutée(s).', { timeout: 240_000 });
     await page.waitForSelector('cap-tool-card');
+
+    // Composer : menu « + », modèle / effort, mode, consommation.
+    await page.click('button[aria-label="Ajouter"]');
+    await page.waitForSelector('text=Ajouter des fichiers ou des photos');
+    await page.screenshot({ path: new URL('composer-plus.png', OUT).pathname });
+    await page.keyboard.press('Escape');
+    await page.click('button[aria-haspopup="menu"]:has-text("Mock")');
+    await page.click('button:has-text("Effort")');
+    await page.waitForSelector('[role="menuitemradio"]:has-text("Élevé")');
+    await page.screenshot({ path: new URL('composer-model.png', OUT).pathname });
+    await page.keyboard.press('Escape');
+    await page.click('button[aria-label="Consommation de crédits"]');
+    await page.waitForSelector('text=Limite de 5 heures');
+    await page.screenshot({ path: new URL('composer-usage.png', OUT).pathname });
+    await page.keyboard.press('Escape');
+
+    // Mode Plan : outils en lecture seule imposés par Pi → aucune écriture possible.
+    await page.click('button[aria-haspopup="menu"]:has-text("Autonome")');
+    await page.screenshot({ path: new URL('composer-mode.png', OUT).pathname });
+    await page.click('[role="menuitemradio"]:has-text("Plan")');
+    await page.waitForSelector('text=Mode plan');
+    await page.fill('textarea[aria-label="Message"]', 'Plan. [[tool:bash {"command":"touch /workspace/interdit.txt"}]]');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('text=Terminé : 1 action(s) exécutée(s). >> nth=1', { timeout: 240_000 });
+    const wsId = new URL(page.url()).pathname.split('/').pop();
+    const files = await page.evaluate(async (id) => (await fetch(`/api/v1/workspaces/${id}/files/all`, { credentials: 'include' })).json(), wsId);
+    assert.ok(!files.includes('interdit.txt'), 'le mode plan ne doit rien écrire');
+    assert.ok(await page.locator('cap-tool-card').nth(1).locator('svg').last().evaluate((el) => el.closest('span')?.innerHTML.includes('M18 6')), 'outil refusé en mode plan');
+    await page.click('button[aria-haspopup="menu"]:has-text("Plan")');
+    await page.click('[role="menuitemradio"]:has-text("Autonome")');
 
     // Panneau Modifications : le fichier apparaît, le diff s'ouvre dans Monaco.
     await page.waitForSelector('cap-changes-panel button:has-text("main.js")', { timeout: 30_000 });

@@ -123,7 +123,12 @@ export class WorkspaceStore {
   }
 
   async setModel(modelId: string): Promise<void> {
-    const ws = await this.api.patch<WorkspaceDto>(`/workspaces/${this.workspace()!.id}`, { modelId });
+    await this.update({ modelId });
+  }
+
+  /** Préférences du workspace (modèle, effort, mode) : appliquées au prochain run. */
+  async update(patch: Partial<Pick<WorkspaceDto, 'modelId' | 'thinkingLevel' | 'agentMode' | 'name'>>): Promise<void> {
+    const ws = await this.api.patch<WorkspaceDto>(`/workspaces/${this.workspace()!.id}`, patch);
     this.workspace.set(ws);
   }
 
@@ -220,7 +225,7 @@ export class WorkspaceStore {
         this.runs.update((l) => {
           const exists = l.find((r) => r.id === runId);
           if (exists) return l.map((r) => (r.id === runId ? { ...r, status: e.type === 'run.started' ? 'running' : 'queued' } : r));
-          return [...l, { id: runId, workspaceId: e.workspaceId, status: e.type === 'run.started' ? 'running' : 'queued', modelId: null, modelName: null, startedAt: e.ts, endedAt: null, error: null, pausedReason: null }];
+          return [...l, { id: runId, workspaceId: e.workspaceId, status: e.type === 'run.started' ? 'running' : 'queued', modelId: null, modelName: null, agentMode: this.workspace()?.agentMode ?? 'autonomous', startedAt: e.ts, endedAt: null, error: null, pausedReason: null }];
         });
         return;
       }

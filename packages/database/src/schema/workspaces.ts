@@ -26,6 +26,10 @@ export const workspaces = pgTable(
     syncState: text({ enum: ['synced', 'syncing', 'unsynced'] }).notNull().default('synced'),
     branch: text(),
     modelId: uuid(),
+    /** Niveau de raisonnement de Pi (« effort ») pour les modèles qui le supportent. */
+    thinkingLevel: text({ enum: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'] }).notNull().default('medium'),
+    /** Mode d'exécution : autonome (défaut) ou plan (outils en lecture seule). */
+    agentMode: text({ enum: ['autonomous', 'plan'] }).notNull().default('autonomous'),
     /** Initialisé (clone ou répertoire vierge) au moins une fois. */
     initialized: boolean().notNull().default(false),
     /** Dernier manifeste validé (génération) ; publication conditionnée au fencing token. */
@@ -112,6 +116,9 @@ export const agentRuns = pgTable(
       .notNull()
       .default('queued'),
     modelId: uuid(),
+    /** Mode et effort effectivement appliqués à ce run (traçabilité). */
+    agentMode: text({ enum: ['autonomous', 'plan'] }).notNull().default('autonomous'),
+    thinkingLevel: text(),
     triggerMessageId: uuid(),
     /** Instance worker détenant le run + fencing token (reprise après panne). */
     workerId: text(),

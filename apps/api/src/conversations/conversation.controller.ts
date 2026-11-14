@@ -115,6 +115,7 @@ export class ConversationController {
         status: r.status,
         modelId: r.modelId,
         modelName,
+        agentMode: r.agentMode,
         startedAt: r.startedAt?.toISOString() ?? null,
         endedAt: r.endedAt?.toISOString() ?? null,
         error: r.error,
@@ -176,7 +177,16 @@ export class ConversationController {
         if (body.attachmentIds.length) await tx.update(attachments).set({ messageId: m.id }).where(inArray(attachments.id, body.attachmentIds));
         const [run] = await tx
           .insert(agentRuns)
-          .values({ conversationId: conv.id, workspaceId: id, userId: user.id, modelId, triggerMessageId: m.id, idempotencyKey: idemKey ?? null })
+          .values({
+            conversationId: conv.id,
+            workspaceId: id,
+            userId: user.id,
+            modelId,
+            agentMode: w.agentMode,
+            thinkingLevel: w.thinkingLevel,
+            triggerMessageId: m.id,
+            idempotencyKey: idemKey ?? null,
+          })
           .returning()
           .catch((err: unknown) => {
             if (isUniqueViolation(err)) throw new AppError('run_already_active', 'Un run est déjà actif : attendez sa fin, interrompez-le ou envoyez un message de guidage');

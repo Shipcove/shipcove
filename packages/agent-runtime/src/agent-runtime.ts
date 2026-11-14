@@ -58,6 +58,8 @@ export interface AgentRuntime {
   steer(text: string): Promise<void>;
   followUp(text: string): Promise<void>;
   setModel(provider: string, modelId: string): Promise<void>;
+  /** Niveau de raisonnement (off, minimal, low, medium, high, xhigh). */
+  setThinkingLevel(level: string): Promise<void>;
   abort(): Promise<void>;
   compact(instructions?: string): Promise<void>;
   sessionStats(): Promise<SessionStats>;

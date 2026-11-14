@@ -91,6 +91,10 @@ export class PiAgentRuntime implements AgentRuntime {
     await this.send('set_model', { provider, modelId });
   }
 
+  async setThinkingLevel(level: string): Promise<void> {
+    await this.send('set_thinking_level', { level });
+  }
+
   async abort(): Promise<void> {
     await this.send('abort', {}, 15_000).catch(() => undefined);
   }

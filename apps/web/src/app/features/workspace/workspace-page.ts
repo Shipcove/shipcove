@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
-import { CreditsPipe, TokensPipe } from '../../shared/pipes';
+import { TokensPipe } from '../../shared/pipes';
 import { ApprovalsPanel } from './approvals-panel';
 import { ChangesPanel } from './changes-panel';
 import { Composer } from './composer';
@@ -24,7 +24,7 @@ type RightPane = 'panel' | 'files' | null;
  */
 @Component({
   selector: 'cap-workspace-page',
-  imports: [FormsModule, RouterLink, Icon, CreditsPipe, TokensPipe, Conversation, Composer, FilesPane, ChangesPanel, GitPanel, ApprovalsPanel, PreviewsPanel, ShareDialog],
+  imports: [FormsModule, RouterLink, Icon, TokensPipe, Conversation, Composer, FilesPane, ChangesPanel, GitPanel, ApprovalsPanel, PreviewsPanel, ShareDialog],
   providers: [WorkspaceStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -45,20 +45,11 @@ type RightPane = 'panel' | 'files' | null;
           </span>
           @if (store.streamState() === 'reconnecting') { <span class="text-xs text-amber-600">Reconnexion au flux…</span> }
           <div class="ml-auto flex flex-wrap items-center gap-3">
-            @if (ws.access === 'owner') {
-              <select class="input !w-auto !py-1 text-xs" [ngModel]="store.currentModel()?.id" (ngModelChange)="setModel($event)" name="model" aria-label="Modèle">
-                @for (m of store.models(); track m.id) { <option [value]="m.id">{{ m.displayName }}</option> }
-              </select>
-            }
+            @if (ws.agentMode === 'plan') { <span class="badge bg-sky-100 text-sky-800" title="Pi n'a que des outils en lecture seule">Mode plan</span> }
             @if (contextPct() !== null) {
               <div class="w-28 text-[11px] text-stone-500" [title]="'Contexte : ' + (store.context().tokens | tokens) + ' / ' + (store.context().contextWindow | tokens) + ' tokens'">
                 Contexte {{ contextPct() }}%
                 <div class="h-1 rounded bg-stone-200 dark:bg-stone-800"><div class="h-1 rounded bg-accent-500" [style.width.%]="contextPct()"></div></div>
-              </div>
-            }
-            @if (credits(); as c) {
-              <div class="text-[11px] text-stone-500" title="Crédits consommés / limite (fenêtres glissantes)">
-                5 h : {{ c.h5.used | credits }}{{ c.h5.limit ? ' / ' + (c.h5.limit | credits) : '' }} · 7 j : {{ c.d7.used | credits }}{{ c.d7.limit ? ' / ' + (c.d7.limit | credits) : '' }}
               </div>
             }
             @if (ws.access === 'owner') {
@@ -147,12 +138,6 @@ export class WorkspacePage implements OnDestroy {
   protected readonly contextPct = computed(() => {
     const c = this.store.context();
     return c.tokens && c.contextWindow ? Math.min(100, Math.round((c.tokens / c.contextWindow) * 100)) : null;
-  });
-
-  protected readonly credits = computed(() => {
-    const w = this.store.usage()?.user.windows;
-    if (!w) return null;
-    return { h5: w.find((x) => x.window === '5h')!, d7: w.find((x) => x.window === '7d')! };
   });
 
   protected readonly statusLabel = computed(() => {

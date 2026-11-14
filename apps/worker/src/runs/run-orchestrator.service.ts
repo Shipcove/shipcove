@@ -11,7 +11,7 @@ import {
   workspaces,
   type Database,
 } from '@cap/database';
-import { PI_PROVIDER, PI_TOKEN_ENV, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
+import { PI_PROVIDER, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
 import { DB, ENV, EventsService, NotificationService, ObjectStorage, PgNotifier, QuotaService, redactString, type NewEvent } from '@cap/server-core';
 import { toUserPath } from '@cap/storage';
 import type { WorkerEnv } from '../env.js';
@@ -155,7 +155,14 @@ export class RunOrchestrator implements OnApplicationBootstrap {
 
     // Un seul Pi par workspace : on termine d'éventuels processus orphelins (worker disparu).
     await this.sandboxes.provider.exec(sandbox.handle, ['pkill', '-f', 'pi --mode rpc']).then((p) => p.wait()).catch(() => undefined);
-    const proc = await this.sandboxes.provider.exec(sandbox.handle, piCommand({ sessionFile: conv.piSessionPath, skillDirs: [] }), {
+    // Mode Plan : liste blanche d'outils en lecture seule appliquée par Pi lui-même.
+    const planMode = run.agentMode === 'plan';
+    const command = piCommand({
+      sessionFile: conv.piSessionPath,
+      skillDirs: [],
+      ...(planMode ? { tools: PLAN_MODE_TOOLS, appendSystemPrompt: PLAN_MODE_PROMPT } : {}),
+    });
+    const proc = await this.sandboxes.provider.exec(sandbox.handle, command, {
       interactive: true,
       env: { [PI_TOKEN_ENV]: sandbox.runToken, HOME: '/home/agent', PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1' },
       workdir: '/workspace',
@@ -198,6 +205,9 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       await runtime.setModel(PI_PROVIDER, model.litellmModel).catch((e) => {
         throw new Error(`Modèle ${model.litellmModel} indisponible dans Pi : ${e.message}`);
       });
+      // Effort : niveau de raisonnement, uniquement pour les modèles qui le supportent.
+      const level = model.supportsReasoning ? (run.thinkingLevel ?? ws.thinkingLevel) : 'off';
+      await runtime.setThinkingLevel(level).catch((e) => this.logger.warn(`thinking level ${level} : ${e.message}`));
       await this.events.emit(ws.id, 'model.changed', { modelId: model.id, modelName: model.displayName }, runId);
       const { text, images } = await this.promptFor(run);
       await runtime.prompt(text, images);

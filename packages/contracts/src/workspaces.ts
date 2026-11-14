@@ -26,6 +26,19 @@ export const RunStatusSchema = z.enum([
 export type RunStatus = z.infer<typeof RunStatusSchema>;
 export const ACTIVE_RUN_STATUSES: readonly RunStatus[] = ['queued', 'running', 'paused_quota', 'interrupting'];
 
+/** Niveau de raisonnement de Pi (« effort »), appliqué aux modèles qui le supportent. */
+export const ThinkingLevelSchema = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh']);
+export type ThinkingLevel = z.infer<typeof ThinkingLevelSchema>;
+
+/**
+ * Mode d'exécution de Pi.
+ * - `autonomous` (défaut, SPEC §7) : Pi agit librement dans sa sandbox.
+ * - `plan` : outils en lecture seule (read, grep, find, ls), Pi propose un plan sans rien modifier.
+ * Les approbations Git restent obligatoires dans tous les modes.
+ */
+export const AgentModeSchema = z.enum(['autonomous', 'plan']);
+export type AgentMode = z.infer<typeof AgentModeSchema>;
+
 export const CreateWorkspaceSchema = z.object({
   projectId: z.uuid(),
   name: z.string().min(1).max(120),
@@ -38,6 +51,8 @@ export type CreateWorkspace = z.infer<typeof CreateWorkspaceSchema>;
 export const UpdateWorkspaceSchema = z.object({
   name: z.string().min(1).max(120).optional(),
   modelId: z.uuid().optional(),
+  thinkingLevel: ThinkingLevelSchema.optional(),
+  agentMode: AgentModeSchema.optional(),
 });
 
 export interface WorkspaceDto {
@@ -51,6 +66,8 @@ export interface WorkspaceDto {
   syncState: SyncState;
   branch: string | null;
   modelId: string | null;
+  thinkingLevel: ThinkingLevel;
+  agentMode: AgentMode;
   conversationId: string;
   activeRunId: string | null;
   activeRunStatus: RunStatus | null;
@@ -132,6 +149,7 @@ export interface RunDto {
   status: RunStatus;
   modelId: string | null;
   modelName: string | null;
+  agentMode: AgentMode;
   startedAt: string | null;
   endedAt: string | null;
   error: string | null;
