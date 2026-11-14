@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <title>Environnement et services</title>
+    <meta name="description" content="Variables et secrets de projet, script de préparation, image de sandbox, services d'appui lancés par l'agent (PostgreSQL, Redis, RabbitMQ)." />
+  </head>
+  <body>
+    <main>
+      <h1>Environnement et services</h1>
+      <p class="lead">Ce dont l’agent a besoin pour installer, lancer et tester le code de vos projets : variables, secrets, préparation, image et services d’appui.</p>
+
+      <h2>Variables et secrets</h2>
+      <p>Sur la page d’un <strong>projet</strong> (section <em>Environnement des sandboxes</em>) et d’une <strong>équipe</strong>, par leurs administrateurs. Une variable de projet remplace la variable d’équipe de même nom. Les changements s’appliquent au run suivant.</p>
+      <ul>
+        <li>Injectées dans l’environnement de l’agent (et de ses commandes), <strong>jamais écrites sur disque</strong> par la plateforme : elles n’entrent pas dans les checkpoints.</li>
+        <li><strong>Secrets</strong> : stockés dans Vault, jamais réaffichés (6 caractères minimum). Ils sont <strong>masqués</strong> (<code>***</code>) dans les sorties d’outils, les réponses de l’agent (même coupés entre deux fragments du flux), le flux temps réel, la base de données, et retirés des requêtes envoyées au fournisseur LLM.</li>
+        <li>Noms réservés refusés : <code>PATH</code>, <code>HOME</code>, <code>*_PROXY</code>, <code>LD_*</code>, <code>CAP_*</code>, <code>PI_*</code>, certificats, <code>GIT_SSH*</code>…</li>
+      </ul>
+      <div class="callout warn"><p>Comme pour les secrets de CI, l’agent de chaque membre du projet peut <em>utiliser</em> un secret (et donc l’écrire dans un fichier ou l’envoyer vers un hôte autorisé). Réservez-y des identifiants de développement à droits minimaux.</p></div>
+
+      <h2>Script de préparation</h2>
+      <p>Script bash exécuté dans <code>/workspace</code> avec les variables du projet, <strong>dans chaque nouvelle sandbox</strong> et à chaque modification du script ou de l’image. Il doit être idempotent, comme une étape de CI :</p>
+      <pre><code>npm ci
+pip install -r requirements.txt</code></pre>
+      <ul>
+        <li>Ce qu’il produit dans <code>/workspace</code> est conservé (checkpoint) ; le reste vit avec la sandbox.</li>
+        <li>Sa sortie (secrets masqués) apparaît dans la conversation ; en cas d’échec, l’agent est informé et le run continue.</li>
+        <li>Durée maximale : 20 minutes par défaut.</li>
+      </ul>
+
+      <h2>Image de sandbox</h2>
+      <p>Chaque projet choisit parmi les images <strong>actives</strong> déclarées par l’administrateur (ex. une variante avec un JDK, Go ou Rust). L’image officielle <code>ghcr.io/shadow-p99/cap-sandbox</code> contient Pi, Git, Python, uv, Node.js et npm ; une image dérivée part de celle-ci (<code>FROM ghcr.io/shadow-p99/cap-sandbox:&lt;version&gt;@sha256:…</code>). Changer d’image recrée la sandbox au run suivant.</p>
+
+      <h2>Services lancés par l’agent</h2>
+      <p>Pi démarre <strong>lui-même, quand il en a besoin</strong>, des bases de données, caches ou files de messages choisis dans un <strong>catalogue géré par l’administrateur</strong> (<em>Administration → Sandboxes &amp; previews</em>) : image, port, sonde de santé, variables par défaut, mémoire. Rien ne démarre tant que l’agent ne le demande pas ; aucun réglage côté utilisateur.</p>
+      <table>
+        <thead><tr><th>Catalogue initial</th><th>Image</th><th>Port</th></tr></thead>
+        <tbody>
+          <tr><td>PostgreSQL 17</td><td><code>postgres:17.11-alpine</code></td><td>5432</td></tr>
+          <tr><td>Redis 8</td><td><code>redis:8.6.8-alpine</code></td><td>6379</td></tr>
+          <tr><td>RabbitMQ 4 (avec console)</td><td><code>rabbitmq:4.3.7-management-alpine</code></td><td>5672</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>L’agent utilise l’outil <code>platform_services</code> : <em>start</em>, <em>stop</em>, <em>status</em>, <em>logs</em>, <em>catalog</em>. Dans les variables d’un service, <code>${NOM}</code> reprend une variable ou un secret du projet sans que l’agent en connaisse la valeur (ex. <code>POSTGRES_PASSWORD=${DB_PASSWORD}</code>).</li>
+        <li>Chaque service partage le réseau de <strong>sa</strong> sandbox : joignable sur <code>localhost</code> depuis celle-ci uniquement, sans plus d’accès sortant qu’elle. Conteneurs durcis et limités (mémoire, CPU, processus), 4 services au plus par sandbox par défaut.</li>
+        <li>Les services durent autant que la sandbox et disparaissent avec elle : données éphémères, l’agent refait migrations et données de test après un redémarrage.</li>
+      </ul>
+      <div class="callout"><p>Les services d’appui sont disponibles avec le provider Docker ; ils le seront sur Kubernetes (conteneurs annexes du Pod) avec la validation du chart Helm.</p></div>
+    </main>
+  </body>
+</html>

@@ -20,6 +20,9 @@
     "dev:infra": "docker compose -f infrastructure/docker/compose.yml --profile dev up -d postgres vault garage bootstrap vault-unsealer litellm mailpit mock-llm",
     "dev:infra:down": "docker compose -f infrastructure/docker/compose.yml --profile dev down",
     "e2e": "pnpm --filter e2e test",
+    "images:build": "./tools/build-images.sh",
+    "docs:dev": "pnpm --filter @cap/docs-site dev",
+    "docs:build": "pnpm --filter @cap/docs-site build",
     "test:infra:up": "./tools/test-infra/up.sh",
     "test:infra:down": "./tools/test-infra/down.sh"
   },

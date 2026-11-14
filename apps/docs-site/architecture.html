@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <title>Architecture</title>
+    <meta name="description" content="Composants de la plateforme, cycle de vie d'un run, sandboxes et réseau, checkpoints S3, passerelle LLM et quotas, broker Git, décisions d'architecture." />
+  </head>
+  <body>
+    <main>
+      <h1>Architecture</h1>
+      <p class="lead">Des services NestJS sans état coordonnés par PostgreSQL, des sandboxes éphémères dont l’état vit sur S3, et une passerelle par laquelle passe tout ce qui sort d’une sandbox.</p>
+
+      <pre><code>Navigateur ── nginx (web) ──► API NestJS (×N) ──► PostgreSQL (état, files de jobs, LISTEN/NOTIFY)
+                                   │                Vault (secrets)   Garage/S3 (checkpoints, pièces jointes)
+                                   ▼
+                              Worker NestJS ──► sandboxes Docker (Pi en RPC, réseau interne isolé)
+                                   │                     │  services d'appui (localhost de la sandbox)
+                                   ▼                     ▼
+                         Gateway (proxy LLM, egress filtré, lecture Git) ──► LiteLLM ──► fournisseurs
+                         Preview gateway (domaine distinct) ──► ports des sandboxes</code></pre>
+
+      <h2>Composants</h2>
+      <table>
+        <thead><tr><th>Composant</th><th>Rôle</th></tr></thead>
+        <tbody>
+          <tr><td><strong>web</strong></td><td>Angular 22 (signals, zoneless) et Tailwind 4, servi par nginx avec une CSP stricte ; nginx répartit vers les instances de l’API en résolvant le DNS à chaque requête.</td></tr>
+          <tr><td><strong>api</strong></td><td>REST <code>/api/v1</code> (OpenAPI), sessions, SSO, administration, flux SSE. Sans état : plusieurs instances.</td></tr>
+          <tr><td><strong>worker</strong></td><td>Exécute les runs (jobs pris en base avec <code>SKIP LOCKED</code>), pilote les sandboxes, checkpoints, broker Git, purges et maintenance.</td></tr>
+          <tr><td><strong>gateway</strong></td><td>Seule sortie des sandboxes : proxy LLM (réservation et facturation des crédits), proxy HTTP(S) à liste blanche, lecture Git avec jeton de run.</td></tr>
+          <tr><td><strong>preview</strong></td><td>Expose les ports des sandboxes sur un domaine distinct, après échange d’un jeton.</td></tr>
+          <tr><td><strong>PostgreSQL 18</strong></td><td>Source de vérité, files de jobs, verrous, notifications temps réel (<code>LISTEN/NOTIFY</code>).</td></tr>
+          <tr><td><strong>Vault</strong></td><td>Secrets (KV), une identité AppRole et une politique par service.</td></tr>
+          <tr><td><strong>Garage (S3)</strong></td><td>Checkpoints des workspaces, pièces jointes, état de Pi.</td></tr>
+          <tr><td><strong>LiteLLM</strong></td><td>Accès unifié aux fournisseurs de modèles.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Cycle de vie d’un run</h2>
+      <ol class="steps">
+        <li><h3>Message</h3><p>L’API enregistre le message et crée un job (ou le met en file si un run est en cours).</p></li>
+        <li><h3>Sandbox</h3><p>Le worker prend le job, crée ou réveille la sandbox, restaure le dernier checkpoint depuis S3, écrit la configuration de Pi (skills, MCP, catalogue des services) et lance le script de préparation si nécessaire.</p></li>
+        <li><h3>Pi</h3><p>Pi tourne en mode RPC ; l’extension <em>platform-bridge</em> lui fournit les outils de la plateforme (Git, services, approbations). Ses appels LLM passent par la gateway avec un jeton de run.</p></li>
+        <li><h3>Flux</h3><p>Les événements (texte, outils, fichiers) sont masqués, persistés et diffusés en SSE à toutes les instances de l’API via <code>NOTIFY</code>.</p></li>
+        <li><h3>Checkpoint</h3><p>En fin de run, le worker pousse un checkpoint incrémental vers S3. La sandbox s’arrête après le délai d’inactivité ; elle peut être recréée n’importe où à partir du checkpoint.</p></li>
+      </ol>
+
+      <h2>Points clés</h2>
+      <ul>
+        <li><strong>Reprise</strong> : si un worker disparaît, son verrou expire et un autre reprend le run depuis le dernier état connu.</li>
+        <li><strong>Quotas</strong> : chaque appel LLM réserve son coût maximal en transaction avant d’être transmis ; le coût réel est facturé à la réponse. Aucun dépassement possible, même en parallèle.</li>
+        <li><strong>Git</strong> : la lecture passe par la gateway ; l’écriture par le broker du worker, après approbation d’une opération figée (commit, branche, cible).</li>
+        <li><strong>Réseau</strong> : les sandboxes sont sur un réseau interne sans route ; leurs services d’appui partagent leur espace réseau.</li>
+      </ul>
+
+      <h2>Décisions d’architecture</h2>
+      <p>Les ADR sont dans <a href="https://github.com/Shadow-p99/coding-platform/tree/main/docs/adr"><code>docs/adr</code></a> :</p>
+      <ul>
+        <li>0001 Architecture générale · 0002 Stack et versions · 0003 Coordination PostgreSQL</li>
+        <li>0004 Intégration de Pi · 0005 Gateway LLM et quotas · 0006 Checkpoints S3</li>
+        <li>0007 Broker Git · 0008 Authentification et sessions · 0009 Vault</li>
+        <li>0010 Sandbox et réseau · 0011 Previews · 0012 Fédération d’identité</li>
+      </ul>
+    </main>
+  </body>
+</html>

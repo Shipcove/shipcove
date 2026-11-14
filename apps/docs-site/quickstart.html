@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <title>Démarrage rapide</title>
+    <meta name="description" content="Installer et lancer Coding Agent Platform avec Docker Compose à partir des images publiées sur ghcr.io." />
+  </head>
+  <body>
+    <main>
+      <h1>Démarrage rapide</h1>
+      <p class="lead">Lancez la plateforme sur une machine avec Docker, à partir des images publiées sur le registre GitHub, en une dizaine de minutes.</p>
+
+      <h2>Prérequis</h2>
+      <ul>
+        <li>Linux (ou macOS avec Docker Desktop) avec <strong>Docker 24+</strong> et <strong>Docker Compose v2</strong> ;</li>
+        <li><code>git</code> et <code>openssl</code> ;</li>
+        <li>au moins <strong>4 cœurs, 8 Go de RAM et 30 Go de disque</strong> (davantage selon le nombre de sandboxes simultanées : 2 CPU / 4 Go chacune par défaut) ;</li>
+        <li>une clé d’API d’un fournisseur de modèles (Anthropic, OpenAI…) — ou le fournisseur factice pour un premier essai.</li>
+      </ul>
+
+      <h2>Installation</h2>
+      <ol class="steps">
+        <li>
+          <h3>Récupérer les fichiers de déploiement</h3>
+          <p>Le dépôt contient le fichier Compose, les scripts d’amorçage et la configuration de LiteLLM ; les applications elles-mêmes sont téléchargées sous forme d’images.</p>
+          <pre><code>git clone https://github.com/Shadow-p99/coding-platform.git
+cd coding-platform/infrastructure/docker</code></pre>
+        </li>
+        <li>
+          <h3>Configurer</h3>
+          <pre><code>cp .env.example .env</code></pre>
+          <p>Dans <code>.env</code>, renseignez au minimum :</p>
+          <pre><code># Images publiées sur ghcr.io
+CAP_REGISTRY=ghcr.io/shadow-p99/
+CAP_VERSION=0.1.0
+CAP_SANDBOX_IMAGE=ghcr.io/shadow-p99/cap-sandbox:0.1.0
+
+# Administrateur initial (créé au premier démarrage s'il n'en existe aucun)
+CAP_ADMIN_EMAIL=admin@exemple.com
+CAP_ADMIN_PASSWORD=un-mot-de-passe-long-et-unique
+
+# Groupe propriétaire du socket Docker de l'hôte (valeur donnée par : stat -c %g /var/run/docker.sock)
+CAP_DOCKER_GID=989</code></pre>
+          <div class="callout"><p>Remplacez <code>0.1.0</code> par la dernière version publiée (voir les <em>Packages</em> du dépôt GitHub). Toutes les images d’une installation doivent porter la même version.</p></div>
+        </li>
+        <li>
+          <h3>Générer les secrets d’amorçage</h3>
+          <pre><code>./scripts/init-secrets.sh</code></pre>
+          <p>Le script crée <code>.secrets/</code> (mots de passe PostgreSQL, clés Garage et LiteLLM, identifiants AppRole de Vault). Il est idempotent : relancé, il ne remplace rien. Ce répertoire n’est jamais versionné ; protégez-le et sauvegardez-le.</p>
+        </li>
+        <li>
+          <h3>Télécharger les images et démarrer</h3>
+          <pre><code>docker compose pull
+docker pull ghcr.io/shadow-p99/cap-sandbox:0.1.0
+docker compose up -d</code></pre>
+          <p>Au premier démarrage, Vault est initialisé et déverrouillé, le stockage S3 (Garage) est configuré et les migrations de base de données sont appliquées. Vérifiez l’état :</p>
+          <pre><code>docker compose ps
+curl -s http://localhost:8080/api/v1/health/ready</code></pre>
+        </li>
+        <li>
+          <h3>Première connexion</h3>
+          <p>Ouvrez <a href="http://localhost:8080">http://localhost:8080</a> et connectez-vous avec <code>CAP_ADMIN_EMAIL</code> / <code>CAP_ADMIN_PASSWORD</code>. Les administrateurs doivent activer la double authentification (TOTP) dès la première connexion : scannez le QR code avec votre application d’authentification et conservez les codes de récupération.</p>
+        </li>
+        <li>
+          <h3>Déclarer un modèle</h3>
+          <p><strong>Administration → Modèles (LiteLLM)</strong> : ajoutez un modèle, par exemple :</p>
+          <table>
+            <thead><tr><th>Champ</th><th>Exemple</th></tr></thead>
+            <tbody>
+              <tr><td>Modèle LiteLLM</td><td><code>anthropic/claude-sonnet-4-5</code> (identifiant au format LiteLLM)</td></tr>
+              <tr><td>Clé d’API</td><td>votre clé du fournisseur (stockée dans Vault, jamais réaffichée)</td></tr>
+              <tr><td>Fenêtre de contexte / sortie max.</td><td>selon le modèle</td></tr>
+              <tr><td>Coefficients</td><td>coût relatif des tokens d’entrée, de sortie et de cache (base des quotas)</td></tr>
+            </tbody>
+          </table>
+          <p>Cochez <em>par défaut</em>, enregistrez puis utilisez <strong>Tester</strong> : la plateforme envoie une requête réelle via LiteLLM.</p>
+        </li>
+        <li>
+          <h3>Créer une équipe, un projet et un workspace</h3>
+          <ul>
+            <li><strong>Équipes</strong> → nouvelle équipe, puis ajoutez ou invitez ses membres (l’invitation par email nécessite un serveur SMTP : <em>Administration → Notifications &amp; SMTP</em>) ;</li>
+            <li><strong>Projets</strong> → nouveau projet <em>vierge</em> (ou lié à un dépôt, après avoir configuré une <a href="/git.html">forge Git</a>) ;</li>
+            <li>dans le projet, créez un <strong>workspace</strong> et écrivez votre première demande à Pi.</li>
+          </ul>
+        </li>
+      </ol>
+
+      <h2>Essayer sans fournisseur de modèles</h2>
+      <p>Le profil <code>dev</code> ajoute un fournisseur LLM factice (scénarisable, pour la recette) et <strong>Mailpit</strong>, qui capture les emails :</p>
+      <pre><code>docker compose --profile dev up -d</code></pre>
+      <p>Déclarez alors le modèle <code>openai/mock-model</code> avec le paramètre <code>api_base</code> = <code>http://mock-llm:4010/v1</code> et une clé quelconque. Les emails sont visibles sur <a href="http://localhost:8025">http://localhost:8025</a> (configurez le SMTP <code>mailpit:1025</code> dans l’administration).</p>
+      <div class="callout warn"><p>Le profil <code>dev</code> n’est pas destiné à la production.</p></div>
+
+      <h2>Mettre à jour</h2>
+      <pre><code># dans .env : CAP_VERSION et CAP_SANDBOX_IMAGE vers la nouvelle version
+git pull
+docker compose pull
+docker pull ghcr.io/shadow-p99/cap-sandbox:&lt;version&gt;
+docker compose up -d</code></pre>
+      <p>Les migrations sont appliquées automatiquement par le service <code>migrate</code> avant le démarrage des API. Les sandboxes en cours conservent leur image jusqu’à leur prochain redémarrage.</p>
+
+      <h2>Et ensuite ?</h2>
+      <ul>
+        <li><a href="/installation.html">Installation et configuration</a> : URL publique, TLS, previews, ports, répliques ;</li>
+        <li><a href="/identite.html">Identité et SSO</a> pour connecter votre annuaire ;</li>
+        <li><a href="/git.html">Forges Git</a> pour travailler sur vos dépôts ;</li>
+        <li><a href="/exploitation.html">Exploitation</a> avant une mise en production.</li>
+      </ul>
+    </main>
+  </body>
+</html>

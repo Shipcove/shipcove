@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <title>Sécurité</title>
+    <meta name="description" content="Modèle de sécurité : isolation des sandboxes, réseau et egress, secrets, Git sans jeton dans la sandbox, sessions et navigateur, confidentialité, points d'attention." />
+  </head>
+  <body>
+    <main>
+      <h1>Sécurité</h1>
+      <p class="lead">Principe : le code exécuté par l’agent n’est pas de confiance. La sandbox ne détient aucun secret permanent et ne peut rien publier sans approbation humaine.</p>
+
+      <h2>Sandboxes</h2>
+      <ul>
+        <li>Utilisateur non privilégié, <code>cap-drop ALL</code>, <code>no-new-privileges</code>, limites de CPU, mémoire, processus et disque.</li>
+        <li>Réseau interne <strong>sans route</strong> vers Internet ni vers le backend (PostgreSQL, Vault, S3…).</li>
+        <li>Sortie uniquement via le proxy de la gateway, avec une <strong>liste blanche</strong> de domaines (registres de paquets…). Les forges Git y sont refusées : <code>git push</code>, <code>gh</code>, <code>glab</code> ne fonctionnent pas.</li>
+        <li>Services d’appui : mêmes durcissements, aucun accès réseau supplémentaire.</li>
+      </ul>
+
+      <h2>Jetons et secrets</h2>
+      <ul>
+        <li>La sandbox reçoit un <strong>jeton de run</strong> à durée limitée, utilisable seulement auprès de la gateway (LLM, lecture Git, outils de la plateforme).</li>
+        <li>Clés de modèles, jetons Git, secrets SSO et MCP sont dans <strong>Vault</strong> ; l’API ne les renvoie jamais.</li>
+        <li>Les secrets de projet sont <strong>masqués</strong> dans les sorties, le flux temps réel, la base et retirés des requêtes vers le fournisseur LLM.</li>
+        <li>Chaque service a sa propre identité Vault et une politique limitée à ses chemins.</li>
+      </ul>
+
+      <h2>Git</h2>
+      <p>Publication par le broker, <strong>après approbation de l’opération exacte</strong> (commit figé, branche, cible) ; une approbation est à usage unique et invalidée si la branche a bougé. Un jeton n’est présenté qu’à l’hôte de sa connexion ; HTTPS est obligatoire sauf exception explicite de l’administrateur.</p>
+
+      <h2>Comptes et navigateur</h2>
+      <ul>
+        <li>Mots de passe Argon2id, MFA TOTP (obligatoire pour les administrateurs), verrouillage et limitation de débit.</li>
+        <li>Sessions côté serveur, cookies <code>HttpOnly</code> / <code>SameSite</code>, protection CSRF par double soumission.</li>
+        <li>CSP stricte sans script inline, en-têtes de sécurité, previews sur un domaine distinct avec jeton.</li>
+        <li>SSO : PKCE, état à usage unique, assertions SAML signées ; jamais de fusion de comptes par email.</li>
+      </ul>
+
+      <h2>Fichiers</h2>
+      <p>Pièces jointes et archives contrôlées (type réel, taille décompressée, nombre d’entrées, chemins), analyse antivirus par ClamAV si <code>CLAMAV_HOST</code> est configuré, <strong>bloquante en cas d’indisponibilité</strong>, exécutables refusés.</p>
+
+      <h2>Confidentialité</h2>
+      <p>Une conversation n’est lisible que par son propriétaire et les personnes avec qui il l’a partagée nommément — <strong>les administrateurs plateforme compris</strong>. Les actions d’administration sont auditées ; la rétention est configurable avec gel légal.</p>
+
+      <h2>Points d’attention en production</h2>
+      <div class="callout danger">
+        <ul>
+          <li><strong>Socket Docker</strong> : le worker y a accès, ce qui équivaut à un accès root à l’hôte. Dédiez l’hôte à la plateforme ; à terme proxy de socket, gVisor ou provider Kubernetes.</li>
+          <li><strong>Déverrouillage de Vault</strong> : les clés sont sur disque (<code>.secrets/</code>). Protégez-les ou utilisez un auto-unseal KMS.</li>
+          <li><strong>TLS</strong> : terminé par votre reverse proxy ; le trafic interne Compose n’est pas chiffré.</li>
+          <li><strong>Secrets de projet</strong> : utilisables par l’agent de tout membre du projet ; réservez-y des identifiants de développement.</li>
+        </ul>
+      </div>
+      <p>Pour signaler une vulnérabilité, ouvrez un avis de sécurité privé sur le dépôt GitHub plutôt qu’un ticket public.</p>
+    </main>
+  </body>
+</html>

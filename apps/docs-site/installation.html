@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <title>Installation</title>
+    <meta name="description" content="Installer la plateforme avec Docker Compose et les images publiées : prérequis, variables .env, reverse proxy TLS, domaine des previews, mises à jour." />
+  </head>
+  <body>
+    <main>
+      <h1>Installation</h1>
+      <p class="lead">Déploiement de référence sur un hôte Docker, à partir des images publiées sur <code>ghcr.io/shadow-p99</code>. Pour un premier essai, suivez d’abord le <a href="/quickstart.html">démarrage rapide</a>.</p>
+
+      <h2>Prérequis</h2>
+      <ul>
+        <li>Linux x86_64, Docker 24+ avec Compose v2, <code>openssl</code>, <code>git</code> ;</li>
+        <li>4 cœurs, 8 Go de RAM et 30 Go de disque au minimum, plus les ressources des sandboxes (2 Go et 1 CPU chacune par défaut) ;</li>
+        <li>deux noms DNS : l’application (ex. <code>code.exemple.com</code>) et un domaine générique pour les previews (ex. <code>*.preview.exemple.com</code>).</li>
+      </ul>
+
+      <h2>Images</h2>
+      <table>
+        <thead><tr><th>Image</th><th>Rôle</th></tr></thead>
+        <tbody>
+          <tr><td><code>ghcr.io/shadow-p99/cap-web</code></td><td>Interface Angular et nginx (point d’entrée HTTP)</td></tr>
+          <tr><td><code>ghcr.io/shadow-p99/cap-api</code></td><td>API REST, authentification, flux temps réel (aussi utilisée pour les migrations)</td></tr>
+          <tr><td><code>ghcr.io/shadow-p99/cap-worker</code></td><td>Orchestration des runs, sandboxes, checkpoints, broker Git</td></tr>
+          <tr><td><code>ghcr.io/shadow-p99/cap-gateway</code></td><td>Proxy LLM et quotas, egress filtré, lecture Git</td></tr>
+          <tr><td><code>ghcr.io/shadow-p99/cap-preview</code></td><td>Accès aux previews</td></tr>
+          <tr><td><code>ghcr.io/shadow-p99/cap-sandbox</code></td><td>Image de sandbox (Pi, Git, Python, Node.js)</td></tr>
+        </tbody>
+      </table>
+      <p>Toutes les images portent la même version (<code>0.1.0</code>…). Épinglez-la ; ne déployez pas <code>latest</code> en production.</p>
+
+      <h2>Configuration (<code>.env</code>)</h2>
+      <pre><code>git clone https://github.com/Shadow-p99/coding-platform.git
+cd coding-platform/infrastructure/docker
+cp .env.example .env</code></pre>
+      <table>
+        <thead><tr><th>Variable</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>CAP_REGISTRY</code></td><td><code>ghcr.io/shadow-p99/</code> (avec la barre finale). Vide = images construites localement.</td></tr>
+          <tr><td><code>CAP_VERSION</code></td><td>Version des images de la plateforme.</td></tr>
+          <tr><td><code>CAP_SANDBOX_IMAGE</code></td><td>Image de sandbox par défaut, ex. <code>ghcr.io/shadow-p99/cap-sandbox:0.1.0</code>.</td></tr>
+          <tr><td><code>CAP_PUBLIC_URL</code></td><td>URL publique, ex. <code>https://code.exemple.com</code> (liens des emails, URL de retour SSO et OAuth).</td></tr>
+          <tr><td><code>CAP_PREVIEW_DOMAIN</code>, <code>CAP_PREVIEW_SCHEME</code>, <code>CAP_PREVIEW_PORT</code></td><td>Domaine des previews, ex. <code>preview.exemple.com</code>, <code>https</code>, <code>443</code>.</td></tr>
+          <tr><td><code>CAP_COOKIE_SECURE</code></td><td><code>true</code> derrière HTTPS (obligatoire en production).</td></tr>
+          <tr><td><code>CAP_HTTP_BIND</code>, <code>CAP_HTTP_PORT</code>, <code>CAP_PREVIEW_BIND</code></td><td>Interfaces et port d’écoute ; <code>127.0.0.1</code> par défaut, derrière le reverse proxy.</td></tr>
+          <tr><td><code>CAP_DOCKER_GID</code></td><td>Groupe du socket Docker : <code>stat -c %g /var/run/docker.sock</code>.</td></tr>
+          <tr><td><code>CAP_API_REPLICAS</code></td><td>Nombre d’instances de l’API (2 par défaut).</td></tr>
+          <tr><td><code>CAP_ADMIN_EMAIL</code>, <code>CAP_ADMIN_PASSWORD</code></td><td>Administrateur initial, créé seulement si aucun administrateur n’existe.</td></tr>
+        </tbody>
+      </table>
+      <div class="callout"><p>Le fichier <code>.env</code> ne contient aucun secret d’infrastructure. <code>./scripts/init-secrets.sh</code> génère les secrets d’amorçage dans <code>.secrets/</code> (jamais versionné, à sauvegarder) ; le reste est créé dans Vault au premier démarrage.</p></div>
+
+      <h2>Démarrage</h2>
+      <pre><code>./scripts/init-secrets.sh
+docker compose pull
+docker pull ghcr.io/shadow-p99/cap-sandbox:0.1.0
+docker compose up -d
+docker compose ps</code></pre>
+      <p>L’ordre est géré par Compose : PostgreSQL, Vault (initialisé et déverrouillé), Garage, amorçage (politiques Vault, buckets), migrations, puis les services applicatifs. Le profil <code>dev</code> (<code>--profile dev</code>) ajoute Mailpit et un LLM factice : ne l’activez pas en production.</p>
+
+      <h2>Reverse proxy et TLS</h2>
+      <p>Placez un reverse proxy TLS (Caddy, Traefik, nginx…) devant les deux ports : l’application sur <code>CAP_HTTP_PORT</code> (8080) et les previews sur <code>CAP_PREVIEW_PORT</code> (8090). Il doit transmettre les en-têtes <code>Host</code> et <code>X-Forwarded-*</code> et ne pas mettre en tampon les flux SSE.</p>
+      <pre><code>code.exemple.com {
+  reverse_proxy 127.0.0.1:8080 {
+    flush_interval -1
+  }
+}
+*.preview.exemple.com {
+  tls { dns &lt;fournisseur&gt; }
+  reverse_proxy 127.0.0.1:8090
+}</code></pre>
+      <div class="callout warn"><p>Les previews doivent rester sur un domaine <strong>distinct</strong> de l’application (pas un sous-domaine qui partagerait ses cookies) : le code qu’exécute une preview n’est pas de confiance.</p></div>
+
+      <h2>Emails</h2>
+      <p>Configurez le serveur SMTP dans <strong>Administration → Notifications &amp; SMTP</strong> (mot de passe stocké dans Vault) et envoyez un email de test. Sans SMTP, invitations et réinitialisations de mot de passe ne partent pas.</p>
+
+      <h2>Mettre à jour</h2>
+      <ol>
+        <li>Lisez les notes de version ; sauvegardez PostgreSQL, Vault et <code>.secrets/</code> (voir <a href="/exploitation.html#sauvegardes">Exploitation</a>).</li>
+        <li>Changez <code>CAP_VERSION</code> et <code>CAP_SANDBOX_IMAGE</code> dans <code>.env</code>.</li>
+        <li><code>docker compose pull &amp;&amp; docker pull &lt;nouvelle image de sandbox&gt;</code></li>
+        <li><code>docker compose up -d</code> : les migrations s’appliquent avant le redémarrage de l’API et du worker.</li>
+      </ol>
+      <p>Les runs en cours sont repris après le redémarrage du worker (verrous en base, checkpoints S3). Les sandboxes existantes gardent leur image jusqu’à leur prochaine création.</p>
+
+      <h2>Kubernetes</h2>
+      <p>Un provider Kubernetes et un chart Helm sont en préparation ; la cible validée aujourd’hui est Docker Compose.</p>
+    </main>
+  </body>
+</html>

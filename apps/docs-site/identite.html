@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <title>Identité et SSO</title>
+    <meta name="description" content="Comptes locaux, MFA, OIDC/Keycloak, SAML 2.0, LDAP/Active Directory, OAuth GitHub et GitLab : configuration et règles de rattachement des comptes." />
+  </head>
+  <body>
+    <main>
+      <h1>Identité et SSO</h1>
+      <p class="lead">La plateforme a sa propre gestion des identités ; les fournisseurs externes sont optionnels et se gèrent dans <strong>Administration → IAM &amp; connexion</strong>.</p>
+
+      <h2>Comptes locaux et MFA</h2>
+      <ul>
+        <li>Mots de passe hachés en Argon2id, verrouillage temporaire après échecs, limitation par adresse IP.</li>
+        <li>Double authentification <strong>TOTP</strong> avec codes de récupération ; politique : facultative, obligatoire pour les administrateurs (défaut) ou pour tous.</li>
+        <li>Inscriptions ouvertes ou fermées, vérification d’email, invitations, mot de passe oublié.</li>
+        <li>Sessions côté serveur, révocables individuellement ou globalement.</li>
+      </ul>
+
+      <h2>Fournisseurs d’identité</h2>
+      <p>Chaque fournisseur s’<strong>enregistre</strong> (désactivé), se <strong>teste</strong> puis s’<strong>active</strong>. Les secrets (secret client, mot de passe de liaison, clé SAML) sont écrits dans Vault et jamais réaffichés. La console affiche l’URL de retour à déclarer chez le fournisseur : <code>https://&lt;votre-domaine&gt;/api/v1/auth/sso/&lt;id&gt;/callback</code>.</p>
+
+      <h3>OIDC / Keycloak</h3>
+      <p>Client confidentiel, flux standard, PKCE S256.</p>
+      <pre><code>{
+  "issuer": "https://sso.exemple.com/realms/entreprise",
+  "clientId": "coding-platform",
+  "scopes": ["openid", "profile", "email"],
+  "mfa": "auto"
+}</code></pre>
+
+      <h3>SAML 2.0</h3>
+      <p>Téléchargez les métadonnées du fournisseur de services (lien dans la console) et importez-les chez votre fournisseur ; les assertions doivent être signées. Préférez un NameID persistant.</p>
+      <pre><code>{
+  "entryPoint": "https://sso.exemple.com/realms/entreprise/protocol/saml",
+  "issuer": "coding-platform",
+  "idpCert": "MIIC…",
+  "emailAttribute": "email",
+  "nameAttribute": "displayName",
+  "mfa": "auto"
+}</code></pre>
+
+      <h3>LDAP / Active Directory</h3>
+      <pre><code>{
+  "url": "ldaps://ldap.exemple.com",
+  "bindDn": "cn=svc-coding,ou=services,dc=exemple,dc=com",
+  "searchBase": "ou=people,dc=exemple,dc=com",
+  "searchFilter": "(|(uid={{username}})(sAMAccountName={{username}}))",
+  "usernameAttribute": "uid",
+  "emailAttribute": "mail",
+  "nameAttribute": "cn"
+}</code></pre>
+      <p>Le compte de service n’a besoin que de la lecture. L’identifiant saisi est échappé dans le filtre ; un mot de passe vide est refusé (pas de liaison anonyme).</p>
+
+      <h3>GitHub et GitLab</h3>
+      <p>Pour la <strong>connexion</strong> à la plateforme : application OAuth dédiée, éventuellement limitée à des organisations GitHub ou des groupes GitLab. (Le rattachement de comptes Git pour travailler sur les dépôts est distinct : voir <a href="/git.html">Forges Git</a>.)</p>
+
+      <h2>Politique MFA des fournisseurs</h2>
+      <table>
+        <thead><tr><th>Valeur de <code>mfa</code></th><th>Effet</th></tr></thead>
+        <tbody>
+          <tr><td><code>auto</code></td><td>La MFA locale s’applique, sauf si le fournisseur atteste une MFA (OIDC <code>amr</code>/<code>acr</code>, SAML <code>AuthnContextClassRef</code>).</td></tr>
+          <tr><td><code>require_idp</code></td><td>Connexion refusée sans MFA attestée par le fournisseur.</td></tr>
+          <tr><td><code>trust_idp</code></td><td>Le fournisseur impose lui-même la MFA.</td></tr>
+          <tr><td><code>local</code></td><td>Toujours la politique locale (LDAP, GitHub, GitLab).</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Rattachement des comptes</h2>
+      <ul>
+        <li>Une identité externe est liée par l’identifiant stable du fournisseur, <strong>jamais par l’adresse email</strong>.</li>
+        <li>Première connexion : un compte est créé si la création automatique est activée, sauf si l’adresse appartient déjà à un compte. L’utilisateur se connecte alors avec ce compte et rattache l’identité dans <strong>Paramètres → Sécurité → Identités de connexion</strong>.</li>
+        <li>La dernière méthode de connexion d’un compte ne peut pas être retirée.</li>
+      </ul>
+    </main>
+  </body>
+</html>

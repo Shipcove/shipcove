@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <title>Forges Git</title>
+    <meta name="description" content="Configurer GitHub et GitLab (SaaS ou auto-hébergés) par OAuth, rattachement des comptes utilisateurs, publication après approbation." />
+  </head>
+  <body>
+    <main>
+      <h1>Forges Git</h1>
+      <p class="lead">Les utilisateurs rattachent leurs comptes GitHub / GitLab <strong>par OAuth</strong>, via les forges déclarées par l’administrateur. Les jetons restent dans Vault et n’entrent jamais dans les sandboxes.</p>
+
+      <h2>Déclarer une forge</h2>
+      <p><strong>Administration → Forges Git</strong>, une application OAuth par forge :</p>
+      <table>
+        <thead><tr><th>Forge</th><th>Où créer l’application</th></tr></thead>
+        <tbody>
+          <tr><td>GitHub.com</td><td>Settings → Developer settings → OAuth Apps → New OAuth App</td></tr>
+          <tr><td>GitHub Enterprise Server</td><td>Même chemin, sur votre instance</td></tr>
+          <tr><td>GitLab.com</td><td>Paramètres → Applications (application <strong>confidentielle</strong>)</td></tr>
+          <tr><td>GitLab auto-hébergé</td><td>Admin Area → Applications → New application (confidentielle)</td></tr>
+        </tbody>
+      </table>
+      <ol class="steps">
+        <li><h3>Ajouter</h3><p>Type, nom affiché, hôte (fixe pour les offres SaaS), Client ID, secret client (Vault).</p></li>
+        <li><h3>Déclarer chez la forge</h3><p>L’URL de rappel affichée par la console (<code>https://&lt;votre-domaine&gt;/api/v1/me/git-connections/oauth/&lt;id&gt;/callback</code>) et les portées : GitHub <code>repo read:user user:email read:org</code>, GitLab <code>api read_user read_repository write_repository</code>.</p></li>
+        <li><h3>Tester</h3><p>La console vérifie que la forge répond et que l’identifiant et le secret client sont acceptés.</p></li>
+        <li><h3>Activer</h3><p>La forge apparaît dans <strong>Paramètres → Connexions Git</strong> des utilisateurs.</p></li>
+      </ol>
+      <p>Supprimer une forge révoque les connexions qui en dépendent. Les jetons d’accès personnels sont désactivés par défaut (réglage <em>Autoriser les jetons d’accès personnels</em>).</p>
+
+      <h2>Côté utilisateur</h2>
+      <ul>
+        <li><strong>Connecter via …</strong> : autorisation sur la forge (PKCE, état à usage unique), retour automatique.</li>
+        <li>Les jetons qui expirent (GitLab : 2 h) sont <strong>renouvelés automatiquement</strong> ; une connexion expirée côté forge affiche <em>Reconnecter</em>.</li>
+        <li>Un projet se crée ensuite à partir d’un dépôt accessible avec la connexion choisie.</li>
+      </ul>
+
+      <h2>Lecture et publication</h2>
+      <ul>
+        <li><strong>Lecture</strong> : la sandbox clone et récupère via la passerelle, avec un jeton de run temporaire ; le jeton Git n’y entre jamais.</li>
+        <li><strong>Publication</strong> : push, PR/MR, fusion, suppression de branche passent par le broker <strong>après approbation</strong> de l’opération exacte (commit figé à la demande). Une approbation ne sert qu’une fois.</li>
+        <li>L’URL de clonage renvoyée par la forge doit désigner le même hôte que la connexion : un jeton n’est jamais présenté à un autre hôte.</li>
+      </ul>
+
+      <h2>Forges internes en HTTP</h2>
+      <p>HTTPS est obligatoire. Une forge interne en HTTP (recette) n’est joignable que si l’administrateur liste <code>hôte[:port]</code> dans <strong>Forges Git → Réglages Git</strong>. Les jetons transitent alors en clair sur ce réseau : à réserver aux réseaux de confiance.</p>
+    </main>
+  </body>
+</html>

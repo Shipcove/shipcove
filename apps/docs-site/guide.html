@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <title>Guide utilisateur</title>
+    <meta name="description" content="Travailler avec Pi : workspaces, conversation, file d'attente, mode Plan, modifications, retour en arrière, pièces jointes, Git, previews, partage et quotas." />
+  </head>
+  <body>
+    <main>
+      <h1>Guide utilisateur</h1>
+      <p class="lead">Tout ce qu’il faut savoir pour confier des tâches à Pi et garder la main sur le résultat.</p>
+
+      <h2>Projets et workspaces</h2>
+      <p>Un <strong>projet</strong> appartient à une équipe ; il est lié à un dépôt Git ou <em>vierge</em>. Dans un projet, chaque membre crée ses <strong>workspaces</strong> personnels : un workspace = une tâche, avec ses fichiers, sa conversation unique et sa sandbox. Le partage du code entre workspaces passe par Git.</p>
+      <ul>
+        <li>À la création, un workspace lié à un dépôt est cloné (via la passerelle de la plateforme : aucun jeton n’entre dans la sandbox) sur la branche choisie.</li>
+        <li>La sandbox démarre au premier message et s’arrête après une période d’inactivité (15 minutes par défaut). Ses fichiers et l’état de Pi sont restaurés au message suivant.</li>
+        <li>Un workspace peut être <strong>mis en veille</strong>, <strong>archivé</strong> ou <strong>supprimé</strong> depuis la page du projet.</li>
+      </ul>
+
+      <h2>La conversation</h2>
+      <h3>Envoyer une demande</h3>
+      <p>Écrivez votre demande et validez avec <kbd>Entrée</kbd> (<kbd>Maj</kbd>+<kbd>Entrée</kbd> pour un retour à la ligne). La réponse de Pi s’affiche en continu ; chaque <strong>appel d’outil</strong> (commande, lecture, écriture…) apparaît dans une carte repliable avec sa sortie, sa durée et les fichiers touchés.</p>
+      <h3>Pendant que Pi travaille</h3>
+      <ul>
+        <li><strong>File d’attente</strong> : un message envoyé pendant une génération est mis en file et affiché au-dessus de la zone de saisie ; il est traité automatiquement à la fin de la tâche en cours.</li>
+        <li><strong>Interrompre</strong> : le bouton carré arrête Pi proprement ; ce qui a été écrit est conservé.</li>
+      </ul>
+      <h3>Zone de saisie</h3>
+      <table>
+        <thead><tr><th>Élément</th><th>Usage</th></tr></thead>
+        <tbody>
+          <tr><td><strong>+</strong></td><td>Ajouter des fichiers ou des photos (<kbd>Ctrl</kbd>+<kbd>U</kbd>), commandes slash, connecteurs (MCP).</td></tr>
+          <tr><td><strong>Modèle · effort</strong></td><td>Choix du modèle (parmi ceux autorisés pour votre équipe) et du niveau de raisonnement.</td></tr>
+          <tr><td><strong>Mode</strong></td><td><em>Autonome</em> (par défaut) ou <em>Plan</em> : Pi n’a alors que des outils de lecture et propose un plan sans rien modifier.</td></tr>
+          <tr><td><strong>Anneau</strong></td><td>Utilisation de vos quotas en pourcentage (orange à partir de 70 %, rouge à partir de 90 %).</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Suivre et contrôler les modifications</h2>
+      <h3>Panneau « Modifications »</h3>
+      <p>Le panneau latéral liste les fichiers ajoutés, modifiés ou supprimés, avec leurs compteurs de lignes, et affiche pour chacun un <strong>diff de type Git</strong> (unifié ou côte à côte). Trois portées : depuis le début de la conversation, depuis le dernier run, ou par rapport au dernier commit Git.</p>
+      <h3>Explorateur de fichiers</h3>
+      <p>L’icône de fichier ouvre l’explorateur (recherche, arborescence, onglets). L’édition manuelle est désactivée par défaut ; si l’administrateur l’active, une sauvegarde est refusée si Pi a modifié le fichier entre-temps (aucun écrasement silencieux).</p>
+      <h3>Revenir en arrière</h3>
+      <p>Au survol d’un de vos messages, <strong>Revenir avant ce message</strong> restaure les fichiers du workspace dans leur état d’avant ce run. La conversation est conservée, Pi en est informé au message suivant, et le message « Fichiers restaurés… » propose <strong>Annuler</strong>. Indisponible pendant que Pi travaille.</p>
+
+      <h2>Pièces jointes</h2>
+      <p>Glissez-déposez, collez ou ajoutez des fichiers (20 Mo et 10 fichiers par message par défaut). Les images sont transmises au modèle s’il les accepte ; les autres fichiers sont déposés dans la sandbox (<code>/workspace/.cap/attachments/…</code>, hors Git). Les exécutables, les archives dangereuses ou trop volumineuses une fois décompressées et les types incohérents sont refusés.</p>
+
+      <h2>Services, environnement et dépendances</h2>
+      <p>Pi lance lui-même, quand il en a besoin, les services approuvés par l’administrateur (PostgreSQL, Redis, RabbitMQ…), joignables sur <code>localhost</code> dans la sandbox. Les variables, secrets et le script de préparation du projet sont gérés par ses administrateurs : voir <a href="/environnement.html">Environnement et services</a>.</p>
+
+      <h2>Git : publier le travail</h2>
+      <ol>
+        <li>Rattachez votre compte : <strong>Paramètres → Connexions Git → Connecter via …</strong> (OAuth, forges configurées par l’administrateur).</li>
+        <li>Demandez à Pi de committer et de publier : il crée une <strong>demande d’approbation</strong> (branche, commits, diff) au lieu de pousser lui-même.</li>
+        <li>Dans l’onglet <strong>Approbations</strong>, vérifiez l’opération exacte et approuvez ou refusez. Une approbation ne sert qu’une fois ; si la branche a changé depuis, une nouvelle demande est nécessaire.</li>
+        <li>De la même façon, Pi peut proposer une <strong>pull / merge request</strong>, consulter la CI, fusionner ou supprimer une branche — toujours après votre approbation.</li>
+      </ol>
+      <div class="callout"><p>Les commandes <code>git push</code>, <code>gh</code>, <code>glab</code> ou les appels HTTP directs vers les forges sont bloqués depuis la sandbox : seule la plateforme publie, après approbation.</p></div>
+
+      <h2>Previews</h2>
+      <p>Lorsque Pi lance un serveur (port 3000, 5173…), ouvrez-le depuis l’onglet <strong>Previews</strong> : il est servi sur un domaine distinct, protégé par un jeton. Trois ports par workspace par défaut.</p>
+
+      <h2>Partage</h2>
+      <p>Le bouton de partage donne un accès <strong>en lecture seule</strong> à la conversation et aux fichiers à des membres nommés de l’équipe ; il est révocable à tout moment. Personne d’autre — administrateurs compris — ne peut lire une conversation privée.</p>
+
+      <h2>Quotas</h2>
+      <p>La consommation est limitée sur deux fenêtres glissantes, <strong>5 heures</strong> et <strong>7 jours</strong>, pour vous et éventuellement pour votre équipe. La page <strong>Consommation</strong> et l’anneau de la zone de saisie l’indiquent en pourcentage. À 100 %, Pi est suspendu proprement et reprend dès que le quota le permet (bouton <em>Reprendre</em>).</p>
+
+      <h2>Notifications et sécurité du compte</h2>
+      <ul>
+        <li><strong>Notifications</strong> : tâche terminée ou en échec, approbation requise, quota atteint… dans l’application et, selon vos préférences, par email.</li>
+        <li><strong>Paramètres → Sécurité</strong> : mot de passe, double authentification, sessions actives (révocables), identités de connexion (SSO) rattachées.</li>
+      </ul>
+    </main>
+  </body>
+</html>

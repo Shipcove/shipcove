@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <title>Console d’administration</title>
+    <meta name="description" content="Console d'administration : utilisateurs, équipes, modèles LiteLLM, quotas, sandboxes et images, services, skills et MCP, secrets, notifications, audit et rétention." />
+  </head>
+  <body>
+    <main>
+      <h1>Console d’administration</h1>
+      <p class="lead">Réservée aux administrateurs plateforme (MFA obligatoire). Chaque modification est auditée ; la plupart des réglages s’appliquent immédiatement à toutes les instances.</p>
+
+      <h2>Rôles</h2>
+      <table>
+        <thead><tr><th>Rôle</th><th>Portée</th></tr></thead>
+        <tbody>
+          <tr><td>Administrateur plateforme</td><td>Console d’administration, catalogues, modèles, quotas, rétention. <strong>N’a pas accès au contenu des conversations privées.</strong></td></tr>
+          <tr><td>Administrateur d’équipe</td><td>Membres et invitations de l’équipe, variables et secrets d’équipe, administration des projets de l’équipe.</td></tr>
+          <tr><td>Mainteneur de projet</td><td>Environnement du projet (variables, secrets, script de préparation, image).</td></tr>
+          <tr><td>Membre</td><td>Création de workspaces dans les projets de l’équipe.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Sections</h2>
+      <h3>Vue d’ensemble</h3>
+      <p>Utilisateurs, équipes, workspaces et sandboxes actifs, appels LLM et crédits consommés sur 24 h, erreurs, santé des dépendances.</p>
+      <h3>Utilisateurs et équipes</h3>
+      <p>Création, suspension, suppression (anonymisation), réinitialisation de la MFA, révocation des sessions ; équipes, membres et rôles.</p>
+      <h3>IAM &amp; connexion</h3>
+      <p>Connexion locale, inscriptions, vérification d’email, politique MFA, durée des sessions, verrouillage après échecs, fournisseurs d’identité. Voir <a href="/identite.html">Identité et SSO</a>.</p>
+      <h3>Forges Git</h3>
+      <p>Applications OAuth GitHub / GitLab permettant aux utilisateurs de rattacher leurs comptes. Voir <a href="/git.html">Forges Git</a>.</p>
+      <h3>Modèles (LiteLLM)</h3>
+      <p>Chaque modèle déclare son identifiant LiteLLM, ses paramètres, sa clé (Vault), ses capacités (images, raisonnement), les équipes autorisées et ses <strong>coefficients</strong> (crédits pour 1 000 tokens d’entrée, de sortie, de cache). Les coefficients sont versionnés : une modification ne change pas la facturation passée. Le bouton <em>Tester</em> envoie une requête réelle.</p>
+      <h3>Quotas &amp; crédits</h3>
+      <p>Plafonds en crédits sur 5 h et 7 j : par défaut pour tous, par utilisateur, par équipe ; exemptions et ajustements manuels, historique du ledger. Chaque appel LLM <strong>réserve</strong> son coût maximal avant d’être transmis et ne facture que le coût réel : un plafond n’est jamais dépassé, même avec des appels simultanés. Les utilisateurs ne voient que des pourcentages.</p>
+      <h3>Sandboxes &amp; previews</h3>
+      <ul>
+        <li>Ressources par sandbox (CPU, mémoire, disque, processus), délai d’inactivité, durée maximale d’un run, nombre de sandboxes actives par utilisateur et au total ;</li>
+        <li>domaines autorisés en sortie (registres de paquets…), exclusions des checkpoints (ex. <code>node_modules</code>), durée maximale du script de préparation ;</li>
+        <li><strong>images de sandbox</strong> : ajout (référence + digest), activation comme image par défaut ou seulement proposée aux projets, dépréciation ;</li>
+        <li><strong>services lancés par l’agent</strong> : voir <a href="/environnement.html#services-lances-par-l-agent">Environnement et services</a> ;</li>
+        <li>previews : nombre de ports simultanés par workspace ;</li>
+        <li>instances en cours, avec arrêt forcé.</li>
+      </ul>
+      <h3>Skills &amp; MCP</h3>
+      <p>Skills (instructions pour Pi) et serveurs MCP sur trois portées — globale, équipe, personnelle — avec publication, révocation, permissions par outil et hôtes MCP distants autorisés. Les secrets des serveurs MCP sont dans Vault. Une révocation s’applique dès le run suivant.</p>
+      <h3>Secrets &amp; stockage</h3>
+      <p>État de Vault et des secrets d’infrastructure (sans jamais afficher de valeur), état du stockage S3.</p>
+      <h3>Notifications &amp; SMTP</h3>
+      <p>Serveur SMTP (mot de passe dans Vault, email de test), politiques de notification par défaut.</p>
+      <h3>Audit &amp; rétention</h3>
+      <p>Recherche et export CSV du journal d’audit ; durées de conservation par type de données (événements, sorties d’outils, pièces jointes, checkpoints, notifications, audit, workspaces archivés…), <strong>gel légal</strong> par type, historique des purges et <em>Lancer la purge maintenant</em> (sinon automatique toutes les heures). La génération courante des checkpoints n’est jamais purgée : une conversation conservée peut toujours reprendre.</p>
+    </main>
+  </body>
+</html>

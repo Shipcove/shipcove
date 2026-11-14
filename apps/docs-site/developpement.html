@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <title>Contribuer</title>
+    <meta name="description" content="Développer sur la plateforme : monorepo pnpm, infrastructure locale, migrations, tests unitaires et de bout en bout, construction des images, documentation." />
+  </head>
+  <body>
+    <main>
+      <h1>Contribuer</h1>
+      <p class="lead">Monorepo pnpm en TypeScript 6 (ESM) : Angular 22, NestJS 12, Drizzle, Zod 4, Vitest.</p>
+
+      <h2>Organisation</h2>
+      <table>
+        <thead><tr><th>Dossier</th><th>Contenu</th></tr></thead>
+        <tbody>
+          <tr><td><code>apps/web</code></td><td>Interface Angular (signals, zoneless) et Tailwind 4</td></tr>
+          <tr><td><code>apps/api</code>, <code>apps/worker</code>, <code>apps/gateway</code>, <code>apps/preview</code></td><td>Services NestJS</td></tr>
+          <tr><td><code>apps/docs-site</code></td><td>Ce site (Vite, HTML, Tailwind)</td></tr>
+          <tr><td><code>packages/contracts</code></td><td>Schémas Zod partagés entre le front et le back</td></tr>
+          <tr><td><code>packages/database</code></td><td>Schéma et migrations Drizzle</td></tr>
+          <tr><td><code>packages/sandbox</code>, <code>packages/sandbox-image</code></td><td>Providers Docker / Kubernetes, image de sandbox et extension Pi</td></tr>
+          <tr><td><code>infrastructure/docker</code></td><td>Pile Compose, Dockerfiles, amorçage</td></tr>
+          <tr><td><code>tests/e2e</code></td><td>Tests de bout en bout</td></tr>
+          <tr><td><code>docs</code></td><td>ADR et guides d’exploitation</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Mise en route</h2>
+      <pre><code>pnpm install
+pnpm dev:infra          # PostgreSQL, Vault, Garage, LiteLLM, Mailpit, LLM factice
+pnpm build
+pnpm typecheck &amp;&amp; pnpm lint</code></pre>
+      <p>Prérequis : Node.js 26, pnpm 12.18, Docker.</p>
+
+      <h2>Base de données</h2>
+      <pre><code>pnpm db:generate        # nouvelle migration après modification du schéma</code></pre>
+      <p>Les migrations sont versionnées dans <code>packages/database/migrations</code> et appliquées par le service <code>migrate</code> au démarrage.</p>
+
+      <h2>Tests</h2>
+      <pre><code>pnpm test                       # unitaires et intégration (Vitest)
+cd tests/e2e &amp;&amp; pnpm test       # bout en bout sur la pile Compose (profil dev)</code></pre>
+      <p>La suite de bout en bout couvre l’interface (Playwright), les parcours fonctionnels, Git contre un vrai GitLab, le SSO contre Keycloak et OpenLDAP, et la résilience (perte d’une API, du worker, pannes de S3, LiteLLM, Vault). Fournisseurs optionnels, dans <code>tests/e2e</code> : <code>pnpm sso:up</code> (Keycloak, OpenLDAP), <code>pnpm forge:up</code> (GitLab CE) ; sans eux, les suites concernées s’ignorent.</p>
+
+      <h2>Images</h2>
+      <pre><code>pnpm images:build                                   # images locales cap-*:0.1.0
+CAP_REGISTRY=ghcr.io/shadow-p99/ CAP_VERSION=0.2.0 pnpm images:build</code></pre>
+
+      <h2>Documentation</h2>
+      <pre><code>pnpm docs:dev           # http://localhost:5174
+pnpm docs:build         # apps/docs-site/dist</code></pre>
+      <p>Chaque page est un fichier HTML à la racine de <code>apps/docs-site</code> ; ajoutez-la à la navigation dans <code>vite.config.js</code>.</p>
+
+      <h2>Règles du projet</h2>
+      <ul>
+        <li><strong>Dépendances</strong> : seules les versions publiées depuis plus de deux semaines sont acceptées (<code>minimumReleaseAge</code>) ; les scripts d’installation sont refusés par défaut.</li>
+        <li><strong>Contrats</strong> : toute entrée de l’API est validée par un schéma de <code>@cap/contracts</code>.</li>
+        <li><strong>Secrets</strong> : jamais dans le dépôt, les journaux ni les réponses de l’API.</li>
+        <li><strong>Décisions</strong> : un changement structurant s’accompagne d’un ADR.</li>
+      </ul>
+    </main>
+  </body>
+</html>
