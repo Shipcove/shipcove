@@ -12,3 +12,4 @@ infrastructure/docker/data/
 .DS_Store
 tmp/
 tests/e2e/.e2e-state.json
+tests/e2e/artifacts/

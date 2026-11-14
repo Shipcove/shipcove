@@ -89,6 +89,11 @@ test('workspace vierge : Pi écrit via shell et via outil, checkpoint après cha
   assert.ok(tools[0].data.filesTouched.includes('src/hello.txt'), JSON.stringify(tools[0].data));
   assert.ok(tools[1].data.filesTouched.includes('README.md'), JSON.stringify(tools[1].data));
 
+  // Le message final de l'assistant est diffusé (deltas) et persisté.
+  assert.ok(events.some((e) => e.type === 'message.completed' && /Terminé : 2 action/.test(e.data.text)), 'message final absent du flux');
+  const saved = await ctx.dev.get(`/workspaces/${ctx.ws.id}/conversation`);
+  assert.ok(saved.body.messages.some((m) => m.role === 'assistant' && /Terminé : 2 action/.test(m.text)), 'message final non persisté');
+
   const changes = await ctx.dev.get(`/workspaces/${ctx.ws.id}/changes?scope=conversation`);
   const paths = changes.body.files.map((f) => `${f.status}:${f.path}`);
   assert.ok(paths.includes('added:src/hello.txt') && paths.includes('added:README.md'), paths.join(','));

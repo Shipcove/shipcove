@@ -3,15 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Tests de bout en bout contre une pile Docker Compose réelle (web → api → worker → sandbox Pi → gateway → LiteLLM).",
+  "description": "Tests de bout en bout contre une pile Docker Compose r\u00e9elle (web \u2192 api \u2192 worker \u2192 sandbox Pi \u2192 gateway \u2192 LiteLLM).",
   "scripts": {
     "test": "node --test --test-concurrency=1 --test-timeout=900000 *.test.mjs",
     "test:stack": "node --test --test-concurrency=1 --test-timeout=900000 stack.test.mjs",
     "test:ui": "node --test --test-timeout=300000 ui.test.mjs",
     "build": "node --check client.mjs",
-    "lint": "node --check client.mjs"
+    "lint": "node --check client.mjs",
+    "browsers": "playwright install chromium"
   },
   "dependencies": {
     "otplib": "13.6.0"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1"
   }
 }

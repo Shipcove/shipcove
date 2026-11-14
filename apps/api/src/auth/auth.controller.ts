@@ -49,6 +49,15 @@ export class AuthController {
     };
   }
 
+  /** État de session sans erreur 401 (sonde de l'interface au chargement). */
+  @Public()
+  @Get('session')
+  async session(@Session({ optional: true }) session: { userId: string; state: string } | undefined): Promise<{ authenticated: boolean; state: string | null; user: MeResponse | null }> {
+    if (!session) return { authenticated: false, state: null, user: null };
+    if (session.state !== 'active') return { authenticated: false, state: session.state, user: null };
+    return { authenticated: true, state: 'active', user: await this.auth.me(session.userId) };
+  }
+
   @Public()
   @Post('login')
   @HttpCode(200)

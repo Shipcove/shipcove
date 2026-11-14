@@ -14,9 +14,10 @@ export class AuthStore {
 
   async load(): Promise<MeResponse | null> {
     try {
-      this.me.set(await this.api.get<MeResponse>('/me'));
+      const s = await this.api.get<{ authenticated: boolean; user: MeResponse | null }>('/auth/session');
+      this.me.set(s.authenticated ? s.user : null);
     } catch (err) {
-      if (!(err instanceof ApiError) || (err.status !== 401 && err.code !== 'mfa_required')) console.error(err);
+      if (!(err instanceof ApiError)) console.error(err);
       this.me.set(null);
     }
     this.loaded.set(true);

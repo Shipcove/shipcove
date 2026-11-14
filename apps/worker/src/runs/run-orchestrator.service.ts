@@ -43,6 +43,8 @@ interface RunContext {
   done: (result: { error: string | null }) => void;
   finished: Promise<{ error: string | null }>;
   interruptRequested: boolean;
+  /** File de traitement : les événements Pi sont appliqués strictement dans l'ordre. */
+  queue: Promise<void>;
 }
 
 /**
@@ -179,6 +181,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       done,
       finished,
       interruptRequested: false,
+      queue: Promise.resolve(),
     };
     this.active.set(runId, ctx);
     const flusher = setInterval(() => void this.flush(ctx), FLUSH_MS);
@@ -186,7 +189,10 @@ export class RunOrchestrator implements OnApplicationBootstrap {
 
     let outcome: { error: string | null } = { error: null };
     try {
-      runtime.onEvent((e) => void this.onRuntimeEvent(ctx, e));
+      // Traitement séquentiel : un delta ne doit jamais précéder l'insertion de son message.
+      runtime.onEvent((e) => {
+        ctx.queue = ctx.queue.then(() => this.onRuntimeEvent(ctx, e));
+      });
       runtime.setBridgeHandler((req) => this.bridge.handle(ctx, req));
       await runtime.initialize();
       await runtime.setModel(PI_PROVIDER, model.litellmModel).catch((e) => {
@@ -201,6 +207,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     } finally {
       clearInterval(heartbeat);
       clearInterval(flusher);
+      // Tous les événements reçus sont appliqués avant la clôture du run.
+      await ctx.queue;
       await this.flush(ctx);
       // Session Pi et contexte pour la reprise après destruction de la sandbox.
       const sessionFile = await runtime.sessionFile().catch(() => null);

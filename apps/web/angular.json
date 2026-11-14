@@ -1,7 +1,10 @@
 {
   "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
   "version": 1,
-  "cli": { "packageManager": "pnpm", "analytics": false },
+  "cli": {
+    "packageManager": "pnpm",
+    "analytics": false
+  },
   "newProjectRoot": "projects",
   "projects": {
     "web": {
@@ -17,32 +20,67 @@
             "browser": "src/main.ts",
             "tsConfig": "tsconfig.app.json",
             "assets": [
-              { "glob": "**/*", "input": "public" },
-              { "glob": "**/*", "input": "node_modules/monaco-editor/min/vs", "output": "monaco/vs" }
+              {
+                "glob": "**/*",
+                "input": "public"
+              },
+              {
+                "glob": "**/*",
+                "input": "node_modules/monaco-editor/min/vs",
+                "output": "monaco/vs"
+              }
             ],
-            "styles": ["src/styles.css"]
+            "styles": [
+              "src/styles.css"
+            ]
           },
           "configurations": {
             "production": {
               "budgets": [
-                { "type": "initial", "maximumWarning": "900kB", "maximumError": "2MB" },
-                { "type": "anyComponentStyle", "maximumWarning": "6kB", "maximumError": "12kB" }
+                {
+                  "type": "initial",
+                  "maximumWarning": "900kB",
+                  "maximumError": "2MB"
+                },
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "6kB",
+                  "maximumError": "12kB"
+                }
               ],
-              "outputHashing": "all"
+              "outputHashing": "all",
+              "optimization": {
+                "scripts": true,
+                "styles": {
+                  "minify": true,
+                  "inlineCritical": false
+                },
+                "fonts": true
+              }
             },
-            "development": { "optimization": false, "extractLicenses": false, "sourceMap": true }
+            "development": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true
+            }
           },
           "defaultConfiguration": "production"
         },
         "serve": {
           "builder": "@angular/build:dev-server",
           "configurations": {
-            "production": { "buildTarget": "web:build:production" },
-            "development": { "buildTarget": "web:build:development" }
+            "production": {
+              "buildTarget": "web:build:production"
+            },
+            "development": {
+              "buildTarget": "web:build:development"
+            }
           },
           "defaultConfiguration": "development"
         },
-        "test": { "builder": "@angular/build:unit-test" }
+        "test": {
+          "builder": "@angular/build:unit-test"
+        }
       }
     }
   }
