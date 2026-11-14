@@ -46,7 +46,11 @@ import { WorkspaceStore } from './workspace.store';
           }
         </div>
       } @else {
-        <p class="p-6 text-center text-sm text-stone-500">Sélectionnez un fichier dans l’explorateur ou le panneau Modifications.</p>
+        <div class="flex h-full flex-col items-center justify-center gap-2 px-8 text-center">
+          <cap-icon name="folder" [size]="22" class="text-stone-400" />
+          <p class="text-sm font-medium text-stone-700 dark:text-stone-300">Les fichiers ouverts apparaissent ici</p>
+          <p class="max-w-64 text-xs text-stone-500">Sélectionnez un fichier dans l’arborescence, ou cliquez sur un chemin de fichier dans la conversation.</p>
+        </div>
       }
     </div>
   `,

@@ -8,29 +8,29 @@ import { ApprovalsPanel } from './approvals-panel';
 import { ChangesPanel } from './changes-panel';
 import { Composer } from './composer';
 import { Conversation } from './conversation';
-import { Explorer } from './explorer';
-import { FilePanel } from './file-panel';
+import { FilesPane } from './files-pane';
 import { GitPanel } from './git-panel';
 import { PreviewsPanel } from './previews-panel';
 import { ShareDialog } from './share-dialog';
 import { WorkspaceStore } from './workspace.store';
 
-type Tab = 'changes' | 'file' | 'git' | 'approvals' | 'previews';
+type Tab = 'changes' | 'git' | 'approvals' | 'previews';
+/** Volet de droite : un seul à la fois (panneau latéral ou explorateur de fichiers). */
+type RightPane = 'panel' | 'files' | null;
 
 /**
- * Écran workspace (SPEC §16.1 + PO-1) : explorateur, conversation centrale, panneau droit
- * (Modifications / Fichier / Git / Approbations / Previews), état de Pi, modèle, contexte et crédits.
+ * Écran workspace (SPEC §16.1 + PO-1) : conversation centrale et un volet droit exclusif —
+ * panneau latéral (Modifications / Git / Approbations / Previews) ou explorateur de fichiers.
  */
 @Component({
   selector: 'cap-workspace-page',
-  imports: [FormsModule, RouterLink, Icon, CreditsPipe, TokensPipe, Conversation, Composer, Explorer, ChangesPanel, FilePanel, GitPanel, ApprovalsPanel, PreviewsPanel, ShareDialog],
+  imports: [FormsModule, RouterLink, Icon, CreditsPipe, TokensPipe, Conversation, Composer, FilesPane, ChangesPanel, GitPanel, ApprovalsPanel, PreviewsPanel, ShareDialog],
   providers: [WorkspaceStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (store.workspace(); as ws) {
       <div class="flex h-full flex-col">
         <header class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-stone-200 px-4 py-2 dark:border-stone-800">
-          <button class="btn-ghost !p-1" (click)="showExplorer.set(!showExplorer())" aria-label="Explorateur"><cap-icon name="folder" /></button>
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <h1 class="truncate font-semibold">{{ ws.name }}</h1>
@@ -66,21 +66,28 @@ type Tab = 'changes' | 'file' | 'git' | 'approvals' | 'previews';
               @else if (ws.status === 'ready' || ws.status === 'error') { <button class="btn-secondary !py-1 text-xs" (click)="start()"><cap-icon name="play" [size]="12" /> Démarrer</button> }
               <button class="btn-ghost !p-1.5" (click)="sharing.set(true)" aria-label="Partager"><cap-icon name="share" /></button>
             }
-            <button class="btn-ghost !p-1.5" (click)="showPanel.set(!showPanel())" aria-label="Panneau latéral"><cap-icon name="panelRight" /></button>
+            <div class="flex items-center gap-0.5 rounded-md border border-stone-200 p-0.5 dark:border-stone-700" role="group" aria-label="Volet de droite">
+              <button class="btn-ghost !p-1.5" [class.bg-stone-200]="pane() === 'files'" [class.dark:bg-stone-700]="pane() === 'files'" (click)="toggle('files')"
+                [attr.aria-pressed]="pane() === 'files'" aria-label="Explorateur de fichiers" title="Explorateur de fichiers"><cap-icon name="file" /></button>
+              <button class="btn-ghost !p-1.5" [class.bg-stone-200]="pane() === 'panel'" [class.dark:bg-stone-700]="pane() === 'panel'" (click)="toggle('panel')"
+                [attr.aria-pressed]="pane() === 'panel'" aria-label="Panneau latéral" title="Modifications, Git, approbations, previews"><cap-icon name="panelRight" /></button>
+            </div>
           </div>
           @if (store.statusDetail() && ws.status !== 'running') { <div class="w-full text-xs text-stone-500">{{ store.statusDetail() }}</div> }
         </header>
         <div class="flex min-h-0 flex-1">
-          @if (showExplorer()) {
-            <aside class="w-60 shrink-0 border-r border-stone-200 dark:border-stone-800" aria-label="Explorateur">
-              <cap-explorer (openFile)="openFile($event)" />
-            </aside>
-          }
-          <section class="flex min-w-0 flex-1 flex-col">
+          <section class="flex min-w-0 flex-1 flex-col" [class.hidden]="pane() === 'files' && filesExpanded()">
             <div class="min-h-0 flex-1"><cap-conversation (openFile)="openFile($event)" /></div>
             @if (ws.access === 'owner') { <cap-composer /> }
           </section>
-          @if (showPanel()) {
+          @if (pane() === 'files') {
+            <aside class="shrink-0 border-l border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900" aria-label="Explorateur de fichiers"
+              [class]="filesExpanded() ? 'w-full' : 'w-[50%] max-w-[1000px] min-w-[420px]'">
+              <cap-files-pane [(openFiles)]="openFiles" [(active)]="filePath" [expanded]="filesExpanded()"
+                (toggleExpand)="filesExpanded.set(!filesExpanded())" (closed)="pane.set(null)" />
+            </aside>
+          }
+          @if (pane() === 'panel') {
             <aside class="flex w-[44%] max-w-[900px] min-w-[360px] shrink-0 flex-col border-l border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900" aria-label="Panneau latéral">
               <nav class="flex gap-0.5 border-b border-stone-200 px-2 pt-1.5 dark:border-stone-800" role="tablist">
                 @for (t of tabs(); track t.id) {
@@ -94,7 +101,6 @@ type Tab = 'changes' | 'file' | 'git' | 'approvals' | 'previews';
               <div class="min-h-0 flex-1">
                 @switch (tab()) {
                   @case ('changes') { <cap-changes-panel (openFile)="openFile($event)" /> }
-                  @case ('file') { <cap-file-panel [path]="filePath()" /> }
                   @case ('git') { <cap-git-panel /> }
                   @case ('approvals') { <cap-approvals-panel /> }
                   @case ('previews') { <cap-previews-panel /> }
@@ -116,10 +122,11 @@ export class WorkspacePage implements OnDestroy {
   readonly approval = input<string>();
   protected readonly store = inject(WorkspaceStore);
   private readonly toast = inject(ToastService);
-  protected readonly showExplorer = signal(true);
-  protected readonly showPanel = signal(true);
+  protected readonly pane = signal<RightPane>('panel');
+  protected readonly filesExpanded = signal(false);
   protected readonly tab = signal<Tab>('changes');
   protected readonly filePath = signal<string | null>(null);
+  protected readonly openFiles = signal<string[]>([]);
   protected readonly sharing = signal(false);
   protected readonly error = signal('');
 
@@ -127,7 +134,6 @@ export class WorkspacePage implements OnDestroy {
     const owner = this.store.isOwner();
     return [
       { id: 'changes' as Tab, label: 'Modifications', icon: 'diff', count: 0 },
-      { id: 'file' as Tab, label: 'Fichier', icon: 'file', count: 0 },
       ...(owner
         ? [
             { id: 'git' as Tab, label: 'Git', icon: 'git', count: 0 },
@@ -174,7 +180,10 @@ export class WorkspacePage implements OnDestroy {
       void this.store.open(id).catch((err) => this.error.set(err?.message ?? 'Workspace introuvable'));
     });
     effect(() => {
-      if (this.approval()) this.tab.set('approvals');
+      if (this.approval()) {
+        this.tab.set('approvals');
+        this.pane.set('panel');
+      }
     });
   }
 
@@ -182,10 +191,17 @@ export class WorkspacePage implements OnDestroy {
     this.store.close();
   }
 
+  /** Ouvre un fichier (onglet) dans l'explorateur, qui remplace le panneau latéral. */
   protected openFile(path: string): void {
+    if (!this.openFiles().includes(path)) this.openFiles.update((l) => [...l, path]);
     this.filePath.set(path);
-    this.tab.set('file');
-    this.showPanel.set(true);
+    this.pane.set('files');
+  }
+
+  /** Ouvre le volet demandé (fermant l'autre), ou le referme s'il est déjà ouvert. */
+  protected toggle(p: Exclude<RightPane, null>): void {
+    this.pane.set(this.pane() === p ? null : p);
+    if (this.pane() !== 'files') this.filesExpanded.set(false);
   }
 
   protected async setModel(id: string) {

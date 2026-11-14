@@ -70,6 +70,28 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     await page.waitForTimeout(800);
     await page.screenshot({ path: new URL('workspace-diff.png', OUT).pathname });
 
+    // L'onglet « Fichier » n'existe plus dans le panneau latéral.
+    assert.equal(await page.locator('[role="tab"]:has-text("Fichier")').count(), 0);
+    // « Voir le fichier » bascule vers l'explorateur (exclusif avec le panneau latéral).
+    await page.click('button:has-text("Voir le fichier")');
+    await page.waitForSelector('aside[aria-label="Explorateur de fichiers"] cap-code-editor .monaco-editor', { timeout: 30_000 });
+    assert.equal(await page.locator('aside[aria-label="Panneau latéral"]').count(), 0, 'panneau latéral fermé');
+    assert.equal(await page.locator('[role="tablist"][aria-label="Fichiers ouverts"] [role="tab"]').count(), 1);
+    // Recherche dans la colonne de navigation.
+    await page.fill('input[aria-label="Rechercher des fichiers"]', 'main');
+    await page.waitForSelector('cap-explorer button[title="app/main.js"]');
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: new URL('files-pane.png', OUT).pathname });
+    // Bascule : le bouton du panneau latéral ferme l'explorateur.
+    await page.click('button[aria-label="Panneau latéral"]');
+    assert.equal(await page.locator('aside[aria-label="Explorateur de fichiers"]').count(), 0, 'explorateur fermé');
+    // État vide de l'explorateur après fermeture de l'onglet.
+    await page.click('button[aria-label="Explorateur de fichiers"]');
+    await page.click('button[aria-label="Fermer main.js"]');
+    await page.waitForSelector('text=Les fichiers ouverts apparaissent ici');
+    await page.screenshot({ path: new URL('files-pane-empty.png', OUT).pathname });
+    await page.click('button[aria-label="Panneau latéral"]');
+
     // Un très long mot sans espace ne doit pas faire déborder la conversation.
     const longWord = 'sfghfghd'.repeat(80);
     await page.fill('textarea[aria-label="Message"]', longWord);
