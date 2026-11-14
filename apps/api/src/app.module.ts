@@ -12,6 +12,7 @@ import { PasswordService } from './auth/password.service.js';
 import { SessionService } from './auth/session.service.js';
 import { ProvidersRegistry } from './auth/providers/providers.registry.js';
 import { FederationService } from './auth/providers/federation.service.js';
+import { AdminGitForgesController, GitForgesService, GitOAuthController } from './git/git-forges.controller.js';
 import { AdminAuthProvidersController, SsoController } from './auth/providers/sso.controller.js';
 import { AccessService } from './access/access.service.js';
 import { TeamsController, UsersDirectoryController } from './teams/teams.controller.js';
@@ -63,6 +64,8 @@ export class AppModule {
         AdminController,
         AdminModelsController,
         SsoController,
+        AdminGitForgesController,
+        GitOAuthController,
         AdminAuthProvidersController,
         SkillsController,
         McpController,
@@ -76,6 +79,7 @@ export class AppModule {
         AuthService,
         ProvidersRegistry,
         FederationService,
+        GitForgesService,
         AccessService,
         WorkspacesService,
         SandboxRpcClient,

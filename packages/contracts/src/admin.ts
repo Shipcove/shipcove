@@ -98,6 +98,8 @@ export const PlatformSettingsSchema = z.object({
        * Vide par défaut : HTTPS obligatoire. Les jetons transitent alors en clair sur ce réseau.
        */
       insecureHttpHosts: z.array(z.string().regex(/^[a-z0-9.-]+(:\d+)?$/i).max(255)).max(20).default([]),
+      /** Rattachement par jeton d'accès personnel (désactivé : OAuth via les forges configurées). */
+      allowPersonalTokens: z.boolean().default(false),
     })
     .prefault({}),
   notifications: z

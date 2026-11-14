@@ -40,6 +40,8 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
 ## Lot 4 — Contrôles
 - ☑ Ledger, coefficients versionnés, fenêtres 5 h / 7 j, plafonds équipe, exemptions, pause/reprise
 - ☑ Git Broker, approbations, GitHub / GitLab (PR/MR)
+- ☑ PO-5 (2026-11-14) : comptes Git rattachés par OAuth via des forges configurées par l'administrateur
+  (PKCE, renouvellement verrouillé des jetons) ; jetons personnels désactivés par défaut
 
 ## Lot 5 — Entreprise
 - ☑ OIDC/Keycloak, SAML 2.0, LDAP/AD (testés contre Keycloak et OpenLDAP réels) ·
@@ -54,13 +56,15 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
 - ☐ Helm chart + manifestes Kubernetes ; tests résilience / charge
 
 ## Tests
-- `tests/e2e` (`pnpm test`, pile Compose réelle, 34 scénarios) :
+- `tests/e2e` (`pnpm test`, pile Compose réelle, 37 scénarios) :
   - pile (8) et interface Playwright (1) ;
   - SSO contre Keycloak + OpenLDAP (7) ;
   - fonctionnels (9) : édition manuelle et conflits, skills, MCP, pièces jointes, notifications
     email, rétention, limite de sandboxes, appels LLM concurrents (plafond, facturation unique),
     utilisateur de plusieurs équipes ;
-  - Git contre GitLab CE (4) : clone, publication et MR après approbation, opération figée, refus ;
+  - Git contre GitLab CE (7) : forges administrées, rattachement OAuth dans le navigateur,
+    renouvellement des jetons sous concurrence, clone, publication et MR après approbation, refus,
+    révocation à la suppression d'une forge ;
   - résilience (5) : arrêt brutal de chaque instance API pendant un run (SSE repris sans trou ni
     doublon), perte du worker, pannes S3, LiteLLM et Vault avec reprise automatique.
   Les suites SSO et Git s'ignorent si leurs fournisseurs de test ne sont pas démarrés
@@ -82,3 +86,4 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
   exacte lors d'une suspension (équipe vs personnel), libellés sans crédits ; nginx : répliques API
   résolues à chaque requête et bascule rapide (une instance redémarrée ne recevait plus de trafic,
   et l'arrêt d'une instance provoquait des 502/504).
+- 2026-11-14 : PO-5, connexions Git par OAuth administré (docs/operations/git-forges.md).

@@ -96,3 +96,41 @@ export const ApprovalDecisionSchema = z.object({
   decision: z.enum(['approve', 'reject']),
   comment: z.string().max(2000).optional(),
 });
+
+/* ---------- Forges Git (applications OAuth configurées par l'administrateur) ---------- */
+
+export const UpsertGitForgeSchema = z.object({
+  provider: GitProviderKindSchema,
+  name: z.string().min(1).max(120),
+  /** Hôte[:port] ; imposé à `github.com` / `gitlab.com` pour les offres SaaS. */
+  host: z.string().min(3).max(255).regex(/^[a-z0-9.-]+(:\d+)?$/i),
+  clientId: z.string().min(1).max(500),
+  /** Écrit dans Vault, jamais renvoyé ; vide = secret existant conservé. */
+  clientSecret: z.string().min(1).max(4000).optional(),
+  enabled: z.boolean().default(false),
+});
+export type UpsertGitForge = z.infer<typeof UpsertGitForgeSchema>;
+
+export interface GitForgeAdminDto {
+  id: string;
+  provider: GitProviderKind;
+  name: string;
+  host: string;
+  clientId: string;
+  enabled: boolean;
+  secretConfigured: boolean;
+  /** URL de rappel à déclarer dans l'application OAuth de la forge. */
+  callbackUrl: string;
+  /** Portées demandées à la forge. */
+  scopes: string[];
+  connections: number;
+  lastTestAt: string | null;
+  lastTestResult: string | null;
+}
+
+/** Forges proposées à l'utilisateur pour rattacher un compte. */
+export interface GitForgesPublicDto {
+  forges: Array<{ id: string; provider: GitProviderKind; name: string; host: string }>;
+  /** Rattachement par jeton d'accès personnel autorisé par l'administrateur. */
+  allowPersonalTokens: boolean;
+}

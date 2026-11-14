@@ -21,7 +21,6 @@ type Row = Record<string, never>;
         <cap-settings-section section="previews" title="Previews (proxy de ports)" />
         <cap-settings-section section="editor" title="Éditeur" />
         <cap-settings-section section="attachments" title="Pièces jointes" />
-        <cap-settings-section section="git" title="Forges Git" />
       </div>
     </div>
     <h2 class="mt-6 mb-2 text-sm font-semibold text-stone-500 uppercase">Instances</h2>

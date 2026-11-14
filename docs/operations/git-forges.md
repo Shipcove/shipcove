@@ -1,8 +1,46 @@
 # Forges Git (GitHub, GitLab)
 
-Les utilisateurs rattachent leurs comptes dans **Paramètres → Connexions Git**, par OAuth ou par jeton
-d'accès personnel. Les jetons sont stockés dans Vault. Ils ne quittent jamais le serveur et
-n'atteignent jamais les sandboxes :
+## Configuration par l'administrateur
+
+Les comptes Git des utilisateurs se rattachent **par OAuth**, via les forges déclarées dans
+**Administration → Forges Git**. Il faut une forge, avec sa propre application OAuth, pour chacune :
+
+| Forge | Où créer l'application OAuth |
+|---|---|
+| GitHub.com | Settings → Developer settings → OAuth Apps → New OAuth App |
+| GitHub Enterprise Server | Même chemin, sur l'instance |
+| GitLab.com | Paramètres utilisateur ou de groupe → Applications, application **confidentielle** |
+| GitLab auto-hébergé | Admin Area → Applications → New application, **confidentielle** |
+
+1. **Ajouter** la forge : type, nom affiché, hôte (fixe pour les offres SaaS), Client ID et secret
+   client. Le secret est stocké dans Vault (`oauth-apps/<id>`) et n'est jamais renvoyé.
+2. **Déclarer chez la forge** l'URL de rappel affichée par la console
+   (`<PUBLIC_URL>/api/v1/me/git-connections/oauth/<id>/callback`), ainsi que les portées indiquées :
+   - GitHub : `repo read:user user:email read:org` ;
+   - GitLab : `api read_user read_repository write_repository`.
+3. **Tester** : la console vérifie que la forge est joignable et que l'identifiant et le secret
+   client sont acceptés. Un code factice est présenté à la forge, qui doit répondre « code
+   invalide » et non « client invalide ».
+4. **Activer** : la forge apparaît dans **Paramètres → Connexions Git** des utilisateurs.
+
+Supprimer une forge révoque toutes les connexions des utilisateurs qui en dépendent.
+
+**Jetons d'accès personnels** : ils sont désactivés par défaut. L'administrateur peut les autoriser
+dans **Forges Git → Réglages Git** (`git.allowPersonalTokens`), par exemple pour une forge
+dépourvue d'OAuth.
+
+## Côté utilisateur
+
+**Paramètres → Connexions Git → Connecter via <forge>** : autorisation sur la forge, puis retour
+automatique.
+- **Sécurité du flux** : PKCE (S256), `state` à usage unique lié à l'utilisateur connecté, validité
+  de 10 minutes.
+- **Renouvellement** : les jetons qui expirent (GitLab : 2 h) sont renouvelés automatiquement,
+  avec un verrou par connexion, car les jetons de renouvellement GitLab ne servent qu'une fois.
+- **Expiration** : une connexion expirée ou révoquée côté forge affiche « Reconnecter ».
+
+Les jetons sont stockés dans Vault. Ils ne quittent jamais le serveur et n'atteignent jamais les
+sandboxes :
 - Pi lit le dépôt à travers la passerelle (`/git/…`), avec un jeton de run ;
 - toute publication (push, PR/MR, fusion, suppression de branche) passe par le broker, après
   approbation humaine de l'opération exacte (commit, cible).

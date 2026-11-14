@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import type { GitProviderKind, RemoteRepositoryDto } from '@cap/contracts';
 import type { SecretProvider } from '@cap/secrets';
-import { gitConnections, type Database } from '@cap/database';
+import { gitConnections, gitForges, type Database } from '@cap/database';
 import { DB, SECRETS } from '../tokens.js';
 import { AppError } from '../common/errors.js';
 import { SettingsService } from '../settings/settings.service.js';
@@ -38,6 +38,17 @@ export class GitProviderError extends Error {
 }
 
 type Conn = typeof gitConnections.$inferSelect;
+type Forge = typeof gitForges.$inferSelect;
+
+export interface OAuthTokens {
+  accessToken: string;
+  refreshToken: string | null;
+  expiresAt: Date | null;
+  scopes: string[];
+}
+
+/** Marge avant expiration à partir de laquelle un jeton OAuth est renouvelé. */
+const REFRESH_MARGIN_MS = 2 * 60_000;
 
 const isGitHub = (p: GitProviderKind) => p === 'github' || p === 'github_enterprise';
 
@@ -90,9 +101,106 @@ export class GitProviderClient {
   }
 
   async token(conn: Conn): Promise<string> {
+    if (conn.authType === 'oauth' && conn.tokenExpiresAt && conn.tokenExpiresAt.getTime() - Date.now() < REFRESH_MARGIN_MS) {
+      return this.refresh(conn.id);
+    }
     const t = await this.secrets.readKey(conn.secretRef, 'accessToken');
     if (!t) throw new AppError('conflict', 'Jeton Git absent');
     return t;
+  }
+
+  /* ------------------------------- OAuth ------------------------------- */
+
+  /** Origine web de la forge (pages OAuth, et non API). */
+  async webOrigin(provider: GitProviderKind, host: string): Promise<string> {
+    if (provider === 'github') return 'https://github.com';
+    if (provider === 'gitlab') return 'https://gitlab.com';
+    return `${await this.scheme(host)}://${host}`;
+  }
+
+  /** Portées nécessaires : lecture du profil, lecture/écriture des dépôts, PR/MR. */
+  oauthScopes(provider: GitProviderKind): string[] {
+    return isGitHub(provider) ? ['repo', 'read:user', 'user:email', 'read:org'] : ['api', 'read_user', 'read_repository', 'write_repository'];
+  }
+
+  async authorizeUrl(forge: Forge, redirectUri: string, state: string, codeChallenge: string): Promise<string> {
+    const origin = await this.webOrigin(forge.provider, forge.host);
+    const u = isGitHub(forge.provider) ? new URL('/login/oauth/authorize', origin) : new URL('/oauth/authorize', origin);
+    u.search = new URLSearchParams({
+      client_id: forge.clientId,
+      redirect_uri: redirectUri,
+      scope: this.oauthScopes(forge.provider).join(' '),
+      state,
+      response_type: 'code',
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
+      ...(isGitHub(forge.provider) ? { allow_signup: 'false' } : {}),
+    }).toString();
+    return u.href;
+  }
+
+  private async tokenRequest(forge: Forge, params: Record<string, string>): Promise<OAuthTokens> {
+    const secret = forge.secretRef ? await this.secrets.readKey(forge.secretRef, 'clientSecret') : undefined;
+    if (!secret) throw new GitProviderError('Secret client OAuth non configuré pour cette forge', null);
+    const origin = await this.webOrigin(forge.provider, forge.host);
+    const url = isGitHub(forge.provider) ? `${origin}/login/oauth/access_token` : `${origin}/oauth/token`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'coding-agent-platform' },
+      body: new URLSearchParams({ client_id: forge.clientId, client_secret: secret, ...params }),
+      redirect: 'error',
+      signal: AbortSignal.timeout(15_000),
+    }).catch((err: Error) => {
+      throw new GitProviderError(`Forge injoignable : ${err.message}`, null);
+    });
+    const j = (await res.json().catch(() => ({}))) as { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string; error?: string; error_description?: string };
+    if (!res.ok || !j.access_token) {
+      // Code d'erreur OAuth (invalid_client, invalid_grant…) conservé : il qualifie la cause.
+      const detail = [j.error, j.error_description].filter(Boolean).join(' — ') || `HTTP ${res.status}`;
+      throw new GitProviderError(`Échange OAuth refusé : ${detail}`, res.status);
+    }
+    return {
+      accessToken: j.access_token,
+      refreshToken: j.refresh_token ?? null,
+      expiresAt: j.expires_in ? new Date(Date.now() + j.expires_in * 1000) : null,
+      scopes: (j.scope ?? '').split(/[ ,]+/).filter(Boolean),
+    };
+  }
+
+  exchangeCode(forge: Forge, code: string, redirectUri: string, codeVerifier: string): Promise<OAuthTokens> {
+    return this.tokenRequest(forge, { grant_type: 'authorization_code', code, redirect_uri: redirectUri, code_verifier: codeVerifier });
+  }
+
+  /**
+   * Renouvellement du jeton OAuth. Verrou sur la connexion : les jetons de renouvellement GitLab
+   * sont à usage unique, deux renouvellements concurrents (plusieurs instances) invalideraient
+   * la connexion. Le second appelant relit le jeton déjà renouvelé.
+   */
+  private async refresh(connectionId: string): Promise<string> {
+    return this.db.transaction(async (tx) => {
+      const [conn] = await tx.select().from(gitConnections).where(eq(gitConnections.id, connectionId)).for('update');
+      if (!conn || conn.revokedAt) throw new AppError('not_found', 'Connexion Git introuvable');
+      const data = await this.secrets.read(conn.secretRef);
+      if (conn.tokenExpiresAt && conn.tokenExpiresAt.getTime() - Date.now() >= REFRESH_MARGIN_MS && data['accessToken']) return data['accessToken'];
+      const [forge] = conn.forgeId ? await tx.select().from(gitForges).where(eq(gitForges.id, conn.forgeId)) : [];
+      if (!forge || !data['refreshToken']) {
+        await tx.update(gitConnections).set({ status: 'expired' }).where(eq(gitConnections.id, conn.id));
+        throw new AppError('conflict', 'Connexion Git expirée : reconnectez votre compte dans vos paramètres');
+      }
+      let t: OAuthTokens;
+      try {
+        t = await this.tokenRequest(forge, { grant_type: 'refresh_token', refresh_token: data['refreshToken'] });
+      } catch (err) {
+        if (err instanceof GitProviderError && err.status !== null && err.status < 500) {
+          await tx.update(gitConnections).set({ status: 'expired' }).where(eq(gitConnections.id, conn.id));
+          throw new AppError('conflict', 'Connexion Git expirée : reconnectez votre compte dans vos paramètres');
+        }
+        throw err;
+      }
+      await this.secrets.write(`git-connections/${conn.id}`, { accessToken: t.accessToken, ...(t.refreshToken ? { refreshToken: t.refreshToken } : { refreshToken: data['refreshToken'] }) });
+      await tx.update(gitConnections).set({ tokenExpiresAt: t.expiresAt, status: 'active' }).where(eq(gitConnections.id, conn.id));
+      return t.accessToken;
+    });
   }
 
   private async call<T>(conn: Conn, method: string, path: string, body?: unknown, timeoutMs = 20_000): Promise<T> {

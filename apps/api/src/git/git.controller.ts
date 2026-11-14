@@ -14,7 +14,7 @@ import {
 } from '@cap/contracts';
 import type { SecretProvider } from '@cap/secrets';
 import { gitApprovalRequests, gitConnections, gitOperations, repositories, type Database } from '@cap/database';
-import { AppError, AuditService, DB, EventsService, GitProviderClient, GitProviderError, JobFailedError, JobsService, SECRETS } from '@cap/server-core';
+import { AppError, AuditService, DB, EventsService, GitProviderClient, GitProviderError, JobFailedError, JobsService, SECRETS, SettingsService } from '@cap/server-core';
 import { isUniqueViolation } from '@cap/server-core';
 import { CurrentUser, ReqCtx, type RequestContext } from '../common/decorators.js';
 import type { AuthUser } from '../common/request.js';
@@ -189,6 +189,7 @@ export class GitConnectionsController {
     @Inject(SECRETS) private readonly secrets: SecretProvider,
     private readonly git: GitProviderClient,
     private readonly audit: AuditService,
+    private readonly settings: SettingsService,
   ) {}
 
   @Get()
@@ -214,6 +215,10 @@ export class GitConnectionsController {
   /** Rattachement par jeton d'accès personnel (validé auprès de la forge, stocké dans Vault). */
   @Post('token')
   async addToken(@Body({ schema: CreatePatConnectionSchema }) body: z.infer<typeof CreatePatConnectionSchema>, @CurrentUser() user: AuthUser, @ReqCtx() ctx: RequestContext) {
+    // Par défaut, les comptes Git se rattachent par OAuth via les forges configurées par l'administrateur.
+    if (!(await this.settings.section('git')).allowPersonalTokens) {
+      throw new AppError('forbidden', 'Les jetons d’accès personnels sont désactivés : connectez votre compte via OAuth');
+    }
     const host = body.provider === 'github' ? 'github.com' : body.provider === 'gitlab' ? 'gitlab.com' : body.host.toLowerCase();
     let who;
     try {

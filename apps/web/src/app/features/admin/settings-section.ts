@@ -41,6 +41,7 @@ const LABELS: Record<string, string> = {
   teamServersAllowed: 'Serveurs MCP d’équipe autorisés',
   allowedRemoteHosts: 'Hôtes MCP distants autorisés (portées équipe/personnelle)',
   insecureHttpHosts: 'Forges auto-hébergées joignables en HTTP (hôte[:port] ; vide = HTTPS obligatoire)',
+  allowPersonalTokens: 'Autoriser les jetons d’accès personnels (sinon : OAuth uniquement)',
   emailEnabled: 'Envoi d’emails',
   mandatoryEmailTypes: 'Emails imposés (types)',
 };

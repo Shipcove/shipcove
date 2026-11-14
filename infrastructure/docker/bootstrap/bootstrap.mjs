@@ -96,10 +96,12 @@ path "cap/data/infra/smtp"         { capabilities = ["read"] }
 path "cap/data/infra/s3"           { capabilities = ["read"] }
 path "cap/data/infra/litellm"      { capabilities = ["read"] }
 `,
-  // La gateway relaie vers LiteLLM et lit les dépôts (lecture seule) pour les sandboxes.
+  // La gateway relaie vers LiteLLM et lit les dépôts (lecture seule) pour les sandboxes ; elle
+  // renouvelle un jeton OAuth expiré (écriture du jeton, lecture du secret de l'application).
   gateway: `
 path "cap/data/infra/litellm"      { capabilities = ["read"] }
-path "cap/data/git-connections/*"  { capabilities = ["read"] }
+path "cap/data/git-connections/*"  { capabilities = ["read","update"] }
+path "cap/data/oauth-apps/*"       { capabilities = ["read"] }
 path "cap/data/mcp/*"              { capabilities = ["read"] }
 `,
   preview: `

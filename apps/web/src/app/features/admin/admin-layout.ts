@@ -25,6 +25,7 @@ export class AdminLayout {
     { path: '/admin/users', label: 'Utilisateurs' },
     { path: '/admin/teams', label: 'Équipes' },
     { path: '/admin/iam', label: 'IAM & connexion' },
+    { path: '/admin/git', label: 'Forges Git' },
     { path: '/admin/models', label: 'Modèles (LiteLLM)' },
     { path: '/admin/quotas', label: 'Quotas & crédits' },
     { path: '/admin/sandboxes', label: 'Sandboxes & previews' },

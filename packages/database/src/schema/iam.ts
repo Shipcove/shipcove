@@ -184,6 +184,50 @@ export const oneTimeTokens = pgTable(
 );
 
 /** Connexions Git (indépendantes de l'identité de login). Les tokens sont dans Vault. */
+/**
+ * Forges Git configurées par l'administrateur (application OAuth par forge) : seul moyen,
+ * par défaut, de rattacher un compte Git. Le secret client est dans Vault (`secretRef`).
+ */
+export const gitForges = pgTable(
+  'git_forges',
+  {
+    id: pk(),
+    provider: text({ enum: ['github', 'github_enterprise', 'gitlab', 'gitlab_self_managed'] }).notNull(),
+    name: text().notNull(),
+    /** Hôte (et port) de la forge, ex. `github.com`, `gitlab.exemple.com`. */
+    host: text().notNull(),
+    clientId: text().notNull(),
+    secretRef: text(),
+    enabled: boolean().notNull().default(false),
+    lastTestAt: ts(),
+    lastTestResult: text(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('git_forges_host_uq').on(sql`lower(${t.host})`)],
+);
+
+/** Redirection OAuth en cours vers une forge (state haché, PKCE), usage unique, durée courte. */
+export const gitOauthFlows = pgTable(
+  'git_oauth_flows',
+  {
+    id: pk(),
+    forgeId: uuid()
+      .notNull()
+      .references(() => gitForges.id, { onDelete: 'cascade' }),
+    userId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    stateHash: text().notNull(),
+    codeVerifier: text().notNull(),
+    returnTo: text().notNull().default('/settings/git'),
+    expiresAt: ts().notNull(),
+    usedAt: ts(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('git_oauth_flows_state_uq').on(t.stateHash), index().on(t.expiresAt)],
+);
+
 export const gitConnections = pgTable(
   'git_connections',
   {
@@ -199,6 +243,8 @@ export const gitConnections = pgTable(
     scopes: jsonb().$type<string[]>().notNull().default([]),
     secretRef: text().notNull(),
     authType: text({ enum: ['oauth', 'pat'] }).notNull(),
+    /** Forge (application OAuth) ayant émis le jeton ; nécessaire à son renouvellement. */
+    forgeId: uuid().references(() => gitForges.id, { onDelete: 'set null' }),
     tokenExpiresAt: ts(),
     status: text({ enum: ['active', 'expired', 'revoked', 'error'] }).notNull().default('active'),
     lastUsedAt: ts(),

@@ -6,6 +6,7 @@ import { test as nodeTest, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { chromium } from 'playwright';
 import { Client, adminClient, uid } from './client.mjs';
 
 const GITLAB = process.env.CAP_E2E_GITLAB_URL ?? 'http://127.0.0.1:8929';
@@ -64,6 +65,19 @@ async function run(client, wsId, text, until) {
 
 const tool = (name, args) => `[[tool:${name} ${JSON.stringify(args)}]]`;
 
+const FORGE_NAME = 'GitLab (tests)';
+const GL_PASSWORD = 'Hx8-qPz3-Nm6v-Ws2k-e2e';
+const PUBLIC = process.env.CAP_PUBLIC_URL ?? 'http://localhost:8080';
+const executablePath = process.env.CHROMIUM_PATH ?? (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
+
+/** Lecture d'un secret Vault (jeton root de l'environnement de développement, tests uniquement). */
+function vaultRead(path) {
+  const init = JSON.parse(readFileSync(new URL('../../infrastructure/docker/.secrets/vault-init.json', import.meta.url), 'utf8'));
+  const out = execFileSync('docker', ['exec', '-e', `VAULT_TOKEN=${init.root_token}`, '-e', 'VAULT_ADDR=http://127.0.0.1:8200', 'cap-vault-1', 'vault', 'kv', 'get', '-format=json', `cap/${path}`], { encoding: 'utf8' });
+  return JSON.parse(out).data.data;
+}
+const sql = (q) => execFileSync('docker', ['exec', '-i', 'cap-postgres-1', 'psql', '-U', 'cap', '-d', 'cap', '-tAc', q], { encoding: 'utf8' }).trim();
+
 before(async () => {
   if (!FORGE_UP) return;
   if ((await gl('GET', '/user')).status !== 200) ensureRootToken();
@@ -71,13 +85,13 @@ before(async () => {
   // Utilisateur GitLab et dépôt de démonstration (idempotent).
   let [glUser] = (await gl('GET', '/users?username=capdev')).body;
   if (!glUser) {
-    const r = await gl('POST', '/users', { email: 'capdev@example.test', username: 'capdev', name: 'Cap Dev', password: 'Hx8-qPz3-Nm6v-Ws2k-e2e', skip_confirmation: true });
+    const r = await gl('POST', '/users', { email: 'capdev@example.test', username: 'capdev', name: 'Cap Dev', password: GL_PASSWORD, skip_confirmation: true });
     assert.equal(r.status, 201, JSON.stringify(r.body));
     glUser = r.body;
   }
-  const pat = await gl('POST', `/users/${glUser.id}/personal_access_tokens`, { name: `cap-${uid()}`, scopes: ['api', 'read_repository', 'write_repository'], expires_at: new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10) });
-  assert.equal(pat.status, 201, JSON.stringify(pat.body));
-  ctx.glToken = pat.body.token;
+  // Jeton personnel : sert uniquement à vérifier qu'il est refusé par défaut.
+  const pat = await gl('POST', `/users/${glUser.id}/personal_access_tokens`, { name: `cap-${uid()}`, scopes: ['api'], expires_at: new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10) });
+  ctx.glPat = pat.body.token;
   let project = await gl('GET', `/projects/${encodeURIComponent('capdev/cap-demo')}`);
   if (project.status === 404) {
     project = await gl('POST', `/projects/user/${glUser.id}`, { name: 'cap-demo', path: 'cap-demo', initialize_with_readme: true, default_branch: 'main', visibility: 'private' });
@@ -93,27 +107,116 @@ before(async () => {
   const u = await ctx.admin.post('/admin/users', { email: `${username}@example.test`, username, displayName: `Git ${username}`, platformRole: 'user', password });
   await ctx.admin.post(`/teams/${team.body.id}/members`, { userId: u.body.id, role: 'member' });
   ctx.teamId = team.body.id;
+  ctx.devLogin = { username, password };
   ctx.dev = new Client();
   assert.equal((await ctx.dev.post('/auth/login', { login: username, password })).body.status, 'authenticated');
 });
 
 after(async () => {
   if (!FORGE_UP) return;
-  await ctx.admin?.req('PATCH', '/admin/settings', { section: 'git', values: { insecureHttpHosts: [] } });
+  await ctx.admin?.req('PATCH', '/admin/settings', { section: 'git', values: { insecureHttpHosts: [], allowPersonalTokens: false } });
   if (ctx.ws) await ctx.dev.post(`/workspaces/${ctx.ws.id}/stop`).catch(() => undefined);
 });
 
-test('forge auto-hébergée : HTTPS exigé par défaut, HTTP seulement pour un hôte autorisé par l’administrateur', async () => {
-  await ctx.admin.req('PATCH', '/admin/settings', { section: 'git', values: { insecureHttpHosts: [] } });
-  const refused = await ctx.dev.post('/me/git-connections/token', { provider: 'gitlab_self_managed', host: FORGE_HOST, token: ctx.glToken });
-  assert.equal(refused.status, 400, JSON.stringify(refused.body));
-  // Un membre ne peut pas modifier ce réglage.
+test('forges Git administrées : jeton personnel refusé par défaut, configuration réservée à l’administrateur, test des identifiants', async () => {
+  // Par défaut : OAuth uniquement.
+  const pat = await ctx.dev.post('/me/git-connections/token', { provider: 'gitlab_self_managed', host: FORGE_HOST, token: ctx.glPat });
+  assert.equal(pat.status, 403, JSON.stringify(pat.body));
+  // Seul l'administrateur déclare les forges et les réglages Git.
+  assert.equal((await ctx.dev.post('/admin/git-forges', { provider: 'gitlab_self_managed', name: 'x', host: 'x.test', clientId: 'x' })).status, 403);
   assert.equal((await ctx.dev.req('PATCH', '/admin/settings', { section: 'git', values: { insecureHttpHosts: [FORGE_HOST] } })).status, 403);
+
+  // Forge déclarée (idempotent par hôte) ; HTTPS exigé tant que l'hôte n'est pas autorisé en HTTP.
+  await ctx.admin.req('PATCH', '/admin/settings', { section: 'git', values: { insecureHttpHosts: [] } });
+  let forge = (await ctx.admin.get('/admin/git-forges')).body.find((f) => f.host === FORGE_HOST);
+  if (!forge) {
+    const r = await ctx.admin.post('/admin/git-forges', { provider: 'gitlab_self_managed', name: FORGE_NAME, host: FORGE_HOST, clientId: 'en-attente', enabled: false });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    forge = r.body;
+  }
+  assert.equal(forge.callbackUrl, `${PUBLIC}/api/v1/me/git-connections/oauth/${forge.id}/callback`);
+  // Application OAuth GitLab déclarant l'URL de rappel de la plateforme.
+  for (const app of (await gl('GET', '/applications')).body.filter((a) => a.application_name === 'cap-e2e')) await gl('DELETE', `/applications/${app.id}`);
+  const app = await gl('POST', '/applications', { name: 'cap-e2e', redirect_uri: forge.callbackUrl, scopes: forge.scopes.join(' '), confidential: true });
+  assert.equal(app.status, 201, JSON.stringify(app.body));
+  const upsert = (values) => ctx.admin.put(`/admin/git-forges/${forge.id}`, { provider: 'gitlab_self_managed', name: FORGE_NAME, host: FORGE_HOST, clientId: app.body.application_id, enabled: true, ...values });
+
+  assert.equal((await upsert({ clientSecret: app.body.secret })).status, 200);
+  let t = await ctx.admin.post(`/admin/git-forges/${forge.id}/test`);
+  assert.equal(t.body.ok, false, 'HTTPS exigé par défaut : la forge HTTP est injoignable');
   assert.equal((await ctx.admin.req('PATCH', '/admin/settings', { section: 'git', values: { insecureHttpHosts: [FORGE_HOST] } })).status, 200);
-  const conn = await ctx.dev.post('/me/git-connections/token', { provider: 'gitlab_self_managed', host: FORGE_HOST, token: ctx.glToken });
-  assert.equal(conn.status, 201, JSON.stringify(conn.body));
-  assert.ok(!JSON.stringify(conn.body).includes(ctx.glToken), 'jeton jamais renvoyé');
-  ctx.connId = conn.body.id;
+  // Mauvais secret détecté par le test, puis bon secret.
+  await upsert({ clientSecret: 'secret-errone' });
+  t = await ctx.admin.post(`/admin/git-forges/${forge.id}/test`);
+  assert.equal(t.body.ok, false, JSON.stringify(t.body));
+  assert.match(t.body.detail, /Identifiants client refusés/);
+  await upsert({ clientSecret: app.body.secret });
+  t = await ctx.admin.post(`/admin/git-forges/${forge.id}/test`);
+  assert.equal(t.body.ok, true, JSON.stringify(t.body));
+  const listed = await ctx.admin.get('/admin/git-forges');
+  assert.ok(!JSON.stringify(listed.body).includes(app.body.secret), 'secret client jamais renvoyé');
+  const pub = await ctx.dev.get('/me/git-connections/oauth/providers');
+  assert.deepEqual(pub.body.forges.map((f) => f.id), [forge.id]);
+  assert.equal(pub.body.allowPersonalTokens, false);
+  ctx.forge = forge;
+});
+
+test('rattachement OAuth dans le navigateur (PKCE + state), retour non rejouable', async () => {
+  const browser = await chromium.launch({ executablePath, args: ['--no-sandbox', '--host-resolver-rules=MAP gitlab.test 127.0.0.1'] });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+    await page.goto(`${PUBLIC}/auth/login`);
+    await page.fill('#login', ctx.devLogin.username);
+    await page.fill('#password', ctx.devLogin.password);
+    await page.click('button:has-text("Se connecter")');
+    await page.waitForURL(`${PUBLIC}/`);
+    await page.goto(`${PUBLIC}/settings/git`);
+    let callback = null;
+    page.on('request', (r) => {
+      if (r.url().includes(`/oauth/${ctx.forge.id}/callback`)) callback = r.url();
+    });
+    await page.click(`a:has-text("Connecter via ${FORGE_NAME}")`);
+    await page.waitForURL(/gitlab\.test:8929\/users\/sign_in/, { timeout: 60_000 });
+    const authorize = new URL(page.url()).searchParams.get('redirect_to') ?? '';
+    await page.fill('#user_login', 'capdev');
+    await page.fill('#user_password', GL_PASSWORD);
+    await page.click('[data-testid="sign-in-button"], button[type="submit"]:has-text("Sign in")');
+    await page.waitForURL(/oauth\/authorize/, { timeout: 60_000 });
+    assert.match(page.url() + authorize, /code_challenge_method=S256/);
+    // La mise en page GitLab recouvre parfois le bouton : clic direct sur l'élément du formulaire.
+    await page.locator('[data-testid="authorization-button"]').evaluate((b) => b.click());
+    await page.waitForURL(/\/settings\/git/, { timeout: 60_000 });
+    await page.waitForSelector('[aria-label="Connexions Git"] >> text=capdev');
+    await page.screenshot({ path: new URL('artifacts/git-oauth-connected.png', import.meta.url).pathname });
+    // Le retour (code + state) ne peut pas être rejoué.
+    assert.ok(callback);
+    await page.goto(callback);
+    await page.waitForURL(/git_error=expired/);
+  } finally {
+    await browser.close();
+  }
+  const conns = (await ctx.dev.get('/me/git-connections')).body.filter((c) => c.host === FORGE_HOST && c.status === 'active');
+  assert.equal(conns.length, 1, JSON.stringify(conns));
+  ctx.connId = conns[0].id;
+  ctx.glToken = vaultRead(`git-connections/${ctx.connId}`).accessToken;
+  assert.ok(ctx.glToken);
+  assert.equal(sql(`select auth_type || ' ' || (forge_id = '${ctx.forge.id}') || ' ' || (token_expires_at > now()) from git_connections where id = '${ctx.connId}'`), 'oauth true true');
+});
+
+test('renouvellement du jeton OAuth : automatique, sûr sous concurrence', async () => {
+  const before = vaultRead(`git-connections/${ctx.connId}`);
+  sql(`update git_connections set token_expires_at = now() - interval '1 minute' where id = '${ctx.connId}'`);
+  // Plusieurs appels simultanés : un seul renouvellement (jeton de renouvellement GitLab à usage unique).
+  const results = await Promise.all(Array.from({ length: 5 }, () => ctx.dev.get(`/me/git-connections/${ctx.connId}/repositories`)));
+  for (const r of results) assert.equal(r.status, 200, JSON.stringify(r.body));
+  const after = vaultRead(`git-connections/${ctx.connId}`);
+  assert.notEqual(after.accessToken, before.accessToken, 'jeton renouvelé');
+  assert.notEqual(after.refreshToken, before.refreshToken, 'jeton de renouvellement remplacé');
+  assert.equal(sql(`select status || ' ' || (token_expires_at > now() + interval '30 minutes') from git_connections where id = '${ctx.connId}'`), 'active true');
+  // Second renouvellement : le nouveau jeton de renouvellement est bien celui conservé.
+  sql(`update git_connections set token_expires_at = now() - interval '1 minute' where id = '${ctx.connId}'`);
+  assert.equal((await ctx.dev.get(`/me/git-connections/${ctx.connId}/repositories`)).status, 200);
+  ctx.glToken = vaultRead(`git-connections/${ctx.connId}`).accessToken;
 });
 
 test('projet depuis un dépôt GitLab : clone via la passerelle, sans jeton dans la sandbox', async () => {
@@ -198,4 +301,13 @@ test('merge request créée sur GitLab après approbation ; une demande refusée
   assert.equal((await ctx.dev.post(`/approvals/${req2.data.approvalId}/decision`, { decision: 'reject' }, { 'Idempotency-Key': `g-${uid()}` })).body.status, 'rejected');
   await new Promise((r) => setTimeout(r, 3000));
   assert.equal((await gl('GET', `/projects/${pid}/repository/branches/${other}`)).status, 404);
+});
+
+test('suppression de la forge par l’administrateur : connexions révoquées', async () => {
+  const r = await ctx.admin.req('DELETE', `/admin/git-forges/${ctx.forge.id}`);
+  assert.equal(r.status, 204);
+  const conns = (await ctx.dev.get('/me/git-connections')).body.filter((c) => c.id === ctx.connId);
+  assert.equal(conns.length, 0, 'connexion révoquée (plus listée)');
+  assert.equal(sql(`select status from git_connections where id = '${ctx.connId}'`), 'revoked');
+  assert.equal((await ctx.dev.get('/me/git-connections/oauth/providers')).body.forges.length, 0);
 });
