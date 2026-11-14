@@ -91,6 +91,15 @@ export const PlatformSettingsSchema = z.object({
       allowedRemoteHosts: z.array(z.string().max(255)).default([]),
     })
     .prefault({}),
+  git: z
+    .object({
+      /**
+       * Forges auto-hébergées joignables en HTTP (hôte[:port], ex. forge interne de recette).
+       * Vide par défaut : HTTPS obligatoire. Les jetons transitent alors en clair sur ce réseau.
+       */
+      insecureHttpHosts: z.array(z.string().regex(/^[a-z0-9.-]+(:\d+)?$/i).max(255)).max(20).default([]),
+    })
+    .prefault({}),
   notifications: z
     .object({
       emailEnabled: z.boolean().default(true),
@@ -101,7 +110,7 @@ export const PlatformSettingsSchema = z.object({
 export type PlatformSettings = z.infer<typeof PlatformSettingsSchema>;
 
 export const PlatformSettingsPatchSchema = z.object({
-  section: z.enum(['auth', 'editor', 'sandbox', 'previews', 'quotas', 'attachments', 'skills', 'mcp', 'notifications']),
+  section: z.enum(['auth', 'editor', 'sandbox', 'previews', 'quotas', 'attachments', 'skills', 'mcp', 'git', 'notifications']),
   values: z.record(z.string(), z.unknown()),
 });
 

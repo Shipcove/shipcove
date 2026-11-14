@@ -53,7 +53,11 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
 - ☐ Helm chart + manifestes Kubernetes ; tests résilience / charge
 
 ## Tests
-- `tests/e2e` (`pnpm test`, pile Compose réelle) : pile (8), interface Playwright (1), SSO (7).
+- `tests/e2e` (`pnpm test`, pile Compose réelle, 27 scénarios) : pile (8), interface Playwright (1),
+  SSO contre Keycloak + OpenLDAP (7), fonctionnels (7 : édition manuelle et conflits, skills, MCP,
+  pièces jointes, notifications email, rétention, limite de sandboxes), Git contre GitLab CE (4 :
+  clone, publication et MR après approbation, commit exact, refus). Les suites SSO et Git
+  s'ignorent si leurs fournisseurs de test ne sont pas démarrés (`pnpm sso:up`, `pnpm forge:up`).
 - Unitaires / intégration : `apps/api`, `apps/gateway`, `packages/server-core`, `packages/agent-runtime`, `packages/secrets`.
 
 ## Limites connues
@@ -62,4 +66,8 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
 
 ## Journal
 - 2026-11-13 : cadrage, ADR 0001–0011 ; socle, moteur, produit, contrôles ; pile Compose + e2e.
-- 2026-11-14 : PO-2/3/4, file d'attente durable, quotas en %, fédération d'identité (ADR 0012).
+- 2026-11-14 : PO-2/3/4, file d'attente durable, quotas en %, fédération d'identité (ADR 0012) ;
+  e2e SPEC §25 n°9, 13, 15 et parcours Git complet — 9 défauts corrigés (cache des paramètres
+  entre instances, skills révoqués actifs, permissions MCP lisibles par tous, archives non
+  inspectées, antivirus en échec ouvert, en-têtes dupliqués, message d'erreur perdu, jeton Git
+  présentable à un autre hôte, suppression de compte en collision).

@@ -77,6 +77,8 @@ export class GitReadProxyController {
       auth = `Basic ${Buffer.from(`${user}:${token}`).toString('base64')}`;
       await this.db.update(gitConnections).set({ lastUsedAt: new Date() }).where(eq(gitConnections.id, conn.id));
     }
+    // Transport vérifié (HTTPS, ou HTTP pour un hôte explicitement autorisé).
+    await this.git.assertTransport(row.repo.cloneUrl);
     return { url: row.repo.cloneUrl.replace(/\/$/, ''), auth };
   }
 

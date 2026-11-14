@@ -1,0 +1,39 @@
+# Forge GitLab de TEST (jamais pour la production), joignable par la pile sous http://gitlab.test:8929.
+# HTTP en clair : la plateforme ne l'accepte que si l'administrateur liste l'hôte dans
+# « Forges Git » (git.insecureHttpHosts) — ce que fait le test.
+#   docker compose -f tests/e2e/forge/compose.forge.yml up -d --wait   (premier démarrage : 3 à 6 min)
+# Réinitialisation complète (les données sont dans des volumes anonymes de l’image) : `down -v`.
+name: cap-forge-test
+
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:19.4.5-ce.0
+    hostname: gitlab.test
+    shm_size: 256m
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://gitlab.test:8929'
+        gitlab_rails['initial_root_password'] = 'zQ7-kfV2-Lw9x-Tr4p-e2e'
+        gitlab_rails['gitlab_signup_enabled'] = false
+        gitlab_rails['usage_ping_enabled'] = false
+        gitlab_rails['monitoring_whitelist'] = ['127.0.0.0/8', '::1/128']
+        puma['worker_processes'] = 0
+        sidekiq['concurrency'] = 5
+        prometheus_monitoring['enable'] = false
+        registry['enable'] = false
+        gitlab_kas['enable'] = false
+        mattermost['enable'] = false
+    ports: ["127.0.0.1:8929:8929"]
+    networks:
+      cap_backend:
+        aliases: [gitlab.test]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8929/-/readiness?all=1 | grep -q '\"status\":\"ok\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 120s
+
+networks:
+  cap_backend:
+    external: true

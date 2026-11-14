@@ -142,6 +142,11 @@ export class ProjectsController {
       if (err instanceof GitProviderError) throw new AppError('not_found', `Dépôt inaccessible avec cette connexion (${err.message})`);
       throw err;
     }
+    // Le jeton de la connexion sera présenté à cette URL : même hôte que la connexion, transport autorisé.
+    const clone = await this.git.assertTransport(meta.cloneUrl);
+    if (clone.host.toLowerCase() !== conn.host.toLowerCase()) {
+      throw new AppError('validation_failed', `URL de clonage sur un hôte inattendu (${clone.host}, connexion ${conn.host})`);
+    }
     const [row] = await tx
       .insert(repositories)
       .values({

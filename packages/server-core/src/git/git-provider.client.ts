@@ -5,6 +5,7 @@ import type { SecretProvider } from '@cap/secrets';
 import { gitConnections, type Database } from '@cap/database';
 import { DB, SECRETS } from '../tokens.js';
 import { AppError } from '../common/errors.js';
+import { SettingsService } from '../settings/settings.service.js';
 
 export interface RepoMetadata {
   provider: GitProviderKind;
@@ -49,12 +50,36 @@ export class GitProviderClient {
   constructor(
     @Inject(DB) private readonly db: Database,
     @Inject(SECRETS) private readonly secrets: SecretProvider,
+    private readonly settings: SettingsService,
   ) {}
 
-  apiBase(provider: GitProviderKind, host: string): string {
+  /**
+   * HTTPS par défaut. HTTP uniquement pour une forge auto-hébergée explicitement listée par
+   * l'administrateur (`git.insecureHttpHosts`, ex. forge interne de recette) ; jamais pour les SaaS.
+   */
+  private async scheme(host: string): Promise<'http' | 'https'> {
+    const { insecureHttpHosts } = await this.settings.section('git');
+    return insecureHttpHosts.map((h) => h.toLowerCase()).includes(host.toLowerCase()) ? 'http' : 'https';
+  }
+
+  async apiBase(provider: GitProviderKind, host: string): Promise<string> {
     if (provider === 'github') return 'https://api.github.com';
-    if (provider === 'github_enterprise') return `https://${host}/api/v3`;
-    return `https://${host}/api/v4`;
+    const origin = `${await this.scheme(host)}://${host}`;
+    return provider === 'github_enterprise' ? `${origin}/api/v3` : `${origin}/api/v4`;
+  }
+
+  /** URL de dépôt utilisable : HTTPS, ou HTTP pour un hôte autorisé ; ni identifiants ni autre schéma. */
+  async assertTransport(url: string): Promise<URL> {
+    let u: URL;
+    try {
+      u = new URL(url);
+    } catch {
+      throw new AppError('validation_failed', 'URL de dépôt invalide');
+    }
+    if (u.username || u.password) throw new AppError('validation_failed', 'URL de dépôt avec identifiants refusée');
+    if (u.protocol === 'https:') return u;
+    if (u.protocol === 'http:' && (await this.scheme(u.host)) === 'http') return u;
+    throw new AppError('forbidden', `Transport non autorisé pour ${u.host} (HTTPS requis)`);
   }
 
   async connection(connectionId: string, userId?: string): Promise<Conn> {
@@ -79,7 +104,7 @@ export class GitProviderClient {
     headers['User-Agent'] = 'coding-agent-platform';
     let res: Response;
     try {
-      res = await fetch(`${this.apiBase(conn.provider, conn.host)}${path}`, {
+      res = await fetch(`${await this.apiBase(conn.provider, conn.host)}${path}`, {
         method,
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -107,7 +132,7 @@ export class GitProviderClient {
   /** Identité du compte (validation d'un jeton lors du rattachement). */
   async whoAmI(provider: GitProviderKind, host: string, token: string): Promise<{ id: string; login: string; name: string | null; scopes: string[] }> {
     const isGh = isGitHub(provider);
-    const res = await fetch(`${this.apiBase(provider, host)}${isGh ? '/user' : '/user'}`, {
+    const res = await fetch(`${await this.apiBase(provider, host)}/user`, {
       headers: isGh ? { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'coding-agent-platform' } : { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15_000),
     }).catch((err: Error) => {
@@ -287,7 +312,7 @@ export class GitProviderClient {
   /** URL HTTPS avec identifiants, **uniquement** pour usage interne côté serveur (jamais journalisée). */
   async authenticatedCloneUrl(conn: Conn, cloneUrl: string): Promise<string> {
     const token = await this.token(conn);
-    const u = new URL(cloneUrl);
+    const u = await this.assertTransport(cloneUrl);
     u.username = isGitHub(conn.provider) ? 'x-access-token' : 'oauth2';
     u.password = token;
     return u.toString();
