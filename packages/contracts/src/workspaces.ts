@@ -100,7 +100,6 @@ export interface MessageDto {
   attachments: AttachmentDto[];
   toolCalls: ToolCallDto[];
   model: string | null;
-  usage: UsageDto | null;
   stopReason: string | null;
   createdAt: string;
   completedAt: string | null;
@@ -122,15 +121,6 @@ export interface ToolCallDto {
   durationMs: number | null;
 }
 
-export interface UsageDto {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-  credits: string;
-  providerCostUsd: string | null;
-  estimated: boolean;
-}
 
 export interface AttachmentDto {
   id: string;
@@ -166,7 +156,8 @@ export interface ConversationDto {
   queued: Array<{ messageId: string; text: string }>;
   /** Dernier id d'événement SSE persisté (pour reprendre le flux). */
   lastEventId: number;
-  context: { tokens: number | null; contextWindow: number | null; percent: number | null };
+  /** Remplissage de la fenêtre de contexte, en pourcentage. */
+  context: { percent: number | null };
 }
 
 export const CreateShareSchema = z.object({ userId: z.uuid() });

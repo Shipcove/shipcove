@@ -3,7 +3,6 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
-import { TokensPipe } from '../../shared/pipes';
 import { ApprovalsPanel } from './approvals-panel';
 import { ChangesPanel } from './changes-panel';
 import { Composer } from './composer';
@@ -24,7 +23,7 @@ type RightPane = 'panel' | 'files' | null;
  */
 @Component({
   selector: 'cap-workspace-page',
-  imports: [FormsModule, RouterLink, Icon, TokensPipe, Conversation, Composer, FilesPane, ChangesPanel, GitPanel, ApprovalsPanel, PreviewsPanel, ShareDialog],
+  imports: [FormsModule, RouterLink, Icon, Conversation, Composer, FilesPane, ChangesPanel, GitPanel, ApprovalsPanel, PreviewsPanel, ShareDialog],
   providers: [WorkspaceStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -47,7 +46,7 @@ type RightPane = 'panel' | 'files' | null;
           <div class="ml-auto flex flex-wrap items-center gap-3">
             @if (ws.agentMode === 'plan') { <span class="badge bg-sky-100 text-sky-800" title="Pi n'a que des outils en lecture seule">Mode plan</span> }
             @if (contextPct() !== null) {
-              <div class="w-28 text-[11px] text-stone-500" [title]="'Contexte : ' + (store.context().tokens | tokens) + ' / ' + (store.context().contextWindow | tokens) + ' tokens'">
+              <div class="w-28 text-[11px] text-stone-500" title="Remplissage de la fenêtre de contexte du modèle">
                 Contexte {{ contextPct() }}%
                 <div class="h-1 rounded bg-stone-200 dark:bg-stone-800"><div class="h-1 rounded bg-accent-500" [style.width.%]="contextPct()"></div></div>
               </div>
@@ -135,10 +134,7 @@ export class WorkspacePage implements OnDestroy {
     ];
   });
 
-  protected readonly contextPct = computed(() => {
-    const c = this.store.context();
-    return c.tokens && c.contextWindow ? Math.min(100, Math.round((c.tokens / c.contextWindow) * 100)) : null;
-  });
+  protected readonly contextPct = computed(() => this.store.contextPercent());
 
   protected readonly statusLabel = computed(() => {
     const ws = this.store.workspace();

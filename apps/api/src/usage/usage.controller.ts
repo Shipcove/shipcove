@@ -5,7 +5,9 @@ import { z } from 'zod';
 import {
   NotificationPreferenceSchema,
   NotificationTypes,
-  type LlmRequestDto,
+  toQuotaWindow,
+  type UsageBreakdownDto,
+  type UsageRequestDto,
   type ModelDto,
   type NotificationDto,
   type NotificationPreferenceDto,
@@ -55,7 +57,8 @@ export class ModelsController {
     const teamsToCheck = teamId ? mine.filter((t) => t === teamId) : mine;
     const rows = await this.db.select().from(llmModels).where(and(eq(llmModels.enabled, true), isNull(llmModels.deletedAt)));
     const allowed = rows.filter((m) => m.allowedTeamIds.length === 0 || m.allowedTeamIds.some((t) => teamsToCheck.includes(t)));
-    return modelDtos(this.db, allowed);
+    // Les coefficients (crédits par 1 000 tokens) sont réservés à l'administration.
+    return (await modelDtos(this.db, allowed)).map((m) => ({ ...m, coefficients: null }));
   }
 }
 
@@ -68,7 +71,10 @@ export class UsageController {
     private readonly settings: SettingsService,
   ) {}
 
-  /** Crédits consommés / disponibles sur 5 h et 7 jours (utilisateur et équipes). */
+  /**
+   * Quotas de l'utilisateur et de ses équipes plafonnées, en pourcentage uniquement :
+   * les crédits (unité interne de pondération) ne sont visibles que de l'administration.
+   */
   @Get()
   async summary(@CurrentUser() user: AuthUser): Promise<UsageSummaryDto> {
     const myTeams = await this.db
@@ -76,60 +82,52 @@ export class UsageController {
       .from(teamMembers)
       .innerJoin(teams, eq(teams.id, teamMembers.teamId))
       .where(and(eq(teamMembers.userId, user.id), isNull(teams.deletedAt)));
+    const teamRows = await Promise.all(myTeams.map(async (t) => ({ teamId: t.id, teamName: t.name, windows: (await this.quotas.teamWindows(t.id)).map(toQuotaWindow) })));
     return {
-      user: { windows: await this.quotas.userWindows(user.id) },
-      teams: await Promise.all(myTeams.map(async (t) => ({ teamId: t.id, teamName: t.name, windows: await this.quotas.teamWindows(t.id) }))),
+      user: { windows: (await this.quotas.userWindows(user.id)).map(toQuotaWindow) },
+      teams: teamRows.filter((t) => t.windows.some((w) => w.percent !== null)),
       quotasEnabled: (await this.settings.section('quotas')).enabled,
     };
   }
 
-  /** Consommation par requête (tokens entrée/sortie/cache, crédits, coût provider). */
+  /** Dernières requêtes LLM de l'utilisateur : ni tokens, ni crédits, ni coût. */
   @Get('requests')
   async requests(
     @CurrentUser() user: AuthUser,
     @Query('workspaceId', { schema: z.uuid().optional() }) workspaceId?: string,
     @Query('limit', { schema: z.coerce.number().int().min(1).max(500).default(100) }) limit = 100,
-  ): Promise<LlmRequestDto[]> {
+  ): Promise<UsageRequestDto[]> {
     const rows = await this.db
-      .select()
+      .select({ id: llmRequests.id, workspaceId: llmRequests.workspaceId, runId: llmRequests.runId, model: llmRequests.litellmModel, status: llmRequests.status, latencyMs: llmRequests.latencyMs, createdAt: llmRequests.createdAt })
       .from(llmRequests)
       .where(and(eq(llmRequests.userId, user.id), ...(workspaceId ? [eq(llmRequests.workspaceId, workspaceId)] : [])))
       .orderBy(desc(llmRequests.createdAt))
       .limit(limit);
-    return rows.map((r) => ({
-      id: r.id,
-      workspaceId: r.workspaceId,
-      runId: r.runId,
-      model: r.litellmModel,
-      status: r.status === 'rejected' ? 'failed' : r.status,
-      inputTokens: r.inputTokens,
-      outputTokens: r.outputTokens,
-      cacheReadTokens: r.cacheReadTokens,
-      cacheWriteTokens: r.cacheWriteTokens,
-      credits: r.credits,
-      providerCostUsd: r.providerCostUsd,
-      latencyMs: r.latencyMs,
-      estimated: r.estimated,
-      createdAt: r.createdAt.toISOString(),
-    }));
+    const status = (s: string): UsageRequestDto['status'] =>
+      s === 'settled' || s === 'pending_reconciliation' ? 'completed' : s === 'rejected' ? 'rejected' : s === 'failed' ? 'failed' : 'in_progress';
+    return rows.map((r) => ({ ...r, status: status(r.status), createdAt: r.createdAt.toISOString() }));
   }
 
-  /** Agrégats par modèle et par workspace (conversation). */
+  /** Répartition relative par modèle et par workspace (parts en %, aucune valeur absolue). */
   @Get('breakdown')
-  async breakdown(@CurrentUser() user: AuthUser, @Query('days', { schema: z.coerce.number().int().min(1).max(90).default(7) }) days = 7) {
-    const byModel = await this.db.execute<{ model: string; requests: number; input: number; output: number; cache_read: number; cache_write: number; credits: string; cost: string | null }>(sql`
-      select litellm_model as model, count(*)::int as requests,
-        coalesce(sum(input_tokens),0)::int as input, coalesce(sum(output_tokens),0)::int as output,
-        coalesce(sum(cache_read_tokens),0)::int as cache_read, coalesce(sum(cache_write_tokens),0)::int as cache_write,
-        coalesce(sum(credits),0)::text as credits, sum(provider_cost_usd)::text as cost
-      from llm_requests where user_id = ${user.id} and created_at > now() - (${days} * interval '1 day') and status = 'settled'
-      group by litellm_model order by 7 desc`);
-    const byWorkspace = await this.db.execute<{ workspace_id: string; name: string | null; credits: string; requests: number }>(sql`
-      select r.workspace_id, w.name, coalesce(sum(r.credits),0)::text as credits, count(*)::int as requests
-      from llm_requests r left join workspaces w on w.id = r.workspace_id
-      where r.user_id = ${user.id} and r.created_at > now() - (${days} * interval '1 day') and r.status = 'settled'
-      group by r.workspace_id, w.name order by 3 desc limit 50`);
-    return { days, byModel: byModel.rows, byWorkspace: byWorkspace.rows };
+  async breakdown(@CurrentUser() user: AuthUser, @Query('days', { schema: z.coerce.number().int().min(1).max(90).default(7) }) days = 7): Promise<UsageBreakdownDto> {
+    const byModel = await this.db.execute<{ model: string; requests: number; percent: number }>(sql`
+      select model, requests, round(100 * share)::int as percent from (
+        select litellm_model as model, count(*)::int as requests,
+          coalesce(sum(credits),0) / nullif(sum(sum(credits)) over (), 0) as share
+        from llm_requests where user_id = ${user.id} and created_at > now() - (${days} * interval '1 day') and status = 'settled'
+        group by litellm_model) t
+      order by share desc nulls last`);
+    const byWorkspace = await this.db.execute<{ workspaceId: string | null; name: string | null; requests: number; percent: number }>(sql`
+      select workspace_id as "workspaceId", name, requests, round(100 * share)::int as percent from (
+        select r.workspace_id, w.name, count(*)::int as requests,
+          coalesce(sum(r.credits),0) / nullif(sum(sum(r.credits)) over (), 0) as share
+        from llm_requests r left join workspaces w on w.id = r.workspace_id
+        where r.user_id = ${user.id} and r.created_at > now() - (${days} * interval '1 day') and r.status = 'settled'
+        group by r.workspace_id, w.name) t
+      order by share desc nulls last limit 50`);
+    const pct = <T extends { percent: number | null }>(rows: T[]) => rows.map((r) => ({ ...r, percent: r.percent ?? 0 }));
+    return { days, byModel: pct(byModel.rows), byWorkspace: pct(byWorkspace.rows) };
   }
 }
 

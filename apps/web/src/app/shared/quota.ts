@@ -1,4 +1,4 @@
-import type { WindowUsageDto } from '@cap/contracts';
+import type { QuotaWindowDto } from '@cap/contracts';
 
 /**
  * Présentation des quotas côté utilisateur : uniquement des pourcentages (jamais de crédits),
@@ -9,10 +9,9 @@ export const QUOTA_DANGER = 90;
 
 export type QuotaLevel = 'ok' | 'warn' | 'danger';
 
-/** Pourcentage consommé (réservations incluses), ou `null` si la fenêtre est sans limite / exemptée. */
-export function quotaPct(w: WindowUsageDto): number | null {
-  if (w.exempt || w.limit === null || Number(w.limit) <= 0) return null;
-  return Math.min(100, Math.round(((Number(w.used) + Number(w.reserved)) / Number(w.limit)) * 100));
+/** Pourcentage consommé (fourni par l'API), ou `null` si la fenêtre est sans limite / exemptée. */
+export function quotaPct(w: QuotaWindowDto): number | null {
+  return w.percent;
 }
 
 export function quotaLevel(pct: number | null): QuotaLevel {
@@ -35,7 +34,7 @@ export function quotaStroke(pct: number | null): string {
   return { ok: '#2563eb', warn: '#f97316', danger: '#dc2626' }[quotaLevel(pct)];
 }
 
-export function windowLabel(w: WindowUsageDto['window']): string {
+export function windowLabel(w: QuotaWindowDto['window']): string {
   return w === '5h' ? 'Limite de 5 heures' : '7 jours glissants';
 }
 

@@ -93,7 +93,7 @@ export class LlmProxyController {
     } catch (err) {
       if (err instanceof QuotaExceededError) {
         // Non rejouable : Pi termine son tour ; le worker suspend le run proprement.
-        return openAiError(res, 402, 'quota_exceeded', `Quota de crédits atteint (${err.window}). L'agent est suspendu jusqu'à la reprise.`);
+        return openAiError(res, 402, 'quota_exceeded', `Quota atteint (${err.window}). L'agent est suspendu jusqu'à la reprise.`);
       }
       throw err;
     }
@@ -206,18 +206,8 @@ export class LlmProxyController {
 
   private async emitUsage(p: RunPrincipal) {
     try {
-      const windows = await this.quotas.userWindows(p.userId);
-      await this.events.emit(
-        p.workspaceId,
-        'usage.updated',
-        {
-          credits5h: windows.find((w) => w.window === '5h')?.used ?? '0',
-          credits7d: windows.find((w) => w.window === '7d')?.used ?? '0',
-          contextTokens: null,
-          contextWindow: null,
-        },
-        p.runId,
-      );
+      // Signal de rafraîchissement : le client relit ses quotas (en %) via GET /usage.
+      await this.events.emit(p.workspaceId, 'usage.updated', {}, p.runId);
     } catch (err) {
       this.logger.warn(`usage.updated : ${(err as Error).message}`);
     }

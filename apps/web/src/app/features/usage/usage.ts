@@ -1,15 +1,9 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import type { LlmRequestDto, UsageSummaryDto, WindowUsageDto } from '@cap/contracts';
+import type { QuotaWindowDto, UsageBreakdownDto, UsageRequestDto, UsageSummaryDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
 import { AgoPipe } from '../../shared/pipes';
 import { QUOTA_DANGER, QUOTA_WARN, formatReset, quotaBarClass, quotaPct, quotaTextClass, windowLabel } from '../../shared/quota';
-
-interface Breakdown {
-  days: number;
-  byModel: Array<{ model: string; requests: number; credits: string }>;
-  byWorkspace: Array<{ workspace_id: string; name: string | null; credits: string; requests: number }>;
-}
 
 /**
  * Consommation côté utilisateur : quotas en pourcentage uniquement (jamais de crédits ni de tokens),
@@ -54,18 +48,18 @@ interface Breakdown {
           <div>
             <h2 class="mb-2 text-sm font-semibold text-stone-500 uppercase">Par workspace ({{ b.days }} jours)</h2>
             <div class="card p-4">
-              @for (r of shares(b.byWorkspace, 'name', 'workspace_id'); track r.key) {
-                <div class="mb-3 last:mb-0"><div class="flex text-sm"><span class="truncate">{{ r.label }}</span><span class="ml-auto tabular-nums text-stone-500">{{ r.pct }} %</span></div>
-                  <div class="mt-1 h-1.5 rounded bg-stone-200 dark:bg-stone-800"><div class="h-1.5 rounded bg-accent-500" [style.width.%]="r.pct"></div></div></div>
+              @for (r of b.byWorkspace; track r.workspaceId) {
+                <div class="mb-3 last:mb-0"><div class="flex text-sm"><span class="truncate">{{ r.name ?? '—' }}</span><span class="ml-auto tabular-nums text-stone-500">{{ r.percent }} %</span></div>
+                  <div class="mt-1 h-1.5 rounded bg-stone-200 dark:bg-stone-800"><div class="h-1.5 rounded bg-accent-500" [style.width.%]="r.percent"></div></div></div>
               } @empty { <p class="text-sm text-stone-500">Aucune activité.</p> }
             </div>
           </div>
           <div>
             <h2 class="mb-2 text-sm font-semibold text-stone-500 uppercase">Par modèle ({{ b.days }} jours)</h2>
             <div class="card p-4">
-              @for (r of shares(b.byModel, 'model', 'model'); track r.key) {
-                <div class="mb-3 last:mb-0"><div class="flex text-sm"><span class="truncate font-mono text-xs">{{ r.label }}</span><span class="ml-auto tabular-nums text-stone-500">{{ r.pct }} %</span></div>
-                  <div class="mt-1 h-1.5 rounded bg-stone-200 dark:bg-stone-800"><div class="h-1.5 rounded bg-accent-500" [style.width.%]="r.pct"></div></div></div>
+              @for (r of b.byModel; track r.model) {
+                <div class="mb-3 last:mb-0"><div class="flex text-sm"><span class="truncate font-mono text-xs">{{ r.model }}</span><span class="ml-auto tabular-nums text-stone-500">{{ r.percent }} %</span></div>
+                  <div class="mt-1 h-1.5 rounded bg-stone-200 dark:bg-stone-800"><div class="h-1.5 rounded bg-accent-500" [style.width.%]="r.percent"></div></div></div>
               } @empty { <p class="text-sm text-stone-500">Aucune activité.</p> }
             </div>
           </div>
@@ -85,34 +79,26 @@ interface Breakdown {
 export class UsagePage implements OnInit {
   private readonly api = inject(Api);
   protected readonly summary = signal<UsageSummaryDto | null>(null);
-  protected readonly breakdown = signal<Breakdown | null>(null);
-  protected readonly requests = signal<LlmRequestDto[]>([]);
+  protected readonly breakdown = signal<UsageBreakdownDto | null>(null);
+  protected readonly requests = signal<UsageRequestDto[]>([]);
   protected readonly teamsWithLimits = computed(() => (this.summary()?.teams ?? []).filter((t) => t.windows.some((w) => quotaPct(w) !== null)));
 
   protected readonly pct = quotaPct;
   protected readonly barClass = quotaBarClass;
   protected readonly textClass = quotaTextClass;
   protected readonly reset = formatReset;
-  protected readonly label = (w: WindowUsageDto['window']) => windowLabel(w);
+  protected readonly label = (w: QuotaWindowDto['window']) => windowLabel(w);
   protected readonly warnAt = QUOTA_WARN;
   protected readonly dangerAt = QUOTA_DANGER;
 
   async ngOnInit() {
-    const [s, b, r] = await Promise.all([this.api.get<UsageSummaryDto>('/usage'), this.api.get<Breakdown>('/usage/breakdown'), this.api.get<LlmRequestDto[]>('/usage/requests')]);
+    const [s, b, r] = await Promise.all([this.api.get<UsageSummaryDto>('/usage'), this.api.get<UsageBreakdownDto>('/usage/breakdown'), this.api.get<UsageRequestDto[]>('/usage/requests')]);
     this.summary.set(s);
     this.breakdown.set(b);
     this.requests.set(r);
   }
 
-  /** Part relative de chaque ligne dans la consommation totale (aucune valeur absolue affichée). */
-  protected shares<T extends { credits: string; requests: number }>(rows: T[], labelKey: keyof T, idKey: keyof T) {
-    const total = rows.reduce((s, r) => s + Number(r.credits), 0);
-    return rows
-      .map((r) => ({ key: String(r[idKey]), label: String(r[labelKey] ?? '—'), pct: total > 0 ? Math.round((Number(r.credits) / total) * 100) : 0 }))
-      .sort((a, b) => b.pct - a.pct);
-  }
-
   protected status(s: string): string {
-    return ({ settled: 'Terminée', failed: 'Échec', rejected: 'Refusée (quota)', reserved: 'En cours', streaming: 'En cours', pending_reconciliation: 'Terminée' } as Record<string, string>)[s] ?? s;
+    return ({ completed: 'Terminée', failed: 'Échec', rejected: 'Refusée (quota)', in_progress: 'En cours' } as Record<string, string>)[s] ?? s;
   }
 }

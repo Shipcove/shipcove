@@ -115,7 +115,7 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     await page.screenshot({ path: new URL('composer-model.png', OUT).pathname });
     await page.keyboard.press('Escape');
     // Quotas : pourcentages uniquement, orange à l'approche de la limite, rouge au-delà de 90 %.
-    const used = await page.evaluate(async () => (await (await fetch('/api/v1/usage', { credentials: 'include' })).json()).user.windows.map((w) => Number(w.used) + Number(w.reserved)));
+    const used = (await admin.get(`/admin/quotas/usage/${user.body.id}`)).body.windows.map((w) => Number(w.used) + Number(w.reserved));
     assert.ok(used[0] > 0, 'consommation mesurée');
     await admin.put('/admin/quotas/policies', { scope: 'user', subjectId: user.body.id, limit5h: (used[0] / 0.8).toFixed(4), limit7d: (used[1] / 0.95).toFixed(4), exempt: false });
     await page.reload({ waitUntil: 'networkidle' });

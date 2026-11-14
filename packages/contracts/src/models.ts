@@ -55,6 +55,7 @@ export type UpsertModel = z.infer<typeof UpsertModelSchema>;
 
 /* ---------- Consommation & quotas ---------- */
 
+/** Fenêtre de quota en crédits : usage interne et administration uniquement (jamais exposé aux utilisateurs). */
 export interface WindowUsageDto {
   window: '5h' | '7d';
   used: string;
@@ -65,12 +66,46 @@ export interface WindowUsageDto {
   resetsAt: string | null;
 }
 
+/** Fenêtre de quota telle que vue par un utilisateur : pourcentage uniquement. */
+export interface QuotaWindowDto {
+  window: '5h' | '7d';
+  /** Part consommée (réservations incluses), 0–100 ; `null` si la fenêtre est sans limite ou exemptée. */
+  percent: number | null;
+  resetsAt: string | null;
+}
+
+export function toQuotaWindow(w: WindowUsageDto): QuotaWindowDto {
+  const limit = w.limit === null ? null : Number(w.limit);
+  const percent = w.exempt || limit === null || limit <= 0 ? null : Math.min(100, Math.round(((Number(w.used) + Number(w.reserved)) / limit) * 100));
+  return { window: w.window, percent, resetsAt: percent === null ? null : w.resetsAt };
+}
+
 export interface UsageSummaryDto {
-  user: { windows: WindowUsageDto[] };
-  teams: Array<{ teamId: string; teamName: string; windows: WindowUsageDto[] }>;
+  user: { windows: QuotaWindowDto[] };
+  /** Équipes de l'utilisateur ayant un plafond. */
+  teams: Array<{ teamId: string; teamName: string; windows: QuotaWindowDto[] }>;
   quotasEnabled: boolean;
 }
 
+/** Répartition relative de la consommation (parts en %, sans valeur absolue). */
+export interface UsageBreakdownDto {
+  days: number;
+  byModel: Array<{ model: string; requests: number; percent: number }>;
+  byWorkspace: Array<{ workspaceId: string | null; name: string | null; requests: number; percent: number }>;
+}
+
+/** Requête LLM vue par l'utilisateur : ni tokens, ni crédits, ni coût. */
+export interface UsageRequestDto {
+  id: string;
+  workspaceId: string | null;
+  runId: string | null;
+  model: string;
+  status: 'in_progress' | 'completed' | 'failed' | 'rejected';
+  latencyMs: number | null;
+  createdAt: string;
+}
+
+/** Détail complet d'une requête LLM (administration). */
 export interface LlmRequestDto {
   id: string;
   workspaceId: string | null;

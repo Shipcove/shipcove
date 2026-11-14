@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import type { AgentMode, AttachmentDto, ModelDto, SkillDto, ThinkingLevel, WindowUsageDto } from '@cap/contracts';
+import type { AgentMode, AttachmentDto, ModelDto, SkillDto, ThinkingLevel, QuotaWindowDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
@@ -284,7 +284,7 @@ export class Composer {
     const u = this.store.usage();
     if (!u) return [];
     const rows = u.user.windows.map((w) => this.row(w, windowLabel(w.window)));
-    for (const t of u.teams) for (const w of t.windows) if (w.limit !== null) rows.push(this.row(w, `Équipe ${t.teamName} · ${w.window === '5h' ? '5 h' : '7 j'}`));
+    for (const t of u.teams) for (const w of t.windows) if (w.percent !== null) rows.push(this.row(w, `Équipe ${t.teamName} · ${w.window === '5h' ? '5 h' : '7 j'}`));
     return rows;
   });
   protected readonly usagePct = computed(() => Math.max(0, ...this.usageRows().map((r) => r.pct ?? 0)));
@@ -299,7 +299,7 @@ export class Composer {
     return list.sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.displayName.localeCompare(b.displayName));
   }
 
-  private row(w: WindowUsageDto, label: string) {
+  private row(w: QuotaWindowDto, label: string) {
     const pct = quotaPct(w);
     const reset = pct !== null && w.resetsAt ? `Réinitialisation ${formatReset(w.resetsAt)}` : '';
     return { label, pct, reset };

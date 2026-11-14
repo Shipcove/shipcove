@@ -39,7 +39,8 @@ export class WorkspaceStore {
   readonly approvals = signal<ApprovalDto[]>([]);
   readonly usage = signal<UsageSummaryDto | null>(null);
   readonly config = signal<PlatformConfig | null>(null);
-  readonly context = signal<{ tokens: number | null; contextWindow: number | null }>({ tokens: null, contextWindow: null });
+  /** Remplissage de la fenêtre de contexte (%). */
+  readonly contextPercent = signal<number | null>(null);
   readonly streamState = signal<'open' | 'reconnecting' | 'closed'>('closed');
   readonly statusDetail = signal<string | null>(null);
   readonly quotaPaused = signal<{ window: string; resetsAt: string | null } | null>(null);
@@ -88,7 +89,7 @@ export class WorkspaceStore {
     this.runs.set(c.runs);
     this.queued.set(c.queued ?? []);
     this.lastEventId.set(c.lastEventId);
-    this.context.set({ tokens: c.context.tokens, contextWindow: c.context.contextWindow });
+    this.contextPercent.set(c.context.percent);
     const paused = c.runs.find((r) => r.status === 'paused_quota');
     this.quotaPaused.set(paused ? { window: paused.pausedReason ?? 'quota', resetsAt: null } : null);
   }
@@ -175,7 +176,6 @@ export class WorkspaceStore {
           text: d['text'] as string,
           stopReason: d['stopReason'] as string | null,
           completedAt: e.ts,
-          usage: d['usage'] ? { ...(d['usage'] as object), credits: '0', providerCostUsd: null, estimated: false } as MessageDto['usage'] : null,
         }));
         return;
       case 'tool.started': {
@@ -253,7 +253,7 @@ export class WorkspaceStore {
         this.quotaPaused.set(null);
         return;
       case 'usage.updated':
-        if (d['contextTokens'] !== null) this.context.set({ tokens: d['contextTokens'] as number, contextWindow: d['contextWindow'] as number });
+        if (typeof d['contextPercent'] === 'number') this.contextPercent.set(d['contextPercent'] as number);
         void this.refreshUsage();
         return;
       case 'approval.required':
@@ -294,5 +294,5 @@ export class WorkspaceStore {
 }
 
 function emptyMessage(id: string, role: 'user' | 'assistant', text: string, runId: string | null, ts: string): MessageDto {
-  return { id, conversationId: '', runId, role, authorId: null, text, thinking: null, attachments: [], toolCalls: [], model: null, usage: null, stopReason: null, createdAt: ts, completedAt: null };
+  return { id, conversationId: '', runId, role, authorId: null, text, thinking: null, attachments: [], toolCalls: [], model: null, stopReason: null, createdAt: ts, completedAt: null };
 }

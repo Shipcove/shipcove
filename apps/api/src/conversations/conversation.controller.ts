@@ -81,7 +81,6 @@ export class ConversationController {
       thinking: m.thinking,
       model: m.model,
       stopReason: m.stopReason,
-      usage: m.usage ? { ...m.usage, credits: '0', providerCostUsd: null, estimated: false } : null,
       createdAt: m.createdAt.toISOString(),
       completedAt: m.completedAt?.toISOString() ?? null,
       attachments: atts
@@ -125,8 +124,6 @@ export class ConversationController {
       queued: await this.runQueue.list(conv.id),
       lastEventId,
       context: {
-        tokens: conv.contextTokens,
-        contextWindow: conv.contextWindow,
         percent: conv.contextTokens && conv.contextWindow ? Math.round((conv.contextTokens / conv.contextWindow) * 100) : null,
       },
     };
@@ -185,7 +182,7 @@ export class ConversationController {
       }
       // Pas de lancement si le quota est déjà atteint (vérification préalable, l'autorité reste la gateway).
       const quota = await this.quotas.canProceed(user.id, w.teamId);
-      if (!quota.ok) throw new AppError('quota_exceeded', 'Quota de crédits atteint', { window: quota.window, resetsAt: quota.resetsAt });
+      if (!quota.ok) throw new AppError('quota_exceeded', 'Quota atteint', { window: quota.window, resetsAt: quota.resetsAt });
       return this.db.transaction(async (tx) => {
         const [m] = await tx.insert(messages).values({ conversationId: conv.id, role: 'user', authorId: user.id, text: body.text }).returning();
         if (body.attachmentIds.length) await tx.update(attachments).set({ messageId: m.id }).where(inArray(attachments.id, body.attachmentIds));

@@ -422,20 +422,11 @@ export class RunOrchestrator implements OnApplicationBootstrap {
               completedAt: new Date(),
             })
             .where(eq(messages.id, id));
-          this.push(ctx, { type: 'message.completed', runId: ctx.runId, data: { messageId: id, text: e.text, stopReason: e.stopReason, usage: e.usage } });
+          this.push(ctx, { type: 'message.completed', runId: ctx.runId, data: { messageId: id, text: e.text, stopReason: e.stopReason } });
           if (e.usage) {
             const stats = await ctx.runtime.sessionStats().catch(() => null);
-            const windows = await this.quotas.userWindows(ctx.userId).catch(() => []);
-            this.push(ctx, {
-              type: 'usage.updated',
-              runId: ctx.runId,
-              data: {
-                credits5h: windows.find((w) => w.window === '5h')?.used ?? '0',
-                credits7d: windows.find((w) => w.window === '7d')?.used ?? '0',
-                contextTokens: stats?.contextTokens ?? null,
-                contextWindow: stats?.contextWindow ?? null,
-              },
-            });
+            const percent = stats?.contextTokens && stats.contextWindow ? Math.min(100, Math.round((stats.contextTokens / stats.contextWindow) * 100)) : null;
+            this.push(ctx, { type: 'usage.updated', runId: ctx.runId, data: { contextPercent: percent } });
           }
           break;
         }
@@ -493,7 +484,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           this.push(ctx, { type: 'compaction.started', runId: ctx.runId, data: { reason: e.reason } });
           break;
         case 'compaction_end':
-          this.push(ctx, { type: 'compaction.completed', runId: ctx.runId, data: { tokensBefore: e.tokensBefore } });
+          this.push(ctx, { type: 'compaction.completed', runId: ctx.runId, data: {} });
           break;
         case 'agent_end':
           ctx.done({ error: e.error });

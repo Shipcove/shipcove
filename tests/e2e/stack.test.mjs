@@ -203,9 +203,26 @@ test('quotas : réservation refusée → run suspendu proprement, puis reprise',
     assert.equal(r.body.error.code, 'quota_exceeded');
   }
   await ctx.admin.put('/admin/quotas/policies', { scope: 'user', subjectId: ctx.userId, limit5h: null, limit7d: null, exempt: true });
+  // Consommation enregistrée au ledger (détail en crédits : administration seulement).
+  const adminUsage = await ctx.admin.get(`/admin/quotas/usage/${ctx.userId}`);
+  assert.ok(Number(adminUsage.body.windows[0].used) > 0, 'consommation enregistrée au ledger');
+  // Côté utilisateur, l'API ne renvoie que des pourcentages : ni crédits, ni tokens, ni coûts.
+  await ctx.admin.put('/admin/quotas/policies', { scope: 'user', subjectId: ctx.userId, limit5h: String(Number(adminUsage.body.windows[0].used) * 4), limit7d: null, exempt: false });
   const usage = await ctx.dev.get('/usage');
   assert.equal(usage.status, 200);
-  assert.ok(Number(usage.body.user.windows[0].used) > 0, 'consommation enregistrée au ledger');
+  assert.equal(usage.body.user.windows[0].percent, 25);
+  assert.equal(usage.body.user.windows[1].percent, null, 'fenêtre sans limite');
+  const forbidden = /^"(credits?\w*|\w*Tokens?|tokens?\w*|\w*[cC]ost\w*|used|reserved|limit\w*|remaining|usage)":$/;
+  for (const path of ['/usage', '/usage/breakdown', '/usage/requests', '/models', `/workspaces/${ctx.ws.id}/conversation`]) {
+    const res = await ctx.dev.get(path);
+    assert.equal(res.status, 200, path);
+    const keys = JSON.stringify(res.body).match(/"[A-Za-z0-9_]+":/g) ?? [];
+    const leaked = [...new Set(keys.filter((k) => forbidden.test(k) && k !== '"maxOutputTokens":'))];
+    assert.deepEqual(leaked, [], `${path} expose : ${leaked.join(', ')}`);
+  }
+  const breakdown = await ctx.dev.get('/usage/breakdown');
+  assert.equal(breakdown.body.byModel.reduce((s, m) => s + m.percent, 0), 100);
+  await ctx.admin.put('/admin/quotas/policies', { scope: 'user', subjectId: ctx.userId, limit5h: null, limit7d: null, exempt: true });
 });
 
 test('previews : 3 ports par défaut, le 4e refusé ; jeton requis sur l’origine distincte', async () => {

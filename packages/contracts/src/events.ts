@@ -36,12 +36,6 @@ export interface AgentEventDataMap {
     messageId: string;
     text: string;
     stopReason: string | null;
-    usage: {
-      inputTokens: number;
-      outputTokens: number;
-      cacheReadTokens: number;
-      cacheWriteTokens: number;
-    } | null;
   };
   'tool.started': { toolCallId: string; messageId: string | null; toolName: string; args: unknown };
   /** `output` = sortie accumulée tronquée (remplace l'affichage précédent). */
@@ -63,10 +57,11 @@ export interface AgentEventDataMap {
   'git.operation': { operationId: string; action: GitActionKind; status: string; detail: string | null };
   'quota.paused': { window: '5h' | '7d' | 'team_5h' | 'team_7d' | 'disabled'; resetsAt: string | null };
   'quota.resumed': Record<string, never>;
-  'usage.updated': { credits5h: string; credits7d: string; contextTokens: number | null; contextWindow: number | null };
+  /** Pourcentages uniquement : remplissage du contexte (les quotas se relisent via GET /usage). */
+  'usage.updated': { contextPercent?: number | null };
   'workspace.status': { status: string; syncState: string; detail: string | null };
   'compaction.started': { reason: string };
-  'compaction.completed': { tokensBefore: number | null };
+  'compaction.completed': Record<string, never>;
   'model.changed': { modelId: string; modelName: string };
   /** File d'attente : messages envoyés pendant une génération, traités chacun par un run à la fin du run courant. */
   'queue.updated': { messages: Array<{ messageId: string; text: string }> };
