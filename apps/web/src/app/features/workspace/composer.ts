@@ -36,21 +36,22 @@ import { WorkspaceStore } from './workspace.store';
         <textarea class="block max-h-60 min-h-[3.5rem] w-full resize-none bg-transparent px-4 py-3 text-[0.925rem] focus:outline-none" rows="2"
           [placeholder]="running() ? 'Guider Pi pendant son exécution…' : 'Décrivez la tâche pour Pi…'" [(ngModel)]="text" name="text"
           (keydown)="onKey($event)" (paste)="onPaste($event)" [disabled]="!store.isOwner()" aria-label="Message"></textarea>
-        <div class="flex items-center gap-1 px-2 pb-2">
+        <div class="flex flex-wrap items-center gap-1 px-2 pb-2">
           <label class="btn-ghost !p-1.5 cursor-pointer" aria-label="Joindre des fichiers">
             <cap-icon name="paperclip" /><input type="file" multiple class="hidden" (change)="onFiles($event)" />
           </label>
           @if (running()) {
-            <select class="input !w-auto !py-1 text-xs" [(ngModel)]="delivery" name="delivery" aria-label="Mode de livraison">
+            <select class="input !w-auto max-w-44 min-w-0 !py-1 text-xs" [(ngModel)]="delivery" name="delivery" aria-label="Mode de livraison">
               <option value="steer">Avant le prochain appel</option>
               <option value="follow_up">Après la fin</option>
             </select>
           }
-          <span class="ml-auto"></span>
+          <span class="ml-auto flex shrink-0 items-center gap-1">
           @if (running()) {
             <button class="btn-secondary !py-1" (click)="interrupt()" [disabled]="store.activeRun()?.status === 'interrupting'"><cap-icon name="stop" [size]="14" /> Interrompre</button>
           }
           <button class="btn-accent !py-1" (click)="submit()" [disabled]="!canSend()"><cap-icon name="send" [size]="14" /> Envoyer</button>
+          </span>
         </div>
       </div>
     </div>

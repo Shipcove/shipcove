@@ -70,6 +70,18 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     await page.waitForTimeout(800);
     await page.screenshot({ path: new URL('workspace-diff.png', OUT).pathname });
 
+    // Un très long mot sans espace ne doit pas faire déborder la conversation.
+    const longWord = 'sfghfghd'.repeat(80);
+    await page.fill('textarea[aria-label="Message"]', longWord);
+    await page.keyboard.press('Enter');
+    await page.waitForSelector(`text=Réponse factice`, { timeout: 120_000 });
+    const overflow = await page.evaluate(() => {
+      const col = document.querySelector('cap-conversation > div');
+      return { scroll: col.scrollWidth, client: col.clientWidth, wider: [...col.querySelectorAll('*')].filter((e) => e.getBoundingClientRect().right > col.getBoundingClientRect().right + 1).length };
+    });
+    assert.ok(overflow.scroll <= overflow.client && overflow.wider === 0, `débordement horizontal : ${JSON.stringify(overflow)}`);
+    await page.screenshot({ path: new URL('long-text.png', OUT).pathname });
+
     assert.deepEqual(issues, [], `erreurs/violations CSP :\n${issues.join('\n')}`);
   } finally {
     await browser.close();

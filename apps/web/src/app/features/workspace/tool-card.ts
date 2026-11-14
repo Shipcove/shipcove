@@ -8,7 +8,7 @@ import { Icon } from '../../shared/icon';
   imports: [Icon],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="my-1.5 overflow-hidden rounded-lg border border-stone-200 bg-stone-50 text-sm dark:border-stone-800 dark:bg-stone-900/70">
+    <div class="my-1.5 min-w-0 overflow-hidden rounded-lg border border-stone-200 bg-stone-50 text-sm dark:border-stone-800 dark:bg-stone-900/70">
       <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-stone-100 dark:hover:bg-stone-800/70" (click)="open.set(!open())" [attr.aria-expanded]="open()">
         <cap-icon [name]="open() ? 'chevronDown' : 'chevronRight'" [size]="14" class="text-stone-400" />
         <cap-icon [name]="icon()" [size]="14" class="text-stone-500" />
@@ -28,11 +28,11 @@ import { Icon } from '../../shared/icon';
       @if (open()) {
         <div class="border-t border-stone-200 dark:border-stone-800">
           @if (argsText()) {
-            <pre class="max-h-48 overflow-auto bg-white px-3 py-2 font-mono text-xs whitespace-pre-wrap text-stone-700 dark:bg-stone-950 dark:text-stone-300">{{ argsText() }}</pre>
+            <pre class="max-h-48 overflow-auto bg-white px-3 py-2 font-mono text-xs whitespace-pre-wrap [overflow-wrap:anywhere] text-stone-700 dark:bg-stone-950 dark:text-stone-300">{{ argsText() }}</pre>
           }
           @if (call().output) {
             <div class="relative">
-              <pre class="max-h-96 overflow-auto bg-stone-900 px-3 py-2 font-mono text-xs whitespace-pre-wrap text-stone-100" [class.text-red-300]="call().isError">{{ call().output }}</pre>
+              <pre class="max-h-96 overflow-auto bg-stone-900 px-3 py-2 font-mono text-xs whitespace-pre-wrap [overflow-wrap:anywhere] text-stone-100" [class.text-red-300]="call().isError">{{ call().output }}</pre>
               <button class="btn-ghost absolute top-1 right-1 !p-1 !text-stone-300" (click)="copy()" aria-label="Copier la sortie"><cap-icon [name]="copied() ? 'check' : 'copy'" [size]="13" /></button>
             </div>
           }

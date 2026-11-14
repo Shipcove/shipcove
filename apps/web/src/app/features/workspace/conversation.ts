@@ -9,7 +9,7 @@ import { WorkspaceStore } from './workspace.store';
   imports: [ToolCard, MarkdownPipe, TokensPipe, Icon],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div #scroller class="h-full overflow-y-auto" (scroll)="onScroll()">
+    <div #scroller class="h-full overflow-x-hidden overflow-y-auto" (scroll)="onScroll()">
       <div class="mx-auto max-w-3xl px-6 py-6">
         @if (store.messages().length === 0) {
           <div class="mt-20 text-center text-stone-500">
@@ -21,8 +21,7 @@ import { WorkspaceStore } from './workspace.store';
         @for (m of store.messages(); track m.id) {
           @if (m.role === 'user') {
             <div class="my-4 flex justify-end">
-              <div class="max-w-[85%] rounded-2xl bg-stone-200/80 px-4 py-2.5 text-[0.925rem] whitespace-pre-wrap dark:bg-stone-800">
-                {{ m.text }}
+              <div class="max-w-[85%] min-w-0 rounded-2xl bg-stone-200/80 px-4 py-2.5 text-[0.925rem] [overflow-wrap:anywhere] dark:bg-stone-800"><span class="whitespace-pre-wrap">{{ m.text }}</span>
                 @if (m.attachments.length) {
                   <div class="mt-2 flex flex-wrap gap-1">
                     @for (a of m.attachments; track a.id) { <span class="badge bg-white/70 dark:bg-stone-700"><cap-icon name="paperclip" [size]="11" />{{ a.fileName }}</span> }
@@ -31,13 +30,13 @@ import { WorkspaceStore } from './workspace.store';
               </div>
             </div>
           } @else if (m.role === 'system') {
-            <div class="my-3 rounded-lg border border-dashed border-stone-300 px-3 py-2 text-sm text-stone-600 dark:border-stone-700 dark:text-stone-400">{{ m.text }}</div>
+            <div class="my-3 rounded-lg border border-dashed border-stone-300 px-3 py-2 text-sm text-stone-600 [overflow-wrap:anywhere] dark:border-stone-700 dark:text-stone-400">{{ m.text }}</div>
           } @else {
-            <div class="my-4">
+            <div class="my-4 min-w-0">
               @if (m.thinking) {
                 <details class="mb-1 text-sm text-stone-500">
                   <summary class="cursor-pointer select-none">Raisonnement</summary>
-                  <div class="mt-1 border-l-2 border-stone-200 pl-3 whitespace-pre-wrap dark:border-stone-700">{{ m.thinking }}</div>
+                  <div class="mt-1 border-l-2 border-stone-200 pl-3 whitespace-pre-wrap [overflow-wrap:anywhere] dark:border-stone-700">{{ m.thinking }}</div>
                 </details>
               }
               @if (m.text) { <div class="prose-chat" [innerHTML]="m.text | markdown"></div> }
