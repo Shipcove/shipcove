@@ -566,3 +566,62 @@ test('utilisateur de plusieurs équipes : quota de l’équipe propriétaire du 
     await ctx.admin.put('/admin/quotas/policies', { scope: 'team', subjectId: teamA, limit5h: null, limit7d: null, exempt: false });
   }
 });
+
+test('retour en arrière : fichiers d’avant un run restaurés, exclusions intactes, Pi informé, annulable', async () => {
+  const user = await newUser();
+  const ws = await workspace(user, 'Retour en arrière');
+  assert.equal((await ctx.admin.req('PATCH', '/admin/settings', { section: 'sandbox', values: { checkpointExcludes: ['node_modules'] } })).status, 200);
+  try {
+    const read = async (p) => (await user.get(`/workspaces/${ws.id}/files/content?path=${p}`));
+    await run(user, ws.id, `Init. [[tool:bash {"command":"printf 'v1\\\\n' > a.txt && printf 'garde\\\\n' > b.txt"}]]`);
+    const run2 = await run(user, ws.id, `Change. [[tool:bash {"command":"printf 'v2\\\\n' > a.txt && rm b.txt && printf 'neuf\\\\n' > c.txt && mkdir -p node_modules/dep && echo exclu > node_modules/dep/x"}]]`);
+    assert.equal((await read('a.txt')).body.content, 'v2\n');
+
+    // Un autre utilisateur ne peut pas revenir en arrière dans ce workspace.
+    const other = await newUser();
+    assert.ok([403, 404].includes((await other.post(`/workspaces/${ws.id}/rewind`, { runId: run2 })).status));
+
+    const conv = await user.get(`/workspaces/${ws.id}/conversation`);
+    const r = await user.post(`/workspaces/${ws.id}/rewind`, { runId: run2 });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal((await read('a.txt')).body.content, 'v1\n');
+    assert.equal((await read('b.txt')).body.content, 'garde\n');
+    assert.equal((await read('c.txt')).status, 404);
+    // Message système dans la conversation, diffusé en temps réel.
+    const ev = await user.events(ws.id, conv.body.lastEventId, (e) => e.type === 'message.created' && e.data.role === 'system', 30_000);
+    assert.equal(ev.at(-1).data.meta.kind, 'rewind');
+    assert.match(ev.at(-1).data.text, /Fichiers restaurés à l’état d’avant « Change/);
+
+    // Pi est informé au run suivant (le modèle factice répète le texte reçu, sans directive).
+    const conv2 = await user.get(`/workspaces/${ws.id}/conversation`);
+    const hello = await user.post(`/workspaces/${ws.id}/messages`, { text: 'Où en est-on ?' }, { 'Idempotency-Key': `f-${uid()}` });
+    const evs = await user.events(ws.id, conv2.body.lastEventId, (e) => e.type === 'run.completed' && e.runId === hello.body.runId, 300_000);
+    assert.ok(evs.some((e) => e.type === 'message.completed' && /Note de la plateforme/.test(e.data.text)), 'note de la plateforme transmise à Pi');
+    // Les chemins exclus des checkpoints n'ont pas été touchés.
+    const conv3b = await user.get(`/workspaces/${ws.id}/conversation`);
+    const sent = await user.post(`/workspaces/${ws.id}/messages`, { text: 'Vérifie. [[tool:bash {"command":"cat node_modules/dep/x; ls"}]]' }, { 'Idempotency-Key': `f-${uid()}` });
+    const evs2 = await user.events(ws.id, conv3b.body.lastEventId, (e) => e.type === 'run.completed' && e.runId === sent.body.runId, 300_000);
+    const out = evs2.find((e) => e.type === 'tool.completed').data.output;
+    assert.match(out, /exclu/, 'chemin exclu conservé');
+    assert.doesNotMatch(out, /c\.txt/);
+    // La note n'est donnée qu'une fois.
+    assert.ok(!evs2.some((e) => e.type === 'message.completed' && /Note de la plateforme/.test(e.data.text)));
+
+    // Annulation du retour en arrière.
+    const undo = await user.post(`/workspaces/${ws.id}/rewind`, { generation: r.body.fromGeneration });
+    assert.equal(undo.status, 200, JSON.stringify(undo.body));
+    assert.equal((await read('a.txt')).body.content, 'v2\n');
+    assert.equal((await read('c.txt')).body.content, 'neuf\n');
+    assert.equal((await read('b.txt')).status, 404);
+
+    // Refusé pendant un run.
+    const conv3 = await user.get(`/workspaces/${ws.id}/conversation`);
+    const long = await user.post(`/workspaces/${ws.id}/messages`, { text: 'Attends. [[sleep:8000]]' }, { 'Idempotency-Key': `f-${uid()}` });
+    await user.events(ws.id, conv3.body.lastEventId, (e) => e.type === 'run.started' && e.runId === long.body.runId, 240_000);
+    const busy = await user.post(`/workspaces/${ws.id}/rewind`, { runId: run2 });
+    assert.equal(busy.status, 409, JSON.stringify(busy.body));
+    await user.events(ws.id, conv3.body.lastEventId, (e) => e.type === 'run.completed' && e.runId === long.body.runId, 240_000);
+  } finally {
+    await ctx.admin.req('PATCH', '/admin/settings', { section: 'sandbox', values: { checkpointExcludes: [] } });
+  }
+});

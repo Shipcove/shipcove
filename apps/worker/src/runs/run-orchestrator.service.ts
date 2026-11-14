@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
-import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, lt, sql } from 'drizzle-orm';
 import {
   agentRuns,
   attachments,
@@ -306,7 +306,31 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       const sb = this.active.get(run.id)?.sandbox ?? (await this.sandboxes.ensureRunning(run.workspaceId));
       await this.sandboxes.writeFiles(sb.handle, files);
     }
-    const text = notes.length ? `${m.text}\n\nFichiers joints disponibles :\n${notes.join('\n')}` : m.text;
+    let text = notes.length ? `${m.text}\n\nFichiers joints disponibles :\n${notes.join('\n')}` : m.text;
+    // Événements de la plateforme survenus depuis le run précédent (ex. retour en arrière des
+    // fichiers) : Pi en est informé, sa mémoire de session ne les contient pas.
+    const [prev] = await this.db
+      .select({ queuedAt: agentRuns.queuedAt })
+      .from(agentRuns)
+      .where(and(eq(agentRuns.conversationId, run.conversationId), lt(agentRuns.queuedAt, run.queuedAt)))
+      .orderBy(desc(agentRuns.queuedAt))
+      .limit(1);
+    const platformNotes = await this.db
+      .select({ id: messages.id })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.conversationId, run.conversationId),
+          eq(messages.role, 'system'),
+          sql`${messages.meta} ->> 'kind' = 'rewind'`,
+          ...(prev ? [gt(messages.createdAt, prev.queuedAt)] : []),
+        ),
+      )
+      .orderBy(messages.createdAt);
+    if (platformNotes.length) {
+      // Formulation fixe : le texte des messages précédents n'est pas réinjecté dans le prompt.
+      text = `[Note de la plateforme : depuis ton dernier échange, l’utilisateur a restauré les fichiers du workspace à un état antérieur (${platformNotes.length} fois). Des modifications que tu as faites ont pu être annulées : ne te fie pas à ta mémoire, vérifie l’état actuel des fichiers avant d’agir.]\n\n${text}`;
+    }
     return { text, images };
   }
 

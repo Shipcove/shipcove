@@ -81,6 +81,7 @@ export class ConversationController {
       thinking: m.thinking,
       model: m.model,
       stopReason: m.stopReason,
+      meta: m.meta ?? null,
       createdAt: m.createdAt.toISOString(),
       completedAt: m.completedAt?.toISOString() ?? null,
       attachments: atts

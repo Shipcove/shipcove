@@ -101,6 +101,8 @@ export interface MessageDto {
   toolCalls: ToolCallDto[];
   model: string | null;
   stopReason: string | null;
+  /** Message système structuré (ex. `{ kind: 'rewind', fromGeneration, toGeneration }`). */
+  meta: Record<string, unknown> | null;
   createdAt: string;
   completedAt: string | null;
 }
@@ -235,3 +237,15 @@ export const OpenPreviewSchema = z.object({
   port: z.number().int().min(1024).max(65535),
   label: z.string().max(80).optional(),
 });
+
+/** Retour en arrière : fichiers ramenés à l'état d'avant un run (ou à une génération donnée). */
+export const RewindSchema = z
+  .object({
+    /** Run dont on annule les modifications (état d'avant son démarrage). */
+    runId: z.uuid().optional(),
+    /** Génération cible explicite (ex. annulation d'un retour en arrière). */
+    generation: z.number().int().min(1).optional(),
+  })
+  .refine((v) => (v.runId ? 1 : 0) + (v.generation ? 1 : 0) === 1, 'runId ou generation requis');
+export type Rewind = z.infer<typeof RewindSchema>;
+

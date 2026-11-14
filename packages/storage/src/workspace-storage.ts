@@ -319,6 +319,83 @@ export class WorkspaceStorage {
     return { generation, files };
   }
 
+  /**
+   * Retour en arrière : ramène les fichiers de `/workspace` à l'état d'une génération antérieure,
+   * dans une sandbox active, sans toucher à l'état de Pi (`/workspace-state`) ni aux chemins exclus
+   * des checkpoints (absents des manifestes). Seuls sont supprimés les chemins présents dans le
+   * checkpoint courant et absents de la cible ; seuls sont réécrits ceux qui diffèrent.
+   * L'appelant publie ensuite un nouveau checkpoint : l'historique est conservé (réversible).
+   */
+  async rewind(input: { workspaceId: string; fencingToken: number; provider: SandboxProvider; handle: SandboxHandle; targetGeneration: number }): Promise<{ deleted: number; written: number }> {
+    await this.assertFencing(input.workspaceId, input.fencingToken);
+    const target = await this.readManifest(input.workspaceId, input.targetGeneration);
+    if (!target) throw new Error(`Point de restauration ${input.targetGeneration} introuvable (purgé ?)`);
+    const current = await this.readManifest(input.workspaceId, await this.currentGeneration(input.workspaceId));
+    const inWorkspace = (e: ManifestEntry) => e.p.startsWith('/workspace/');
+    const targetBy = new Map(target.entries.filter(inWorkspace).map((e) => [e.p, e]));
+    const currentEntries = (current?.entries ?? []).filter(inWorkspace);
+    const same = (a: ManifestEntry, b: ManifestEntry) => a.t === b.t && a.h === b.h && a.l === b.l && a.m === b.m;
+
+    // Suppressions (y compris changement de type), des plus profonds aux moins profonds.
+    const toDelete = currentEntries.filter((e) => {
+      const t = targetBy.get(e.p);
+      return !t || t.t !== e.t;
+    });
+    const topLevel = toDelete
+      .map((e) => e.p)
+      .sort()
+      .filter((p, i, all) => !all.slice(0, i).some((q) => p.startsWith(`${q}/`)));
+    for (let i = 0; i < topLevel.length; i += 200) {
+      const proc = await input.provider.exec(input.handle, ['rm', '-rf', '--', ...topLevel.slice(i, i + 200)], { timeoutMs: 300_000 });
+      proc.stdout.resume();
+      proc.stderr.resume();
+      const code = await proc.wait();
+      if (code !== 0) throw new Error(`Retour en arrière : suppression impossible (code ${code})`);
+    }
+    // Écritures : entrées absentes ou différentes de l'état courant.
+    const currentBy = new Map(currentEntries.map((e) => [e.p, e]));
+    const toWrite = [...targetBy.values()].filter((t) => {
+      const c = currentBy.get(t.p);
+      return !c || !same(c, t) || toDelete.some((d) => t.p === d.p || t.p.startsWith(`${d.p}/`));
+    });
+    if (toWrite.length) await this.extract(input.workspaceId, toWrite, input.provider, input.handle);
+    return { deleted: topLevel.length, written: toWrite.filter((e) => e.t === 'f').length };
+  }
+
+  /** Dépose des entrées de manifeste dans la sandbox (flux tar, sans shell). */
+  private async extract(workspaceId: string, entries: ManifestEntry[], provider: SandboxProvider, handle: SandboxHandle): Promise<number> {
+    const pack = tar.pack();
+    const proc = await provider.exec(handle, ['tar', '-x', '-f', '-', '-C', '/', '--no-same-owner', '--delay-directory-restore'], {
+      stdin: pack.pipe(new PassThrough()),
+      timeoutMs: 1_800_000,
+    });
+    const stderr: Buffer[] = [];
+    proc.stderr.on('data', (c: Buffer) => stderr.push(c));
+    proc.stdout.resume();
+    let files = 0;
+    try {
+      for (const e of [...entries].sort((a, b) => a.p.localeCompare(b.p))) {
+        const name = e.p.replace(/^\//, '');
+        const mtime = new Date(e.mt);
+        if (e.t === 'd') await entry(pack, { name, type: 'directory', mode: e.m, mtime });
+        else if (e.t === 'l') await entry(pack, { name, type: 'symlink', linkname: e.l!, mode: e.m, mtime });
+        else {
+          const body = await this.readObject(workspaceId, e.h!);
+          await entry(pack, { name, type: 'file', mode: e.m, mtime, size: body.length }, body);
+          files++;
+        }
+      }
+      pack.finalize();
+    } catch (err) {
+      pack.destroy(err as Error);
+      await proc.kill();
+      throw err;
+    }
+    const code = await proc.wait();
+    if (code !== 0) throw new Error(`Restauration : tar a échoué (code ${code}) ${Buffer.concat(stderr).toString('utf8').slice(0, 500)}`);
+    return files;
+  }
+
   /** Vérifie l'intégrité d'un checkpoint (manifeste + présence/taille de chaque objet). */
   async verify(workspaceId: string, generation: number): Promise<{ ok: boolean; missing: string[] }> {
     const manifest = await this.readManifest(workspaceId, generation);

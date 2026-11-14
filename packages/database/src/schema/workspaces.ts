@@ -159,6 +159,8 @@ export const messages = pgTable(
      * à la fin du run courant (file durable, indépendante du processus Pi).
      */
     pendingDelivery: boolean().notNull().default(false),
+    /** Données structurées d'un message système (ex. retour en arrière : générations concernées). */
+    meta: jsonb().$type<Record<string, unknown>>(),
     thinking: text(),
     model: text(),
     stopReason: text(),

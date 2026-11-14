@@ -29,7 +29,7 @@ export interface AgentEventDataMap {
   'run.completed': { runId: string };
   'run.failed': { runId: string; error: string; retryable: boolean };
   'run.interrupted': { runId: string; reason: string };
-  'message.created': { messageId: string; role: 'user' | 'assistant'; text: string; attachmentIds: string[] };
+  'message.created': { messageId: string; role: 'user' | 'assistant' | 'system'; text: string; attachmentIds: string[]; meta?: Record<string, unknown> | null };
   'message.delta': { messageId: string; delta: string };
   'thinking.delta': { messageId: string; delta: string };
   'message.completed': {

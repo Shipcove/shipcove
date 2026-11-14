@@ -24,6 +24,7 @@ import { WorkspacesService } from './workspaces/workspaces.service.js';
 import { FilesController } from './workspaces/files.controller.js';
 import { PreviewsController } from './workspaces/previews.controller.js';
 import { AttachmentsController } from './workspaces/attachments.controller.js';
+import { RewindController } from './workspaces/rewind.controller.js';
 import { SandboxRpcClient } from './workspaces/sandbox-rpc.client.js';
 import { ConversationController, SharesController } from './conversations/conversation.controller.js';
 import { ApprovalsController, GitConnectionsController, WorkspaceGitController } from './git/git.controller.js';
@@ -55,6 +56,7 @@ export class AppModule {
         FilesController,
         PreviewsController,
         AttachmentsController,
+        RewindController,
         WorkspaceGitController,
         ApprovalsController,
         GitConnectionsController,

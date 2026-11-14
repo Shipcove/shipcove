@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Inject, Injectable, type OnApplicationBootstrap } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
-import { workspaces, type Database } from '@cap/database';
+import { and, eq, inArray } from 'drizzle-orm';
+import { agentRuns, workspaces, type Database } from '@cap/database';
 import { execCollect } from '@cap/sandbox';
 import { DB, EventsService } from '@cap/server-core';
 import { fromUserPath } from '@cap/storage';
@@ -18,7 +18,8 @@ type RpcPayload =
   | { op: 'git.diff_head'; workspaceId: string; path?: string }
   | { op: 'git.fetch'; workspaceId: string }
   | { op: 'git.pull'; workspaceId: string; branch?: string }
-  | { op: 'file.write'; workspaceId: string; path: string; content: string; ifMatch: string | null; userId: string };
+  | { op: 'file.write'; workspaceId: string; path: string; content: string; ifMatch: string | null; userId: string }
+  | { op: 'workspace.rewind'; workspaceId: string; generation: number; userId: string };
 
 const sha256 = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
 
@@ -72,6 +73,8 @@ export class SandboxRpcService implements OnApplicationBootstrap {
       }
       case 'file.write':
         return this.writeFile(p);
+      case 'workspace.rewind':
+        return this.rewind(p);
       default:
         throw new PermanentJobError('Opération inconnue');
     }
@@ -142,6 +145,31 @@ export class SandboxRpcService implements OnApplicationBootstrap {
       files.push({ path: p, status: 'added', additions: 0, deletions: 0, binary: false });
     }
     return { available: true, files };
+  }
+
+  /**
+   * Retour en arrière : fichiers de `/workspace` ramenés à une génération antérieure (état de Pi
+   * et chemins exclus intacts), puis nouveau checkpoint — l'opération est elle-même réversible.
+   */
+  private async rewind(p: Extract<RpcPayload, { op: 'workspace.rewind' }>) {
+    const [active] = await this.db
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(and(eq(agentRuns.workspaceId, p.workspaceId), inArray(agentRuns.status, ['queued', 'running', 'interrupting'])));
+    if (active) return { busy: true };
+    const sb = await this.sandboxes.ensureRunning(p.workspaceId);
+    const from = await this.checkpoints.storage.currentGeneration(p.workspaceId);
+    const r = await this.checkpoints.storage.rewind({ workspaceId: p.workspaceId, fencingToken: sb.fencingToken, provider: this.sandboxes.provider, handle: sb.handle, targetGeneration: p.generation });
+    const ck = await this.checkpoints.run({
+      workspaceId: p.workspaceId,
+      fencingToken: sb.fencingToken,
+      provider: this.sandboxes.provider,
+      handle: sb.handle,
+      reason: 'rewind',
+      triggerKey: `rewind:${p.userId}:${p.generation}:${Date.now()}`,
+    });
+    await this.sandboxes.touch(p.workspaceId);
+    return { busy: false, fromGeneration: from, toGeneration: p.generation, generation: ck.generation, deleted: r.deleted, written: r.written };
   }
 
   /**

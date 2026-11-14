@@ -116,6 +116,12 @@ export class WorkspaceStore {
     await this.api.post(`/workspaces/${ws.id}/messages`, { text, attachmentIds, delivery, modelId: ws.modelId ?? undefined }, { 'Idempotency-Key': idempotencyKey() });
   }
 
+  /** Retour en arrière des fichiers : état d'avant un run, ou génération explicite (annulation). */
+  async rewind(target: { runId: string } | { generation: number }): Promise<void> {
+    await this.api.post(`/workspaces/${this.workspace()!.id}/rewind`, target);
+    this.bumpFiles();
+  }
+
   async interrupt(): Promise<void> {
     const run = this.activeRun();
     if (run) await this.api.post(`/workspaces/${this.workspace()!.id}/runs/${run.id}/interrupt`);
@@ -161,7 +167,7 @@ export class WorkspaceStore {
       case 'message.created': {
         const id = d['messageId'] as string;
         if (this.messages().some((m) => m.id === id)) return;
-        this.messages.update((l) => [...l, emptyMessage(id, d['role'] as 'user' | 'assistant', d['text'] as string, e.runId, e.ts)]);
+        this.messages.update((l) => [...l, { ...emptyMessage(id, d['role'] as 'user' | 'assistant' | 'system', d['text'] as string, e.runId, e.ts), meta: (d['meta'] as Record<string, unknown> | undefined) ?? null }]);
         return;
       }
       case 'message.delta':
@@ -293,6 +299,6 @@ export class WorkspaceStore {
   }
 }
 
-function emptyMessage(id: string, role: 'user' | 'assistant', text: string, runId: string | null, ts: string): MessageDto {
-  return { id, conversationId: '', runId, role, authorId: null, text, thinking: null, attachments: [], toolCalls: [], model: null, stopReason: null, createdAt: ts, completedAt: null };
+function emptyMessage(id: string, role: 'user' | 'assistant' | 'system', text: string, runId: string | null, ts: string): MessageDto {
+  return { id, conversationId: '', runId, role, authorId: null, text, thinking: null, attachments: [], toolCalls: [], model: null, stopReason: null, meta: null, createdAt: ts, completedAt: null };
 }

@@ -181,6 +181,9 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     await page.screenshot({ path: new URL('files-pane-empty.png', OUT).pathname });
     await page.click('button[aria-label="Panneau latéral"]');
 
+    // Retour en arrière proposé sous les messages ayant lancé un run.
+    assert.ok((await page.locator('button[aria-label="Revenir avant ce message"]').count()) >= 1, 'bouton de retour en arrière');
+
     // Un très long mot sans espace ne doit pas faire déborder la conversation.
     const longWord = 'sfghfghd'.repeat(80);
     await page.fill('textarea[aria-label="Message"]', longWord);
