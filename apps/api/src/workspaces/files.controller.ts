@@ -128,6 +128,7 @@ export class FilesController {
     @Res({ passthrough: true }) res: Response,
   ) {
     await this.access.requireWorkspaceOwner(user, id);
+    assertEditablePath(body.path);
     const { manualEditingEnabled } = await this.settings.section('editor');
     if (!manualEditingEnabled) throw new AppError('editing_disabled', 'L’édition manuelle est désactivée par l’administration');
     const expected = ifMatch ? ifMatch.replace(/^W\//, '').replace(/"/g, '') : ifNoneMatch === '*' ? null : undefined;
@@ -243,6 +244,22 @@ export class FilesController {
     }
     return buf;
   }
+}
+
+/**
+ * Chemin éditable : relatif à la racine du workspace, sans `.`/`..`, sans antislash ni caractère
+ * de contrôle, hors du dépôt Git interne (`.git`) et des fichiers de la plateforme (`.cap`).
+ */
+export function assertEditablePath(path: string): void {
+  const segs = path.split('/');
+  const bad =
+    path.startsWith('/') ||
+    path.endsWith('/') ||
+    /[\\\x00-\x1f]/.test(path) ||
+    segs.some((s) => s === '' || s === '.' || s === '..') ||
+    segs.includes('.git') ||
+    segs[0] === '.cap';
+  if (bad) throw new AppError('validation_failed', 'Chemin non modifiable : chemin relatif au workspace attendu (hors .git et .cap)');
 }
 
 export const etagOf = (s: string) => createHash('sha256').update(s).digest('hex');

@@ -1,22 +1,33 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
 import { and, eq, sql } from 'drizzle-orm';
 import { PlatformSettingsSchema, type PlatformSettings } from '@cap/contracts';
 import { platformSettings, type Database } from '@cap/database';
 import { DB } from '../tokens.js';
 import { AppError } from '../common/errors.js';
+import { PgNotifier } from '../events/pg-notifier.js';
 
 type Section = keyof PlatformSettings;
 
 /**
- * Paramètres plateforme versionnés. Cache court (5 s) : chaque instance converge
- * rapidement après une modification faite sur une autre instance.
+ * Paramètres plateforme versionnés, en cache par instance.
+ * Une modification est notifiée (NOTIFY `cap_settings`, dans la transaction) à toutes les
+ * instances (API, worker, gateway), qui invalident immédiatement leur cache : un réglage de
+ * sécurité (connexion locale, édition manuelle…) ne reste pas actif ailleurs après sa désactivation.
+ * Le TTL ne sert que de filet de sécurité (perte de connexion LISTEN : invalidation à la reconnexion).
  */
 @Injectable()
-export class SettingsService {
+export class SettingsService implements OnModuleInit {
   private cache: { at: number; value: PlatformSettings } | null = null;
-  private static readonly TTL_MS = 5_000;
+  private static readonly TTL_MS = 30_000;
 
-  constructor(@Inject(DB) private readonly db: Database) {}
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    private readonly notifier: PgNotifier,
+  ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.notifier.on('cap_settings', () => this.invalidate());
+  }
 
   async get(): Promise<PlatformSettings> {
     if (this.cache && Date.now() - this.cache.at < SettingsService.TTL_MS) return this.cache.value;
@@ -55,6 +66,8 @@ export class SettingsService {
         .set({ active: false })
         .where(and(eq(platformSettings.section, section), eq(platformSettings.active, true)));
       await tx.insert(platformSettings).values({ section, values, version: Number(v) + 1, updatedBy: actorId });
+      // Délivré aux autres instances à la validation de la transaction.
+      await tx.execute(sql`select pg_notify('cap_settings', ${section})`);
     });
     this.invalidate();
     return parsed.data[section];

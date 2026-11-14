@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, type OnModuleDestroy } from '@nestjs/common
 import pg from 'pg';
 import { ENV, type BaseEnv } from '../config/config.js';
 
-export type NotifyChannel = 'cap_agent_events' | 'cap_job_done' | 'cap_run_control' | 'cap_jobs';
+export type NotifyChannel = 'cap_agent_events' | 'cap_job_done' | 'cap_run_control' | 'cap_jobs' | 'cap_settings';
 type Handler = (payload: string) => void;
 
 /**

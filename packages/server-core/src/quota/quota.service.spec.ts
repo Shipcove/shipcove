@@ -13,7 +13,7 @@ let modelId: string;
 
 beforeAll(async () => {
   db = await createTestDatabase();
-  svc = new QuotaService(db, new SettingsService(db));
+  svc = new QuotaService(db, new SettingsService(db, { on: async () => () => undefined } as never));
 });
 afterAll(async () => db.$client.end());
 
