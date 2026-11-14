@@ -1,5 +1,6 @@
 # Configuration Git système de la sandbox.
-# Aucun credential helper : aucun secret de publication n'est présent dans la sandbox.
+# Aucun secret de forge dans la sandbox : ~/.gitconfig (écrit par la plateforme) fournit le jeton
+# de run, que la gateway remplace par le jeton OAuth de l'utilisateur (ADR 0013).
 [credential]
 	helper =
 [safe]

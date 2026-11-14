@@ -64,7 +64,7 @@ export class SetupService {
     let raw = '';
     try {
       const r = await execCollect(this.sandboxes.provider, sb.handle, ['bash', '-e', '-o', 'pipefail', '/run/cap/setup.sh'], {
-        env: { ...env.vars, HOME: '/home/agent', CI: '1' },
+        env: { ...env.vars, ...this.sandboxes.forgeEnv(sb), HOME: '/home/agent', CI: '1' },
         workdir: '/workspace',
         timeoutMs: setupTimeoutMinutes * 60_000,
         maxBytes: 2_000_000,

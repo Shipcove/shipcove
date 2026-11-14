@@ -103,6 +103,7 @@ path "cap/data/infra/litellm"      { capabilities = ["read"] }
   // renouvelle un jeton OAuth expiré (écriture du jeton, lecture du secret de l'application).
   gateway: `
 path "cap/data/infra/litellm"      { capabilities = ["read"] }
+path "cap/data/infra/forge-ca"     { capabilities = ["create","read","update"] }
 path "cap/data/git-connections/*"  { capabilities = ["read","update"] }
 path "cap/data/oauth-apps/*"       { capabilities = ["read"] }
 path "cap/data/mcp/*"              { capabilities = ["read"] }

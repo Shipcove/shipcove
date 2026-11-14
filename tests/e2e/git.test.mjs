@@ -303,6 +303,52 @@ test('merge request créée sur GitLab après approbation ; une demande refusée
   assert.equal((await gl('GET', `/projects/${pid}/repository/branches/${other}`)).status, 404);
 });
 
+test('autonomie de Pi : git push et MR sans approbation ; main, fusion et suppression refusées par la plateforme', async () => {
+  const pid = ctx.glProject.id;
+  const b = `auto-${uid().toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+  const mainBefore = (await gl('GET', `/projects/${pid}/repository/branches/main`)).body.commit.id;
+  const api = `http://${FORGE_HOST}/api/v4/projects/${pid}`;
+  const cmd = [
+    `echo token:$(printf %s "$GITLAB_TOKEN" | cut -c1-7)`,
+    `env | grep -c glpat- || true`,
+    `git checkout -qb ${b} && echo auto > auto.txt && git add auto.txt && git commit -qm "auto: ajout" && git push -q origin ${b} 2>&1 && echo PUSH_OK`,
+    `timeout 60 git push origin HEAD:main 2>&1 | grep -E "rejected|refus" | head -2`,
+    `timeout 60 git push origin --delete ${ctx.branch} 2>&1 | grep -E "rejected|refus" | head -2`,
+    `curl -s -o /tmp/mr.json -w "mr:%{http_code}\\n" -H "PRIVATE-TOKEN: $GITLAB_TOKEN" -X POST "${api}/merge_requests" -d source_branch=${b} -d target_branch=main -d title=auto-${b}`,
+    `IID=$(python3 -c "import json;print(json.load(open('/tmp/mr.json'))['iid'])")`,
+    `curl -s -o /tmp/merge.json -w "merge:%{http_code}\\n" -H "PRIVATE-TOKEN: $GITLAB_TOKEN" -X PUT "${api}/merge_requests/$IID/merge"; cat /tmp/merge.json; echo`,
+    `curl -s -o /dev/null -w "deploykey:%{http_code}\\n" -H "PRIVATE-TOKEN: $GITLAB_TOKEN" -X POST "${api}/deploy_keys" -d title=x -d key=x`,
+    `GITLAB_HOST=http://${FORGE_HOST} glab api projects/${pid} 2>&1 | grep -o '"path_with_namespace":"[^"]*"' || echo glab:ko`,
+  ].join('; ');
+  const events = await run(ctx.dev, ctx.ws.id, `Autonomie. ${tool('bash', { command: cmd, timeout: 300 })}`);
+  assert.equal(events.at(-1).type, 'run.completed', JSON.stringify(events.at(-1)));
+  assert.equal(events.filter((e) => e.type === 'approval.required').length, 0, 'aucune approbation demandée');
+  const out = events.filter((e) => e.type === 'tool.completed').map((e) => e.data.output).join('\n');
+  assert.match(out, /token:cap_rt_/, out);
+  assert.match(out, /^0$/m, 'aucun jeton GitLab dans l’environnement');
+  assert.ok(!out.includes(ctx.glToken ?? 'jamais'), 'jeton OAuth absent des sorties');
+  assert.match(out, /PUSH_OK/, out);
+  assert.match(out, /main.*(rejected|refus)|(rejected|refus).*main/, out);
+  assert.match(out, /mr:201/, out);
+  assert.match(out, /merge:403/, out);
+  assert.match(out, /platform_merge_pull_request/, out);
+  assert.match(out, /deploykey:403/, out);
+  assert.match(out, /"path_with_namespace":"capdev\/cap-demo"/, `glab : ${out}`);
+
+  // État réel de la forge.
+  const pushed = await gl('GET', `/projects/${pid}/repository/branches/${b}`);
+  assert.equal(pushed.status, 200, 'branche de travail poussée directement');
+  assert.equal((await gl('GET', `/projects/${pid}/repository/branches/main`)).body.commit.id, mainBefore, 'main intacte');
+  assert.equal((await gl('GET', `/projects/${pid}/repository/branches/${ctx.branch}`)).status, 200, 'suppression refusée');
+  const mrs = (await gl('GET', `/projects/${pid}/merge_requests?source_branch=${b}`)).body;
+  assert.equal(mrs.length, 1);
+  assert.equal(mrs[0].state, 'opened', 'MR ouverte mais non fusionnée');
+  assert.equal(mrs[0].author.username, 'capdev', 'MR créée au nom de l’utilisateur');
+  // Écritures et refus journalisés.
+  assert.ok(Number(sql(`select count(*) from audit_events where action = 'git.agent_write' and outcome = 'success' and target_id = '${ctx.ws.id}'`)) >= 2);
+  assert.ok(Number(sql(`select count(*) from audit_events where action = 'git.agent_write' and outcome = 'failure' and target_id = '${ctx.ws.id}'`)) >= 2);
+});
+
 test('suppression de la forge par l’administrateur : connexions révoquées', async () => {
   const r = await ctx.admin.req('DELETE', `/admin/git-forges/${ctx.forge.id}`);
   assert.equal(r.status, 204);

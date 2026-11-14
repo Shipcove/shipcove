@@ -14,7 +14,7 @@
       <ul>
         <li>Injectées dans l’environnement de l’agent (et de ses commandes), <strong>jamais écrites sur disque</strong> par la plateforme : elles n’entrent pas dans les checkpoints.</li>
         <li><strong>Secrets</strong> : stockés dans Vault, jamais réaffichés (6 caractères minimum). Ils sont <strong>masqués</strong> (<code>***</code>) dans les sorties d’outils, les réponses de l’agent (même coupés entre deux fragments du flux), le flux temps réel, la base de données, et retirés des requêtes envoyées au fournisseur LLM.</li>
-        <li>Noms réservés refusés : <code>PATH</code>, <code>HOME</code>, <code>*_PROXY</code>, <code>LD_*</code>, <code>CAP_*</code>, <code>PI_*</code>, certificats, <code>GIT_SSH*</code>…</li>
+        <li>Noms réservés refusés : <code>PATH</code>, <code>HOME</code>, <code>*_PROXY</code>, <code>LD_*</code>, <code>CAP_*</code>, <code>PI_*</code>, <code>GH_*</code>, <code>GITHUB_TOKEN</code>, <code>GITLAB_TOKEN</code>, certificats, <code>GIT_SSH*</code>…</li>
       </ul>
       <div class="callout warn"><p>Comme pour les secrets de CI, l’agent de chaque membre du projet peut <em>utiliser</em> un secret (et donc l’écrire dans un fichier ou l’envoyer vers un hôte autorisé). Réservez-y des identifiants de développement à droits minimaux.</p></div>
 

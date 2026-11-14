@@ -40,10 +40,23 @@ automatique.
 - **Expiration** : une connexion expirée ou révoquée côté forge affiche « Reconnecter ».
 
 Les jetons sont stockés dans Vault. Ils ne quittent jamais le serveur et n'atteignent jamais les
-sandboxes :
-- Pi lit le dépôt à travers la passerelle (`/git/…`), avec un jeton de run ;
-- toute publication (push, PR/MR, fusion, suppression de branche) passe par le broker, après
-  approbation humaine de l'opération exacte (commit, cible).
+sandboxes (ADR 0013).
+- `git`, `gh` et `glab` fonctionnent dans la sandbox avec un **jeton de run**. La gateway intercepte
+  le TLS des forges (autorité propre à l'installation) et remplace ce jeton par le jeton OAuth de
+  l'utilisateur.
+- Pi est autonome :
+  - push de branches de travail ;
+  - PR/MR, commentaires et revues ;
+  - CI (état, journaux, relance) ;
+  - tickets et releases.
+- La gateway refuse les opérations suivantes, qui passent par les outils de la plateforme
+  **après approbation humaine** :
+  - push sur la branche par défaut ou sur une branche protégée ;
+  - fusion ;
+  - suppression de branche ou de tag ;
+  - réglages et suppression du dépôt ;
+  - clés, jetons, runners et secrets de CI.
+- Chaque écriture et chaque refus sont audités (`git.agent_write`).
 
 ## Forges auto-hébergées
 
@@ -62,5 +75,9 @@ sandboxes :
 - L'opération approuvée est figée : si la branche a changé depuis l'approbation, l'exécution est
   refusée et une nouvelle demande est nécessaire.
 - Une approbation n'est utilisable qu'une fois. Une demande refusée ne publie rien.
-- Les commandes `git push`, `gh` et `glab`, ainsi que les appels HTTP directs vers les forges depuis
-  la sandbox, sont bloqués par le réseau (`tests/e2e/stack.test.mjs`).
+- `git push` d'une branche de travail et création de MR par l'API, sans approbation ; `glab`
+  opérationnel.
+- Push sur `main`, suppression de branche, fusion et clé de déploiement refusés par la gateway ;
+  `main` inchangée sur la forge.
+- Aucun jeton de la forge dans l'environnement de la sandbox ; le certificat présenté pour les forges
+  est celui de l'autorité de l'installation (`tests/e2e/stack.test.mjs`).

@@ -54,18 +54,19 @@ export default function platformBridge(pi: ExtensionAPI) {
     return undefined;
   });
 
-  // 2. Opérations Git distantes soumises à approbation.
+  // 2. Forges Git (ADR 0013) : git push, gh et glab fonctionnent directement (authentifiés par la
+  //    plateforme). Seules les opérations sensibles passent par ces outils, après approbation.
   pi.registerTool({
     name: 'platform_git_push',
-    label: 'Publier une branche (approbation requise)',
+    label: 'Publier sur une branche protégée (approbation requise)',
     description:
-      'Demande la publication (git push) d’une branche locale vers le dépôt distant du projet. ' +
-      'Un humain doit approuver l’opération exacte (commits, cible) avant exécution. ' +
-      'Les commandes `git push`, `gh` ou `glab` directes ne peuvent pas publier depuis cette sandbox.',
-    promptSnippet: 'Publier une branche via la plateforme (approbation humaine)',
+      'Demande la publication d’une branche locale vers la branche PAR DÉFAUT ou une branche PROTÉGÉE du dépôt du projet, ' +
+      'après approbation humaine de l’opération exacte. Pour toute autre branche, utilisez directement `git push`.',
+    promptSnippet: 'Publier sur la branche par défaut / protégée (approbation humaine)',
     promptGuidelines: [
-      'Use platform_git_push to push commits: direct git push/gh/glab cannot reach the remote from this sandbox.',
-      'After calling platform_git_push or platform_create_pull_request, tell the user an approval is pending; do not retry.',
+      'git push, gh and glab work directly in this sandbox, authenticated as the user by the platform: push work branches, open and update PRs/MRs, comment, read CI logs and issues with them.',
+      'The platform refuses, for gh/glab/git: pushing to the default or a protected branch, merging, deleting branches or tags, changing repository settings, and creating keys or tokens. For these, use platform_git_push, platform_merge_pull_request or platform_delete_remote_branch (human approval), or ask the user.',
+      'After calling a platform_* Git tool, tell the user an approval is pending; do not retry.',
     ],
     parameters: Type.Object({
       local_branch: Type.String({ description: 'Branche locale à publier' }),
@@ -88,8 +89,8 @@ export default function platformBridge(pi: ExtensionAPI) {
     name: 'platform_create_pull_request',
     label: 'Créer une PR/MR (approbation requise)',
     description:
-      'Demande la création d’une pull request (GitHub) ou merge request (GitLab). La branche source doit déjà être publiée ' +
-      '(platform_git_push). Exécutée après approbation humaine.',
+      'Demande la création d’une pull request (GitHub) ou merge request (GitLab) après approbation humaine. ' +
+      'En général, préférez `gh pr create` ou `glab mr create`, qui ne demandent pas d’approbation.',
     parameters: Type.Object({
       source_branch: Type.String(),
       target_branch: Type.String(),

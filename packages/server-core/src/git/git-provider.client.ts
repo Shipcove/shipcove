@@ -252,6 +252,30 @@ export class GitProviderClient {
     return { id: String(j.id), login: j.login ?? j.username ?? String(j.id), name: j.name ?? null, scopes };
   }
 
+  /**
+   * Branche par défaut et, parmi `branches`, celles que la forge protège (garde-fous des pushs de
+   * l'agent). Une branche inexistante n'est protégée que si une règle GitLab à joker la couvre.
+   */
+  async branchFacts(conn: Conn, fullName: string, branches: string[]): Promise<{ defaultBranch: string; protectedBranches: Set<string> }> {
+    const repo = await this.getRepository(conn, fullName);
+    const protectedBranches = new Set<string>();
+    if (isGitHub(conn.provider)) {
+      for (const b of branches) {
+        try {
+          const r = await this.call<{ protected?: boolean }>(conn, 'GET', `/repos/${repo.fullName.split('/').map(encodeURIComponent).join('/')}/branches/${encodeURIComponent(b)}`);
+          if (r.protected) protectedBranches.add(b);
+        } catch (err) {
+          if (!(err instanceof GitProviderError && err.status === 404)) throw err;
+        }
+      }
+    } else {
+      const rules = await this.call<Array<{ name: string }>>(conn, 'GET', `/projects/${encodeURIComponent(repo.fullName)}/protected_branches?per_page=100`);
+      const patterns = rules.map((r) => new RegExp(`^${r.name.split('*').map((p) => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`));
+      for (const b of branches) if (patterns.some((p) => p.test(b))) protectedBranches.add(b);
+    }
+    return { defaultBranch: repo.defaultBranch, protectedBranches };
+  }
+
   async getRepository(conn: Conn, fullName: string): Promise<RepoMetadata> {
     if (isGitHub(conn.provider)) {
       const r = await this.call<{ id: number; full_name: string; clone_url: string; html_url: string; default_branch: string; private: boolean }>(

@@ -7,7 +7,7 @@
   <body>
     <main>
       <h1>Forges Git</h1>
-      <p class="lead">Les utilisateurs rattachent leurs comptes GitHub / GitLab <strong>par OAuth</strong>, via les forges déclarées par l’administrateur. Les jetons restent dans Vault et n’entrent jamais dans les sandboxes.</p>
+      <p class="lead">Les utilisateurs rattachent leurs comptes GitHub / GitLab <strong>par OAuth</strong>, via les forges déclarées par l’administrateur. Pi utilise ensuite <code>git</code>, <code>gh</code> et <code>glab</code> en autonomie ; les jetons restent dans Vault et n’entrent jamais dans les sandboxes.</p>
 
       <h2>Déclarer une forge</h2>
       <p><strong>Administration → Forges Git</strong>, une application OAuth par forge :</p>
@@ -35,12 +35,28 @@
         <li>Un projet se crée ensuite à partir d’un dépôt accessible avec la connexion choisie.</li>
       </ul>
 
-      <h2>Lecture et publication</h2>
+      <h2>Ce que Pi fait seul</h2>
+      <p>Dans la sandbox, <code>git</code>, <code>gh</code> et <code>glab</code> sont authentifiés par un <strong>jeton de run</strong>. La gateway intercepte le trafic vers les forges et le remplace par le jeton OAuth de l’utilisateur : Pi agit en son nom, sur tous ses dépôts, sans jamais voir le jeton.</p>
       <ul>
-        <li><strong>Lecture</strong> : la sandbox clone et récupère via la passerelle, avec un jeton de run temporaire ; le jeton Git n’y entre jamais.</li>
-        <li><strong>Publication</strong> : push, PR/MR, fusion, suppression de branche passent par le broker <strong>après approbation</strong> de l’opération exacte (commit figé à la demande). Une approbation ne sert qu’une fois.</li>
-        <li>L’URL de clonage renvoyée par la forge doit désigner le même hôte que la connexion : un jeton n’est jamais présenté à un autre hôte.</li>
+        <li>pousser des branches de travail (y compris en force) et des tags ;</li>
+        <li>ouvrir et mettre à jour des PR/MR, commenter, répondre aux revues ;</li>
+        <li>lire la CI et les journaux des jobs, relancer un pipeline ;</li>
+        <li>lire et créer des tickets, des releases.</li>
       </ul>
+
+      <h2>Ce qui exige une approbation</h2>
+      <table>
+        <thead><tr><th>Opération</th><th>Comment</th></tr></thead>
+        <tbody>
+          <tr><td>Push sur la branche par défaut ou une branche protégée</td><td>Outil <code>platform_git_push</code></td></tr>
+          <tr><td>Fusion d’une PR/MR</td><td>Outil <code>platform_merge_pull_request</code></td></tr>
+          <tr><td>Suppression d’une branche</td><td>Outil <code>platform_delete_remote_branch</code></td></tr>
+          <tr><td>Réglages, accès, protections, suppression du dépôt</td><td>Réservé à un humain, sur la forge</td></tr>
+          <tr><td>Clés SSH, clés et jetons de déploiement, jetons, runners, secrets de CI</td><td>Interdit depuis une sandbox</td></tr>
+        </tbody>
+      </table>
+      <p>Les refus sont explicites : <code>git push</code> affiche <code>! [remote rejected] main -&gt; main (…)</code> ; <code>gh</code> et <code>glab</code> reçoivent un HTTP 403 avec la raison. L’approbation porte sur l’opération exacte (commit figé) et ne sert qu’une fois. Chaque écriture et chaque refus sont audités.</p>
+      <p>L’URL de clonage renvoyée par la forge doit désigner le même hôte que la connexion : un jeton n’est jamais présenté à un autre hôte.</p>
 
       <h2>Forges internes en HTTP</h2>
       <p>HTTPS est obligatoire. Une forge interne en HTTP (recette) n’est joignable que si l’administrateur liste <code>hôte[:port]</code> dans <strong>Forges Git → Réglages Git</strong>. Les jetons transitent alors en clair sur ce réseau : à réserver aux réseaux de confiance.</p>

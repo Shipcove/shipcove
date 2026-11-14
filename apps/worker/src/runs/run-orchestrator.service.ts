@@ -197,7 +197,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     const environment = await this.environment.forWorkspace(ws.id, { fresh: true });
     const proc = await this.sandboxes.provider.exec(sandbox.handle, command, {
       interactive: true,
-      env: { ...environment.vars, [PI_TOKEN_ENV]: sandbox.runToken, HOME: '/home/agent', PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1' },
+      env: { ...environment.vars, ...this.sandboxes.forgeEnv(sandbox), [PI_TOKEN_ENV]: sandbox.runToken, HOME: '/home/agent', PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1' },
       workdir: '/workspace',
     });
     const runtime = new PiAgentRuntime({ stdin: proc.stdin!, stdout: proc.stdout, stderr: proc.stderr, wait: () => proc.wait(), kill: () => proc.kill() });

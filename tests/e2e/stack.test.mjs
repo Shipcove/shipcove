@@ -169,22 +169,25 @@ test('sandbox détruite puis restaurée fidèlement (fichiers + état de session
   assert.notEqual(docker('ps', '-q', '--filter', `label=cap.workspace=${ctx.ws.id}`), '', 'nouvelle sandbox');
 });
 
-test('publication Git impossible sans approbation : git, curl, python, node vers les forges refusés par le réseau', async () => {
+test('forges via la plateforme seulement : TLS intercepté, jeton de run, garde-fous ; pas d’accès direct ni interne', async () => {
   const conv = await ctx.dev.get(`/workspaces/${ctx.ws.id}/conversation`);
   const cmd = [
-    'curl -s -o /dev/null -w "curl:%{http_code}\\n" https://api.github.com/user || echo curl:blocked',
-    'git ls-remote https://github.com/octocat/Hello-World.git >/dev/null 2>&1 && echo git:open || echo git:blocked',
-    'python3 -c "import urllib.request as u; u.urlopen(\'https://gitlab.com\')" >/dev/null 2>&1 && echo py:open || echo py:blocked',
-    'node -e "fetch(\'https://github.com\').then(()=>console.log(\'node:open\')).catch(()=>console.log(\'node:blocked\'))"',
+    'echo token:$(printf %s "$GH_TOKEN" | cut -c1-7)',
+    'curl -sv -o /dev/null https://api.github.com/ 2>&1 | grep -i "issuer:" | head -1',
+    'curl -s -o /dev/null -D - -X PUT -H "Authorization: token $GH_TOKEN" https://api.github.com/repos/o/r/pulls/1/merge | grep -i -E "^HTTP|x-cap-forge-denied" | tr -d "\\r"',
     'curl -s --noproxy "*" -m 5 https://github.com >/dev/null 2>&1 && echo direct:open || echo direct:blocked',
+    'curl -s -m 5 https://registry.gitlab.com/ >/dev/null 2>&1 && echo registry:open || echo registry:blocked',
     'curl -s -m 5 http://169.254.169.254/ >/dev/null 2>&1 && echo meta:open || echo meta:blocked',
     'curl -s -m 5 http://postgres:5432 >/dev/null 2>&1 && echo pg:open || echo pg:blocked',
   ].join('; ');
   const sent = await ctx.dev.post(`/workspaces/${ctx.ws.id}/messages`, { text: `Teste le réseau. [[tool:bash ${JSON.stringify({ command: cmd })}]]` });
   const events = await ctx.dev.events(ctx.ws.id, conv.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === sent.body.runId, 300_000);
   const out = events.find((e) => e.type === 'tool.completed').data.output;
-  assert.match(out, /curl:(403|000|blocked)/);
-  for (const k of ['git', 'py', 'node', 'direct', 'meta', 'pg']) assert.match(out, new RegExp(`${k}:blocked`), `${k} non bloqué :\n${out}`);
+  assert.match(out, /token:cap_rt_/, out);
+  assert.match(out, /issuer:.*Coding Agent Platform/i, `certificat de l’autorité des forges :\n${out}`);
+  assert.match(out, /HTTP\/1\.1 403/, out);
+  assert.match(out, /x-cap-forge-denied: 1/i, out);
+  for (const k of ['direct', 'registry', 'meta', 'pg']) assert.match(out, new RegExp(`${k}:blocked`), `${k} non bloqué :\n${out}`);
   // Le registre npm (liste blanche) reste accessible.
   const conv2 = await ctx.dev.get(`/workspaces/${ctx.ws.id}/conversation`);
   const npm = await ctx.dev.post(`/workspaces/${ctx.ws.id}/messages`, { text: 'npm [[tool:bash {"command":"curl -s -o /dev/null -w npm:%{http_code} https://registry.npmjs.org/left-pad"}]]' });

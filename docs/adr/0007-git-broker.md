@@ -1,6 +1,8 @@
 # ADR 0007 — Git Credential Broker et approbations
 
-- Statut : accepté — 2026-11-13
+- Statut : accepté — 2026-11-13 ; **en partie remplacé par l'ADR 0013** (accès autonome aux forges
+  via la gateway : git push, gh et glab avec garde-fous ; les approbations restent pour la branche
+  par défaut, les branches protégées, la fusion et la suppression).
 
 ## Décision
 1. **Aucun credential Git n'entre dans la sandbox.** Ni token, ni helper, ni variable.

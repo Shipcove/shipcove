@@ -95,3 +95,7 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
 - 2026-11-14 : retour en arrière, variables / secrets et préparation par projet.
 - 2026-11-14 : services d'appui lancés par l'agent ; correctif : les erreurs des outils de la
   plateforme étaient affichées comme des succès (Pi ignore `isError`, seule une exception compte).
+- 2026-11-14 : README et site de documentation ; accès autonome aux forges (ADR 0013) : git, gh,
+  glab dans la sandbox via la gateway (TLS intercepté, jeton OAuth substitué, garde-fous, audit) ;
+  correctif : un refus de push restait sans réponse si la requête s'était terminée pendant la
+  lecture des branches protégées.

@@ -53,11 +53,10 @@
       <h2>Git : publier le travail</h2>
       <ol>
         <li>Rattachez votre compte : <strong>Paramètres → Connexions Git → Connecter via …</strong> (OAuth, forges configurées par l’administrateur).</li>
-        <li>Demandez à Pi de committer et de publier : il crée une <strong>demande d’approbation</strong> (branche, commits, diff) au lieu de pousser lui-même.</li>
-        <li>Dans l’onglet <strong>Approbations</strong>, vérifiez l’opération exacte et approuvez ou refusez. Une approbation ne sert qu’une fois ; si la branche a changé depuis, une nouvelle demande est nécessaire.</li>
-        <li>De la même façon, Pi peut proposer une <strong>pull / merge request</strong>, consulter la CI, fusionner ou supprimer une branche — toujours après votre approbation.</li>
+        <li>Pi travaille ensuite en autonomie avec <code>git</code>, <code>gh</code> et <code>glab</code>, en votre nom : il pousse ses branches, ouvre des <strong>pull / merge requests</strong>, suit la CI, lit les journaux et répond aux revues.</li>
+        <li>Pour la branche par défaut ou une branche protégée, une fusion ou une suppression de branche, il crée une <strong>demande d’approbation</strong> : vérifiez l’opération exacte dans l’onglet <strong>Approbations</strong>. Une approbation ne sert qu’une fois ; si la branche a changé depuis, une nouvelle demande est nécessaire.</li>
       </ol>
-      <div class="callout"><p>Les commandes <code>git push</code>, <code>gh</code>, <code>glab</code> ou les appels HTTP directs vers les forges sont bloqués depuis la sandbox : seule la plateforme publie, après approbation.</p></div>
+      <div class="callout"><p>Votre jeton GitHub / GitLab n’entre jamais dans la sandbox : la plateforme l’ajoute au passage. Les réglages du dépôt, les accès et les clés ou jetons durables restent hors de portée de l’agent. Chaque écriture de Pi sur une forge est journalisée.</p></div>
 
       <h2>Previews</h2>
       <p>Lorsque Pi lance un serveur (port 3000, 5173…), ouvrez-le depuis l’onglet <strong>Previews</strong> : il est servi sur un domaine distinct, protégé par un jeton. Trois ports par workspace par défaut.</p>

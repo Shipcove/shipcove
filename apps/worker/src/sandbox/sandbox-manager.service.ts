@@ -3,6 +3,8 @@ import { PassThrough } from 'node:stream';
 import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import tar from 'tar-stream';
 import {
+  gitConnections,
+  gitForges,
   llmModels,
   projects,
   repositories,
@@ -21,7 +23,7 @@ import {
   type SandboxProvider,
 } from '@cap/sandbox';
 import { buildModelsJson, buildSettingsJson, type PiModelConfig } from '@cap/agent-runtime';
-import { AppError, DB, ENV, EventsService, SettingsService, randomToken, sha256Hex } from '@cap/server-core';
+import { AppError, DB, ENV, EventsService, GitProviderClient, SettingsService, randomToken, sha256Hex } from '@cap/server-core';
 import { isUniqueViolation } from '@cap/server-core';
 import { LeaseService } from '@cap/storage';
 import type { WorkerEnv } from '../env.js';
@@ -38,6 +40,9 @@ export interface ActiveSandbox {
 }
 
 const LEASE_TTL_MS = 10 * 60_000;
+/** Magasin de confiance des outils de la sandbox : système + autorité des forges (ADR 0013). */
+const CA_FILE = '/run/cap/forge-ca.pem';
+const CA_BUNDLE = '/run/cap/ca-bundle.pem';
 const RUN_TOKEN_TTL_MS = 24 * 3600_000;
 
 /**
@@ -61,6 +66,7 @@ export class SandboxManager {
     private readonly checkpoints: CheckpointService,
     private readonly events: EventsService,
     private readonly skills: SkillsMaterializer,
+    private readonly git: GitProviderClient,
   ) {
     // La gateway (LLM + Git en lecture) est jointe directement ; tout le reste passe par le proxy d'egress.
     const noProxyHosts = [new URL(env.GATEWAY_INTERNAL_URL).hostname];
@@ -263,6 +269,78 @@ export class SandboxManager {
   }
 
   /**
+   * Accès aux forges depuis la sandbox (ADR 0013) : git, gh et glab présentent le jeton de run,
+   * que la gateway remplace par le jeton OAuth de l'utilisateur. Le magasin de confiance inclut
+   * l'autorité des forges de l'installation.
+   */
+  forgeEnv(sb: ActiveSandbox): Record<string, string> {
+    return {
+      GH_TOKEN: sb.runToken,
+      GITHUB_TOKEN: sb.runToken,
+      GH_ENTERPRISE_TOKEN: sb.runToken,
+      GITLAB_TOKEN: sb.runToken,
+      GH_PROMPT_DISABLED: '1',
+      GH_NO_UPDATE_NOTIFIER: '1',
+      GLAB_CHECK_UPDATE: 'false',
+      GIT_TERMINAL_PROMPT: '0',
+      SSL_CERT_FILE: CA_BUNDLE,
+      GIT_SSL_CAINFO: CA_BUNDLE,
+      CURL_CA_BUNDLE: CA_BUNDLE,
+      REQUESTS_CA_BUNDLE: CA_BUNDLE,
+      NODE_EXTRA_CA_CERTS: CA_FILE,
+    };
+  }
+
+  private forgeCa: { at: number; pem: string } | null = null;
+
+  /** Certificat public de l'autorité des forges, servi par la gateway. */
+  private async forgeCaPem(): Promise<string | null> {
+    if (this.forgeCa && Date.now() - this.forgeCa.at < 3_600_000) return this.forgeCa.pem;
+    try {
+      const res = await fetch(`${this.env.GATEWAY_INTERNAL_URL.replace(/\/$/, '')}/forge/ca.pem`, { signal: AbortSignal.timeout(10_000) });
+      const pem = await res.text();
+      if (!res.ok || !pem.includes('BEGIN CERTIFICATE')) throw new Error(`HTTP ${res.status}`);
+      this.forgeCa = { at: Date.now(), pem };
+      return pem;
+    } catch (err) {
+      this.logger.warn(`Autorité des forges indisponible : ${(err as Error).message}`);
+      return this.forgeCa?.pem ?? null;
+    }
+  }
+
+  /** Configuration de glab pour les GitLab auto-hébergés de l'utilisateur (protocole, jeton de run). */
+  private async glabConfig(sb: ActiveSandbox, userId: string): Promise<string> {
+    const rows = await this.db
+      .select({ host: gitConnections.host, provider: gitConnections.provider })
+      .from(gitConnections)
+      .where(and(eq(gitConnections.userId, userId), isNull(gitConnections.revokedAt)));
+    const forges = await this.db.select({ host: gitForges.host, provider: gitForges.provider }).from(gitForges).where(eq(gitForges.enabled, true));
+    const hosts = new Map<string, string>();
+    for (const r of [...rows, ...forges]) {
+      if (r.provider !== 'gitlab_self_managed') continue;
+      const origin = await this.git.webOrigin(r.provider, r.host).catch(() => `https://${r.host}`);
+      hosts.set(r.host.toLowerCase(), origin.startsWith('http:') ? 'http' : 'https');
+    }
+    const lines = ['git_protocol: https', 'check_update: false', 'no_prompt: true', 'hosts:', '  gitlab.com:', `    token: ${sb.runToken}`, '    api_protocol: https'];
+    for (const [host, proto] of hosts) {
+      lines.push(`  ${JSON.stringify(host)}:`, `    token: ${sb.runToken}`, `    api_protocol: ${proto}`, `    git_protocol: ${proto === 'http' ? 'http' : 'https'}`, `    api_host: ${JSON.stringify(host)}`);
+    }
+    return lines.join('\n') + '\n';
+  }
+
+  /** Remote `origin` vers la vraie forge (et non plus le proxy de lecture), pour git, gh et glab. */
+  private async alignOrigin(sb: ActiveSandbox, ws: typeof workspaces.$inferSelect): Promise<void> {
+    const [p] = await this.db.select().from(projects).where(eq(projects.id, ws.projectId));
+    if (!p?.repositoryId) return;
+    const [repo] = await this.db.select().from(repositories).where(eq(repositories.id, p.repositoryId));
+    if (!repo) return;
+    const proxied = `${this.env.GATEWAY_INTERNAL_URL.replace(/\/$/, '')}/git/${repo.id}.git`;
+    const cur = await execCollect(this.provider, sb.handle, ['git', '-C', '/workspace', 'remote', 'get-url', 'origin'], { timeoutMs: 15_000 });
+    if (cur.exitCode !== 0 || cur.stdout.toString('utf8').trim() !== proxied) return;
+    await execCollect(this.provider, sb.handle, ['git', '-C', '/workspace', 'remote', 'set-url', 'origin', repo.cloneUrl], { timeoutMs: 15_000 });
+  }
+
+  /**
    * Régénère la configuration de Pi avant chaque run (modèles, skills, outils MCP) : une sandbox
    * restée active entre deux runs applique ainsi immédiatement révocations et désactivations.
    * Le répertoire des skills est vidé d'abord (un skill retiré ne doit pas subsister).
@@ -273,6 +351,7 @@ export class SandboxManager {
     const code = await rm.wait();
     if (code !== 0) throw new Error(`Nettoyage des skills impossible (code ${code})`);
     await this.configure(sb, ws);
+    await this.alignOrigin(sb, ws).catch((err) => this.logger.warn(`Remote origin : ${(err as Error).message}`));
   }
 
   /** Écrit la configuration de Pi, Git et des skills dans la sandbox. */
@@ -299,15 +378,24 @@ export class SandboxManager {
       `\temail = ${owner.email}`,
       `[http "${gw}/git/"]`,
       `\textraHeader = Authorization: Bearer ${sb.runToken}`,
+      // Forges (ADR 0013) : le jeton de run, remplacé par la gateway par le jeton OAuth.
+      '[credential]',
+      '\thelper =',
+      `\thelper = "!f() { test \\"$1\\" = get || exit 0; echo username=x-access-token; echo password=${sb.runToken}; }; f"`,
       '',
     ].join('\n');
+    const caPem = await this.forgeCaPem();
     const files: Array<{ path: string; content: string; mode?: number }> = [
       { path: 'home/agent/.pi/agent/models.json', content: buildModelsJson(`${gw}/llm/v1`, piModels) },
       { path: 'home/agent/.pi/agent/settings.json', content: buildSettingsJson(def?.litellmModel ?? '') },
       { path: 'home/agent/.gitconfig', content: gitconfig, mode: 0o600 },
+      { path: 'home/agent/.config/glab-cli/config.yml', content: await this.glabConfig(sb, ws.ownerId), mode: 0o600 },
+      { path: CA_FILE.slice(1), content: caPem ?? '', mode: 0o644 },
       ...(await this.skills.files(ws)),
     ];
     await this.writeFiles(sb.handle, files);
+    const bundle = await execCollect(this.provider, sb.handle, ['sh', '-c', `cat /etc/ssl/certs/ca-certificates.crt ${CA_FILE} > ${CA_BUNDLE}.tmp && mv ${CA_BUNDLE}.tmp ${CA_BUNDLE}`], { timeoutMs: 15_000 });
+    if (bundle.exitCode !== 0) this.logger.warn(`Magasin de confiance de la sandbox : ${bundle.stderr.toString('utf8').slice(0, 200)}`);
     await this.skills.writeMcpConfig(this, sb, ws);
   }
 
@@ -349,6 +437,7 @@ export class SandboxManager {
       }
     }
     if (!ws.branch) await this.db.update(workspaces).set({ branch }).where(eq(workspaces.id, ws.id));
+    await this.alignOrigin(sb, ws).catch((err) => this.logger.warn(`Remote origin : ${(err as Error).message}`));
   }
 
   /**

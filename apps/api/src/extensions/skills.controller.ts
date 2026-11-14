@@ -29,7 +29,7 @@ export function analyzeSkill(files: Array<{ path: string; content: string }>): s
     if (/(gh[pousr]_[A-Za-z0-9]{20,}|glpat-|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})/.test(f.content)) findings.push(`Secret probable : ${f.path}`);
     if (/[A-Za-z0-9+/]{400,}={0,2}/.test(f.content)) findings.push(`Bloc encodé volumineux : ${f.path}`);
     if (/(ignore (all )?previous instructions|disregard .*instructions)/i.test(f.content)) findings.push(`Formulation d’injection de prompt : ${f.path}`);
-    if (/git\s+push|platform_git_push/.test(f.content)) findings.push(`Mentionne une publication Git : ${f.path} (soumise à approbation)`);
+    if (/git\s+push|platform_git_push|\bgh\s+(pr|api|repo)|\bglab\s+(mr|api|repo)/.test(f.content)) findings.push(`Mentionne une publication Git : ${f.path} (pushs et PR/MR faits au nom de l’utilisateur)`);
   }
   return [...new Set(findings)];
 }

@@ -4,8 +4,9 @@ Plateforme **auto-hébergeable** de coding agents pour équipes et entreprises.
 
 L'agent [Pi](https://github.com/badlogic/pi-mono) travaille dans une **sandbox éphémère et isolée** :
 il lit, modifie et teste le code. Son état est **sauvegardé en continu sur S3**, et les modèles
-passent par **LiteLLM**. Les secrets sont dans **Vault**. Les publications Git exigent une
-**approbation humaine**.
+passent par **LiteLLM**. Les secrets sont dans **Vault**. Pi utilise `git`, `gh` et `glab` en
+autonomie, sans jamais voir le jeton de l'utilisateur. Toucher à la branche par défaut, fusionner ou
+supprimer exige une **approbation humaine**.
 
 > Documentation complète (démarrage rapide, guides, exploitation) : `pnpm docs:dev`, puis
 > <http://localhost:5174>. Le site est dans [`apps/docs-site`](apps/docs-site).
@@ -47,8 +48,11 @@ passent par **LiteLLM**. Les secrets sont dans **Vault**. Les publications Git e
   - **image de sandbox** au choix.
 - **Services d'appui à la demande** : l'agent lance lui-même PostgreSQL, Redis, RabbitMQ… sur le
   `localhost` de sa sandbox, parmi un catalogue approuvé par l'administrateur.
-- **Git** : comptes rattachés par **OAuth** ; push, PR/MR, fusion uniquement après **approbation de
-  l'opération exacte** (commit figé).
+- **Git** : comptes rattachés par **OAuth**.
+  - Pi pousse ses branches, ouvre des PR/MR, lit la CI et répond aux revues avec `git`, `gh` et
+    `glab`.
+  - Branche par défaut, branches protégées, fusion et suppression : uniquement après **approbation
+    de l'opération exacte** (commit figé).
 - **Previews** des applications lancées dans la sandbox, sur un domaine distinct et avec jeton.
 - **Pièces jointes** :
   - type réel détecté ;
@@ -91,7 +95,7 @@ Navigateur ── nginx (web) ──► API NestJS (×N) ──► PostgreSQL (�
 | `apps/preview` | Accès aux ports des sandboxes sur un domaine séparé, avec jeton. |
 | `packages/*` | Contrats Zod partagés, schéma Drizzle, sandbox (Docker / Kubernetes), stockage des checkpoints, secrets (Vault), runtime Pi, image de sandbox. |
 
-Les décisions structurantes sont décrites dans [`docs/adr`](docs/adr) (ADR 0001 à 0012), et le
+Les décisions structurantes sont décrites dans [`docs/adr`](docs/adr) (ADR 0001 à 0013), et le
 cahier des charges dans [`SPEC.md`](SPEC.md).
 
 ## Démarrage rapide
@@ -203,10 +207,13 @@ Sans eux, les suites concernées s'ignorent.
   - utilisateur non privilégié, `cap-drop ALL`, `no-new-privileges` ;
   - limites de CPU, mémoire et processus ;
   - réseau interne sans route vers Internet ni vers le backend ;
-  - sortie uniquement par un proxy à liste blanche, qui refuse les forges.
-- **Aucun jeton permanent dans la sandbox** :
-  - lecture Git via la passerelle, avec un jeton de run ;
-  - publication par le broker, après approbation de l'opération exacte.
+  - sortie uniquement par un proxy à liste blanche.
+- **Aucun jeton de forge dans la sandbox** :
+  - `git`, `gh` et `glab` présentent un jeton de run. La gateway intercepte le TLS des seules forges
+    et le remplace par le jeton OAuth ;
+  - garde-fous : pas de push sur la branche par défaut ni sur une branche protégée, pas de fusion,
+    de suppression, de réglage du dépôt, ni de clé ou de jeton durable (approbation requise) ;
+  - écritures et refus audités.
 - **Secrets** :
   - dans Vault, jamais renvoyés par l'API ;
   - masqués dans les sorties, le flux temps réel, la base et les requêtes envoyées au fournisseur LLM.

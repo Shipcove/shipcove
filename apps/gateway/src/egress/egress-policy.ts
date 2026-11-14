@@ -1,6 +1,9 @@
 import { isIP } from 'node:net';
 
-/** Forges dont l'accès direct depuis une sandbox est toujours interdit (ADR 0007). */
+/**
+ * Hôtes de forges jamais joignables en direct. Les forges utilisables (github.com, api.github.com,
+ * gitlab.com, forges déclarées) sont interceptées en amont par le proxy des forges (ADR 0013).
+ */
 export const ALWAYS_DENIED_HOSTS = [
   'github.com',
   'api.github.com',
@@ -33,7 +36,7 @@ export function decideHost(host: string, port: number, allowlist: string[], deni
   if (isIP(h)) return { allowed: false, reason: 'adresse IP directe interdite' };
   for (const d of [...ALWAYS_DENIED_HOSTS, ...deniedHosts]) {
     if (hostMatches(h, d) || hostMatches(h, `*.${norm(d)}`)) {
-      return { allowed: false, reason: `forge Git ${d} : publication uniquement via approbation (outil platform_git_push)` };
+      return { allowed: false, reason: `forge Git ${d} : accès direct non pris en charge (git, gh et glab passent par le proxy des forges)` };
     }
   }
   if (allowlist.some((a) => hostMatches(h, a))) return { allowed: true, reason: 'liste blanche' };

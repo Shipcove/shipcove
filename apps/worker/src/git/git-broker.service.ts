@@ -113,7 +113,7 @@ export class GitBrokerService implements OnApplicationBootstrap {
     const action = String(params.action) as GitActionKind | 'create_pull_request';
     const sb = await this.sandboxes.ensureRunning(workspaceId);
     const sh = async (argv: string[]) => {
-      const r = await execCollect(this.sandboxes.provider, sb.handle, argv, { env: { GIT_TERMINAL_PROMPT: '0' }, timeoutMs: 120_000 });
+      const r = await execCollect(this.sandboxes.provider, sb.handle, argv, { env: this.sandboxes.forgeEnv(sb), timeoutMs: 120_000 });
       return { code: r.exitCode, out: r.stdout.toString('utf8').trim(), err: r.stderr.toString('utf8').trim() };
     };
     let commitSha: string | null = null;
@@ -305,7 +305,7 @@ export class GitBrokerService implements OnApplicationBootstrap {
           env: gitEnv,
           timeout: 300_000,
         });
-        await execCollect(this.sandboxes.provider, sb.handle, ['git', 'fetch', '--quiet', 'origin'], { env: { GIT_TERMINAL_PROMPT: '0' } }).catch(() => undefined);
+        await execCollect(this.sandboxes.provider, sb.handle, ['git', 'fetch', '--quiet', 'origin'], { env: this.sandboxes.forgeEnv(sb) }).catch(() => undefined);
         return { remoteBranch: remote, sha: a.commitSha, output: redactString(res.stdout).slice(0, 2000) };
       } catch (err) {
         const e = err as { stderr?: string; killed?: boolean; signal?: string };

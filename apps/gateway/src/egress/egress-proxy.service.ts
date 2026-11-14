@@ -7,10 +7,12 @@ import type { Database } from '@cap/database';
 import { DB, ENV, SettingsService } from '@cap/server-core';
 import type { GatewayEnv } from '../env.js';
 import { decideHost, isPrivateAddress } from './egress-policy.js';
+import { ForgeProxyService } from '../forge/forge-proxy.service.js';
 
 /**
  * Proxy d'egress HTTP(S) des sandboxes (seule route sortante du réseau `cap-sandbox`).
- * - Liste blanche de domaines administrable ; forges Git toujours refusées.
+ * - Liste blanche de domaines administrable.
+ * - Forges Git : interceptées par `ForgeProxyService` (jeton de run → jeton OAuth, garde-fous).
  * - Résolution DNS puis connexion à l'adresse vérifiée (pas de DNS rebinding).
  * - Adresses privées / métadonnées refusées (anti-SSRF vers les services internes).
  */
@@ -24,6 +26,7 @@ export class EgressProxyService implements OnModuleInit, OnModuleDestroy {
     @Inject(ENV) private readonly env: GatewayEnv,
     @Inject(DB) private readonly db: Database,
     private readonly settings: SettingsService,
+    private readonly forge: ForgeProxyService,
   ) {}
 
   /** Hôtes de forges connus (GitHub Enterprise, GitLab self-managed) : également refusés. */
@@ -71,6 +74,11 @@ export class EgressProxyService implements OnModuleInit, OnModuleDestroy {
   private async handleConnect(req: http.IncomingMessage, client: net.Socket, head: Buffer): Promise<void> {
     const [host, portStr] = (req.url ?? '').split(':');
     const port = Number(portStr || 443);
+    const forge = await this.forge.match(host, port, true).catch(() => null);
+    if (forge) {
+      await this.forge.intercept(client, head, forge).catch(() => client.destroy());
+      return;
+    }
     const verdict = await this.check(host, port).catch(() => ({ ok: false as const, reason: 'erreur interne' }));
     if (!verdict.ok) {
       this.deny(`${host}:${port}`, verdict.reason);
@@ -101,6 +109,11 @@ export class EgressProxyService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     const port = Number(url.port || 80);
+    const forge = await this.forge.match(url.hostname, port, false).catch(() => null);
+    if (forge) {
+      await this.forge.handlePlain(req, res, forge, `${url.pathname}${url.search}`);
+      return;
+    }
     const verdict = await this.check(url.hostname, port).catch(() => ({ ok: false as const, reason: 'erreur interne' }));
     if (!verdict.ok) {
       this.deny(`${url.hostname}:${port}`, verdict.reason);
