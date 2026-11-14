@@ -9,6 +9,7 @@ interface MonacoModel {
 }
 interface MonacoEditor {
   dispose(): void;
+  createDecorationsCollection(d: Array<{ range: unknown; options: Record<string, unknown> }>): { clear(): void };
   getValue(): string;
   setValue(v: string): void;
   getModel(): MonacoModel | null;
@@ -29,6 +30,7 @@ interface MonacoApi {
     createModel(value: string, language?: string): MonacoModel;
     setTheme(t: string): void;
   };
+  Range: new (a: number, b: number, c: number, d: number) => unknown;
 }
 
 /** Chargement unique de Monaco (copié dans /monaco/vs à la construction). */
@@ -135,6 +137,8 @@ export class DiffEditor implements OnDestroy {
   private readonly loader = inject(MonacoLoader);
   private readonly theme = inject(ThemeService);
   private editor: MonacoDiffEditor | null = null;
+  /** Fichier ajouté ou supprimé : affiché en entier (comme GitHub), sans côté « avant » vide. */
+  private single: MonacoEditor | null = null;
   private models: MonacoModel[] = [];
   private ro: ResizeObserver | null = null;
 
@@ -151,30 +155,62 @@ export class DiffEditor implements OnDestroy {
   private async render(original: string, modified: string, path: string, sideBySide: boolean) {
     const monaco = await this.loader.load();
     monaco.editor.setTheme(this.theme.isDark() ? 'vs-dark' : 'vs');
-    if (!this.editor) {
-      this.editor = monaco.editor.createDiffEditor(this.host().nativeElement, {
-        readOnly: true,
-        renderSideBySide: sideBySide,
-        minimap: { enabled: false },
-        fontSize: 12,
-        scrollBeyondLastLine: false,
-        hideUnchangedRegions: { enabled: true },
-        renderOverviewRuler: false,
-      });
-      this.ro = new ResizeObserver(() => this.editor?.layout());
-      this.ro.observe(this.host().nativeElement);
+    const kind = original === '' && modified !== '' ? 'added' : modified === '' && original !== '' ? 'deleted' : 'diff';
+    const el = this.host().nativeElement;
+    if (!this.ro) {
+      this.ro = new ResizeObserver(() => (this.editor ?? this.single)?.layout());
+      this.ro.observe(el);
     }
     const lang = languageOf(path);
-    const next = [monaco.editor.createModel(original, lang), monaco.editor.createModel(modified, lang)];
-    this.editor.setModel({ original: next[0], modified: next[1] });
-    this.editor.updateOptions({ renderSideBySide: sideBySide });
-    for (const m of this.models) m.dispose();
-    this.models = next;
+    const old = this.models;
+    if (kind === 'diff') {
+      this.disposeSingle();
+      if (!this.editor) {
+        this.editor = monaco.editor.createDiffEditor(el, {
+          readOnly: true,
+          renderSideBySide: sideBySide,
+          minimap: { enabled: false },
+          fontSize: 12,
+          scrollBeyondLastLine: false,
+          hideUnchangedRegions: { enabled: true },
+          renderOverviewRuler: false,
+        });
+      }
+      const next = [monaco.editor.createModel(original, lang), monaco.editor.createModel(modified, lang)];
+      this.editor.setModel({ original: next[0], modified: next[1] });
+      this.editor.updateOptions({ renderSideBySide: sideBySide });
+      this.models = next;
+    } else {
+      this.editor?.dispose();
+      this.editor = null;
+      if (!this.single) {
+        this.single = monaco.editor.create(el, { readOnly: true, minimap: { enabled: false }, fontSize: 12, scrollBeyondLastLine: false, lineDecorationsWidth: 14 });
+      }
+      const text = kind === 'added' ? modified : original;
+      const model = monaco.editor.createModel(text, lang);
+      (this.single as unknown as { setModel(m: MonacoModel): void }).setModel(model);
+      // La dernière ligne vide qui suit un saut de ligne final n'est pas une ligne du fichier.
+      const lines = text.endsWith('\n') ? text.split('\n').length - 1 : text.split('\n').length;
+      this.single.createDecorationsCollection([
+        {
+          range: new monaco.Range(1, 1, Math.max(1, lines), 1),
+          options: { isWholeLine: true, className: kind === 'added' ? 'cap-line-added' : 'cap-line-deleted', linesDecorationsClassName: kind === 'added' ? 'cap-gutter-added' : 'cap-gutter-deleted' },
+        },
+      ]);
+      this.models = [model];
+    }
+    for (const m of old) m.dispose();
+  }
+
+  private disposeSingle(): void {
+    this.single?.dispose();
+    this.single = null;
   }
 
   ngOnDestroy(): void {
     this.ro?.disconnect();
     this.editor?.dispose();
+    this.disposeSingle();
     for (const m of this.models) m.dispose();
   }
 }

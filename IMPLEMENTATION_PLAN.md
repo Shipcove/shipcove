@@ -58,7 +58,6 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
 
 ## Limites connues
 - Pas de déconnexion unique (SLO SAML / logout OIDC), ni de mappage groupes → rôles, ni SCIM.
-- Diff d'un fichier ajouté : une ligne rouge vide s'affiche côté « avant ».
 - Provider Kubernetes et chart Helm non validés sur un cluster de référence.
 
 ## Journal

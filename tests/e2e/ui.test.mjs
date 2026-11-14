@@ -152,7 +152,10 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     // Panneau Modifications : le fichier apparaît, le diff s'ouvre dans Monaco.
     await page.waitForSelector('cap-changes-panel button:has-text("main.js")', { timeout: 30_000 });
     await page.click('cap-changes-panel button:has-text("main.js")');
-    await page.waitForSelector('cap-diff-editor .monaco-diff-editor', { timeout: 30_000 });
+    // Fichier ajouté : affiché en entier en vert, sans ligne « supprimée » vide.
+    await page.waitForSelector('cap-diff-editor .monaco-editor .cap-line-added', { timeout: 30_000 });
+    assert.equal(await page.locator('cap-diff-editor .cap-line-deleted, cap-diff-editor .line-delete').count(), 0, 'pas de ligne supprimée pour un ajout');
+    assert.equal(await page.locator('cap-diff-editor .cap-gutter-added').count(), 1, 'une seule ligne ajoutée (console.log)');
     await page.waitForTimeout(800);
     await page.screenshot({ path: new URL('workspace-diff.png', OUT).pathname });
 
@@ -170,7 +173,7 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     await page.screenshot({ path: new URL('files-pane.png', OUT).pathname });
     // Bascule : le bouton du panneau latéral ferme l'explorateur.
     await page.click('button[aria-label="Panneau latéral"]');
-    assert.equal(await page.locator('aside[aria-label="Explorateur de fichiers"]').count(), 0, 'explorateur fermé');
+    await page.waitForSelector('aside[aria-label="Explorateur de fichiers"]', { state: 'detached', timeout: 5_000 }).catch(() => assert.fail('explorateur fermé'));
     // État vide de l'explorateur après fermeture de l'onglet.
     await page.click('button[aria-label="Explorateur de fichiers"]');
     await page.click('button[aria-label="Fermer main.js"]');
