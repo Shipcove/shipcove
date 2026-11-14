@@ -172,8 +172,15 @@ export class SkillsController {
     body: { scope: 'global' | 'team' | 'personal'; teamId?: string; enabled: boolean; pinnedVersion?: number | null },
     @CurrentUser() user: AuthUser,
   ) {
+    const [s] = await this.db.select().from(skills).where(eq(skills.id, id));
+    const teams = await this.myTeams(user.id);
+    const visible = s && (user.platformRole === 'platform_admin' || s.scope === 'global' || (s.scope === 'team' && teams.includes(s.teamId!)) || (s.scope === 'personal' && s.ownerId === user.id));
+    if (!visible) throw new AppError('not_found', 'Skill introuvable');
     if (body.scope === 'global' && user.platformRole !== 'platform_admin') throw new AppError('forbidden', 'Réservé aux administrateurs');
-    if (body.scope === 'team') await this.access.requireTeamAdmin(user, body.teamId!);
+    if (body.scope === 'team') {
+      if (!body.teamId) throw new AppError('validation_failed', 'teamId requis');
+      await this.access.requireTeamAdmin(user, body.teamId);
+    }
     const subjectId = body.scope === 'global' ? null : body.scope === 'team' ? body.teamId! : user.id;
     const [existing] = await this.db
       .select({ id: skillInstallations.id })

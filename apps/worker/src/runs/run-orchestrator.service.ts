@@ -137,6 +137,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     let sandbox: ActiveSandbox;
     try {
       sandbox = await this.sandboxes.ensureRunning(ws.id);
+      await this.sandboxes.refreshAgentConfig(sandbox);
     } catch (err) {
       await this.finish(runId, ws.id, 'failed', `Sandbox indisponible : ${(err as Error).message}`);
       return { status: 'failed' };

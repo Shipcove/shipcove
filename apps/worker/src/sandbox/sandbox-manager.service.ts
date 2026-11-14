@@ -231,7 +231,20 @@ export class SandboxManager {
     }
   }
 
-  /** Écrit la configuration de Pi, Git et des skills dans la sandbox (régénérée à chaque démarrage). */
+  /**
+   * Régénère la configuration de Pi avant chaque run (modèles, skills, outils MCP) : une sandbox
+   * restée active entre deux runs applique ainsi immédiatement révocations et désactivations.
+   * Le répertoire des skills est vidé d'abord (un skill retiré ne doit pas subsister).
+   */
+  async refreshAgentConfig(sb: ActiveSandbox): Promise<void> {
+    const [ws] = await this.db.select().from(workspaces).where(eq(workspaces.id, sb.workspaceId));
+    const rm = await this.provider.exec(sb.handle, ['rm', '-rf', '--', '/home/agent/.pi/agent/skills']);
+    const code = await rm.wait();
+    if (code !== 0) throw new Error(`Nettoyage des skills impossible (code ${code})`);
+    await this.configure(sb, ws);
+  }
+
+  /** Écrit la configuration de Pi, Git et des skills dans la sandbox. */
   private async configure(sb: ActiveSandbox, ws: typeof workspaces.$inferSelect): Promise<void> {
     const models = await this.db
       .select()

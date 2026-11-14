@@ -34,6 +34,19 @@ export class McpController {
     if (s.scope === 'personal' && s.ownerId !== user.id) throw new AppError('forbidden', 'Serveur personnel d’un autre utilisateur');
   }
 
+  private async myTeams(userId: string): Promise<string[]> {
+    return (await this.db.select({ t: teamMembers.teamId }).from(teamMembers).where(eq(teamMembers.userId, userId))).map((r) => r.t);
+  }
+
+  /** Serveur visible par l'utilisateur (global, équipe dont il est membre, personnel), sinon introuvable. */
+  private async visibleServer(user: AuthUser, id: string) {
+    const [s] = await this.db.select().from(mcpServers).where(eq(mcpServers.id, id));
+    const teams = await this.myTeams(user.id);
+    const visible = s && (user.platformRole === 'platform_admin' || s.scope === 'global' || (s.scope === 'team' && teams.includes(s.teamId!)) || (s.scope === 'personal' && s.ownerId === user.id));
+    if (!visible) throw new AppError('not_found', 'Serveur introuvable');
+    return { server: s, teams };
+  }
+
   /** Serveurs visibles avec la permission effective de chaque outil (pour l'équipe indiquée). */
   @Get()
   async list(@CurrentUser() user: AuthUser, @Query('teamId', { schema: z.uuid().optional() }) teamId?: string): Promise<McpServerDto[]> {
@@ -166,8 +179,12 @@ export class McpController {
    */
   @Put(':serverId/permissions')
   async setPermission(@Param('serverId', uuid) id: string, @Body({ schema: McpPermissionSchema }) body: z.infer<typeof McpPermissionSchema>, @CurrentUser() user: AuthUser) {
+    await this.visibleServer(user, id);
     if (body.scope === 'global' && user.platformRole !== 'platform_admin') throw new AppError('forbidden', 'Réservé aux administrateurs');
-    if (body.scope === 'team') await this.access.requireTeamAdmin(user, body.teamId!);
+    if (body.scope === 'team') {
+      if (!body.teamId) throw new AppError('validation_failed', 'teamId requis pour une règle d’équipe');
+      await this.access.requireTeamAdmin(user, body.teamId);
+    }
     const subjectId = body.scope === 'global' ? null : body.scope === 'team' ? body.teamId : user.id;
     await this.db.delete(mcpPermissions).where(and(eq(mcpPermissions.serverId, id), eq(mcpPermissions.toolName, body.toolName), eq(mcpPermissions.scope, body.scope), ...(subjectId ? [eq(mcpPermissions.subjectId, subjectId)] : [])));
     await this.db.insert(mcpPermissions).values({ serverId: id, toolName: body.toolName, scope: body.scope, subjectId, effect: body.effect, createdBy: user.id });
@@ -175,9 +192,13 @@ export class McpController {
     return { ok: true };
   }
 
+  /** Règles du serveur : globales, celles des équipes de l'utilisateur et les siennes (tout pour un admin plateforme). */
   @Get(':serverId/permissions')
-  permissions(@Param('serverId', uuid) id: string) {
-    return this.db.select().from(mcpPermissions).where(eq(mcpPermissions.serverId, id));
+  async permissions(@Param('serverId', uuid) id: string, @CurrentUser() user: AuthUser) {
+    const { teams } = await this.visibleServer(user, id);
+    const rows = await this.db.select().from(mcpPermissions).where(eq(mcpPermissions.serverId, id));
+    if (user.platformRole === 'platform_admin') return rows;
+    return rows.filter((r) => r.scope === 'global' || (r.scope === 'team' && teams.includes(r.subjectId ?? '')) || (r.scope === 'personal' && r.subjectId === user.id));
   }
 
   @Patch(':serverId')
