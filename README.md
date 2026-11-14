@@ -95,7 +95,7 @@ Navigateur ── nginx (web) ──► API NestJS (×N) ──► PostgreSQL (�
 | `apps/preview` | Accès aux ports des sandboxes sur un domaine séparé, avec jeton. |
 | `packages/*` | Contrats Zod partagés, schéma Drizzle, sandbox (Docker / Kubernetes), stockage des checkpoints, secrets (Vault), runtime Pi, image de sandbox. |
 
-Les décisions structurantes sont décrites dans [`docs/adr`](docs/adr) (ADR 0001 à 0013), et le
+Les décisions structurantes sont décrites dans [`docs/adr`](docs/adr) (ADR 0001 à 0014), et le
 cahier des charges dans [`SPEC.md`](SPEC.md).
 
 ## Démarrage rapide
@@ -217,6 +217,12 @@ Sans eux, les suites concernées s'ignorent.
 - **Secrets** :
   - dans Vault, jamais renvoyés par l'API ;
   - masqués dans les sorties, le flux temps réel, la base et les requêtes envoyées au fournisseur LLM.
+- **Hôte** :
+  - seul le garde Docker (`docker-guard`, ADR 0014) détient le socket. Il n'accepte que des
+    sandboxes et services durcis, jamais de conteneur privilégié ni de montage de l'hôte ;
+  - Vault est déverrouillé par un service de clés ou par des clés réparties entre opérateurs
+    (chiffrées PGP), et le jeton root est révoqué après l'amorçage (`docs/operations/vault.md`) ;
+  - TLS automatique avec le profil `tls` (`docs/operations/tls.md`).
 - **Navigateur** :
   - sessions serveur, cookies `HttpOnly`, CSRF par double soumission ;
   - CSP stricte sans script inline ;
@@ -241,13 +247,12 @@ Sans eux, les suites concernées s'ignorent.
 Le périmètre fonctionnel du cahier des charges est implémenté et testé de bout en bout sur Docker
 Compose. Restent à faire **avant une mise en production** :
 
-- **TLS** de bout en bout, et **déverrouillage de Vault** par KMS ou par clés réparties (aujourd'hui
-  les clés sont sur disque).
-- **Isolation du worker** : il accède au socket Docker. À remplacer par un proxy de socket, un runtime
-  gVisor ou le provider Kubernetes.
+- **Chiffrement du trafic interne** pour un déploiement multi-hôte (TLS de PostgreSQL et de Vault).
+  Le point d'entrée TLS public est fourni (profil `tls`).
 - **Sauvegarde et restauration** outillées : PostgreSQL, Vault, S3.
 - **Observabilité** : métriques, OpenTelemetry, alertes.
 - **Chart Helm** et provider Kubernetes validés sur un cluster (les services d'appui y sont encore
   indisponibles).
 - **Images de sandbox** : registre interne, vérification de conformité, caches de dépendances.
-- **CI**, tests de charge, audit de sécurité externe.
+- **CI**, tests de charge, audit de sécurité externe (une revue interne a été faite, voir le journal
+  d'`IMPLEMENTATION_PLAN.md`).

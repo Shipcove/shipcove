@@ -151,6 +151,19 @@ describe('proxy des forges (interception TLS)', () => {
     expect(seen.length).toBe(before);
   });
 
+  it('en-tête Host imposé par la connexion, LFS reconnu sur le chemin seul', async () => {
+    const before = seen.length;
+    const r = await request('github.com', 'PUT', '/repos/o/r/pulls/1/merge?x=/info/lfs/', { authorization: `token ${RUN_TOKEN}`, host: 'api.github.com' });
+    expect(r.status).toBe(403);
+    expect(seen.length).toBe(before);
+    await request('github.com', 'GET', '/o/r', { authorization: `token ${RUN_TOKEN}`, host: 'api.github.com' });
+    expect(seen.at(-1)!.headers.host).toBe('github.com');
+    const gql = await request('api.github.com', 'POST', '/graphql', { authorization: `token ${RUN_TOKEN}`, 'content-type': 'application/json' }, JSON.stringify([{ query: 'query{viewer{login}}' }, { query: 'mutation{mergePullRequest(input:{pullRequestId:"x"}){clientMutationId}}' }]));
+    expect(gql.status).toBe(403);
+    const override = await request('api.github.com', 'POST', '/repos/o/r/pulls/1/merge', { authorization: `token ${RUN_TOKEN}`, 'x-http-method-override': 'PUT' });
+    expect(override.status).toBe(403);
+  });
+
   it('exige le jeton de run (401 pour que git appelle son assistant)', async () => {
     const r = await request('github.com', 'GET', '/o/r.git/info/refs?service=git-upload-pack', {});
     expect(r.status).toBe(401);

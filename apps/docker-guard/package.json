@@ -1,0 +1,23 @@
+{
+  "name": "docker-guard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Garde du moteur Docker : seul détenteur du socket, n'autorise que les opérations du modèle des sandboxes (ADR 0014).",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "oxlint src"
+  },
+  "devDependencies": {
+    "@cap/sandbox": "workspace:*",
+    "@swc/core": "1.16.22",
+    "@types/node": "26.6.6",
+    "oxlint": "1.93.0",
+    "typescript": "6.0.3",
+    "unplugin-swc": "2.0.0",
+    "vitest": "5.1.0"
+  }
+}

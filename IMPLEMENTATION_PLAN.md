@@ -99,3 +99,9 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
   glab dans la sandbox via la gateway (TLS intercepté, jeton OAuth substitué, garde-fous, audit) ;
   correctif : un refus de push restait sans réponse si la requête s'était terminée pendant la
   lecture des branches protégées.
+- 2026-11-14 : sécurité de production — garde Docker (ADR 0014, le worker n'a plus le socket),
+  déverrouillage de Vault manual (PGP) / auto (KMS, transit) avec jeton root révoqué, point
+  d'entrée TLS Caddy (certificats de preview à la demande validés par la plateforme). Revue
+  interne du proxy des forges : 5 contournements corrigés (chemin LFS dans la requête et en-tête
+  Host imposé par la sandbox, chemins non canoniques, GraphQL groupé / brut / persisté / GET,
+  surcharge de méthode, commentaire entre nom de mutation et arguments).

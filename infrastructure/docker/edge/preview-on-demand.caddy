@@ -1,0 +1,11 @@
+# Un certificat par preview, émis à la première connexion (limites d'émission de l'autorité ACME :
+# préférez le mode « files » avec un certificat wildcard si les previews sont nombreuses).
+*.{$CAP_PREVIEW_DOMAIN} {
+	tls {
+		on_demand
+	}
+	header -Server
+	reverse_proxy preview:8090 {
+		flush_interval -1
+	}
+}

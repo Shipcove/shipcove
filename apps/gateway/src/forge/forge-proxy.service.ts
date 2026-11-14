@@ -19,6 +19,9 @@ import {
   decideWeb,
   extractRunToken,
   gitRequest,
+  graphqlText,
+  methodOverride,
+  normalizeApiPath,
   parseReceivePack,
   receivePackRejection,
   type Decision,
@@ -169,25 +172,30 @@ export class ForgeProxyService {
 
       let body: Buffer | null = null;
       let decision: Decision = { allowed: true, reason: '' };
+      const search = path.includes('?') ? path.slice(path.indexOf('?')) : '';
+      if (methodOverride(req.headers, search)) throw new Denied(403, 'Refusé par la plateforme : surcharge de méthode HTTP non acceptée.');
       if (git?.kind === 'receive-pack') {
         const r = await this.inspectReceivePack(req, res, target, conn!, git.repo);
         if (!r) return; // refus déjà envoyé au format git
         body = r;
       } else if (!git) {
         const api = apiTarget(target.family, target.host, path);
-        if (api?.kind === 'graphql' && method === 'POST') {
-          body = await readBody(req, 2 * 1024 * 1024);
-          const query = parseJson<{ query?: string }>(body)?.query ?? '';
-          decision = decideApi(target.family, method, '/graphql', query);
-        } else if (api?.kind === 'rest' || target.host === 'uploads.github.com') {
-          decision = decideApi(target.family, method, api?.kind === 'rest' ? api.path : '/uploads');
+        if (api?.kind === 'graphql') {
+          if (method === 'POST') body = await readBody(req, 2 * 1024 * 1024);
+          const query = graphqlText(body, search);
+          if (query === null) {
+            if (method === 'POST') throw new Denied(403, 'Refusé par la plateforme : requête GraphQL sans texte (requête persistée) non contrôlable.');
+          } else decision = decideApi(target.family, method, '/graphql', query);
+        } else if (api?.kind === 'rest') {
+          decision = decideApi(target.family, method, api.path);
           if (decision.allowed && decision.branchWrite) {
             body = await readBody(req, MAX_INSPECT);
             await this.checkApiBranch(conn!, decision.branchWrite.repo, parseJson<{ branch?: string }>(body)?.branch);
           }
         } else {
-          decision = decideWeb(method);
-          if (/\/info\/lfs\//.test(path)) decision = { allowed: true, reason: '' };
+          // Interface web : lecture seule ; Git LFS (batch, verrous) sur le chemin seul, jamais la requête.
+          const pathname = normalizeApiPath(path);
+          decision = /\.git\/info\/lfs\/|\/info\/lfs\/(objects|locks)(\/|$)/.test(pathname) ? { allowed: true, reason: '' } : decideWeb(method);
         }
       }
       if (!decision.allowed) throw new Denied(403, `Refusé par la plateforme : ${decision.reason}.`);
@@ -307,6 +315,8 @@ export class ForgeProxyService {
   private async forward(req: http.IncomingMessage, res: http.ServerResponse, target: ForgeTarget, path: string, conn: Conn | null, isGit: boolean, prefix: Buffer | null): Promise<void> {
     const headers: Record<string, string | string[]> = {};
     for (const [k, v] of Object.entries(req.headers)) if (v !== undefined && !HOP.includes(k)) headers[k] = v;
+    // L'hôte contrôlé est celui de la connexion (SNI / CONNECT), jamais un en-tête Host choisi par la sandbox.
+    headers['host'] = target.port === (target.secure ? 443 : 80) ? target.host : `${target.host}:${target.port}`;
     const basic = /^Basic\s/i.test(String(req.headers.authorization ?? ''));
     delete headers['authorization'];
     delete headers['private-token'];

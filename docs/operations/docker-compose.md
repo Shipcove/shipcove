@@ -17,10 +17,14 @@ docker compose up -d              # --profile dev : Mailpit + LLM factice
 ## Ordre de démarrage
 
 1. `postgres`, `vault`, `garage` ;
-2. `vault-unsealer` (initialise et déverrouille Vault avec les clés de `.secrets/`) ;
-3. `bootstrap` (AppRoles et politiques Vault, buckets S3, secrets d'infrastructure) ;
+2. `bootstrap` : initialisation de Vault selon `CAP_VAULT_UNSEAL_MODE` (voir `vault.md`), AppRoles et
+   politiques, buckets S3, secrets d'infrastructure ;
+3. `vault-unsealer` : redéverrouille Vault en mode `file`, et ne fait que surveiller dans les autres
+   modes ;
 4. `migrate` (migrations Drizzle) ;
-5. `api` (×`CAP_API_REPLICAS`), `worker`, `gateway`, `preview`, `litellm`, `web`.
+5. `docker-guard`, puis `api` (×`CAP_API_REPLICAS`), `worker`, `gateway`, `preview`, `litellm` et
+   `web` ;
+6. `edge` (Caddy, TLS) avec le profil `tls` (voir `tls.md`).
 
 Le service `sandbox` ne démarre pas : il sert seulement à construire l'image de sandbox.
 
@@ -28,6 +32,8 @@ Le service `sandbox` ne démarre pas : il sert seulement à construire l'image d
 
 - `backend` : services de la plateforme et dépendances.
 - `sandbox` : réseau **interne** des sandboxes ; seules la gateway et la preview y sont aussi.
+- `dockerctl` : réseau **interne** entre le worker et le garde Docker, seul détenteur du socket
+  (ADR 0014).
 
 ## Opérations courantes
 
@@ -41,7 +47,8 @@ Le service `sandbox` ne démarre pas : il sert seulement à construire l'image d
 
 ## Production
 
-- Écoute sur `127.0.0.1` derrière un reverse proxy TLS, `CAP_COOKIE_SECURE=true`.
+- TLS : profil `tls` (Caddy, `tls.md`) ou votre reverse proxy ; `CAP_COOKIE_SECURE=true`.
+- Vault : `CAP_VAULT_UNSEAL_MODE=manual` ou `auto` **avant** la première initialisation (`vault.md`).
 - Domaine des previews distinct de l'application.
 - Ne pas activer le profil `dev`.
-- Voir les limites connues dans le README (socket Docker, déverrouillage de Vault, sauvegardes).
+- Voir les limites connues dans le README (trafic interne, sauvegardes, observabilité).

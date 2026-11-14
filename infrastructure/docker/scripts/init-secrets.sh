@@ -23,6 +23,7 @@ gen s3_access_key_id       "echo GK\$(openssl rand -hex 12)"
 gen s3_secret_access_key   "openssl rand -hex 32"
 gen litellm_master_key     "echo sk-cap-\$(openssl rand -hex 24)"
 gen litellm_salt_key       "echo sk-salt-\$(openssl rand -hex 24)"
+gen docker_guard_token     "openssl rand -hex 32"
 
 PG="$(cat "$DIR/postgres_password")"
 for svc in api worker gateway; do

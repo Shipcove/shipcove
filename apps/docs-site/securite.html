@@ -48,12 +48,20 @@
       <h2>Confidentialité</h2>
       <p>Une conversation n’est lisible que par son propriétaire et les personnes avec qui il l’a partagée nommément — <strong>les administrateurs plateforme compris</strong>. Les actions d’administration sont auditées ; la rétention est configurable avec gel légal.</p>
 
+      <h2>Hôte et infrastructure</h2>
+      <ul>
+        <li><strong>Garde Docker</strong> : seul le service <code>docker-guard</code> accède au socket Docker. Le worker l’appelle sur un réseau interne dédié, avec un secret partagé ; le garde n’accepte que des sandboxes et services conformes (non privilégiés, sans capacité ajoutée, sans montage de l’hôte, limites obligatoires) et seulement sur les conteneurs de la plateforme. Un worker compromis ne peut donc pas prendre la main sur l’hôte.</li>
+        <li><strong>gVisor</strong> (optionnel) : <code>CAP_SANDBOX_RUNTIMES=runsc</code> pour isoler en plus les sandboxes du noyau de l’hôte.</li>
+        <li><strong>Vault</strong> : en production, déverrouillage par un service de clés (<code>auto</code>) ou par des clés réparties entre opérateurs, chiffrées pour leurs clés PGP (<code>manual</code>) ; le jeton root est révoqué après l’amorçage. Voir <a href="/exploitation.html#vault">Exploitation</a>.</li>
+        <li><strong>TLS</strong> : point d’entrée Caddy intégré (profil <code>tls</code>), certificats automatiques ; un certificat de preview n’est émis que pour une preview ouverte.</li>
+      </ul>
+
       <h2>Points d’attention en production</h2>
       <div class="callout danger">
         <ul>
-          <li><strong>Socket Docker</strong> : le worker y a accès, ce qui équivaut à un accès root à l’hôte. Dédiez l’hôte à la plateforme ; à terme proxy de socket, gVisor ou provider Kubernetes.</li>
-          <li><strong>Déverrouillage de Vault</strong> : les clés sont sur disque (<code>.secrets/</code>). Protégez-les ou utilisez un auto-unseal KMS.</li>
-          <li><strong>TLS</strong> : terminé par votre reverse proxy ; le trafic interne Compose n’est pas chiffré.</li>
+          <li><strong>Mode de Vault</strong> : le mode par défaut (<code>file</code>) garde clés et jeton root sur disque ; choisissez <code>manual</code> ou <code>auto</code> <em>avant</em> la première installation.</li>
+          <li><strong>Garde Docker</strong> : il reste un composant de confiance (accès root effectif) ; dédiez l’hôte à la plateforme.</li>
+          <li><strong>Trafic interne</strong> : les liaisons entre services Compose ne sont pas chiffrées (même hôte) ; à chiffrer pour un déploiement multi-hôte.</li>
           <li><strong>Secrets de projet</strong> : utilisables par l’agent de tout membre du projet ; réservez-y des identifiants de développement.</li>
           <li><strong>Forges</strong> : pendant un run, l’agent agit sur <em>tous</em> les dépôts accessibles à l’utilisateur (pousser des branches, ouvrir des PR, commenter). Une injection de prompt peut l’y pousser ; elle ne peut ni fusionner, ni toucher la branche par défaut, ni emporter le jeton.</li>
         </ul>

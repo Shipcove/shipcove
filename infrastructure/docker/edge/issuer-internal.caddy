@@ -1,0 +1,2 @@
+# Autorité locale de Caddy (recette, réseau privé, tests) : les clients doivent lui faire confiance.
+local_certs

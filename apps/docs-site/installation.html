@@ -51,6 +51,14 @@ cp .env.example .env</code></pre>
       </table>
       <div class="callout"><p>Le fichier <code>.env</code> ne contient aucun secret d’infrastructure. <code>./scripts/init-secrets.sh</code> génère les secrets d’amorçage dans <code>.secrets/</code> (jamais versionné, à sauvegarder) ; le reste est créé dans Vault au premier démarrage.</p></div>
 
+      <h2>Vault en production</h2>
+      <p>Choisissez le mode de déverrouillage <strong>avant</strong> le premier démarrage (<code>CAP_VAULT_UNSEAL_MODE</code>) :</p>
+      <ul>
+        <li><code>auto</code> : un service de clés (AWS KMS, Google Cloud KMS, Azure Key Vault, transit d’un Vault d’entreprise) déverrouille Vault ; stanza dans <code>vault/seal.hcl</code> (modèle <code>seal.hcl.example</code>), identifiants éventuels dans <code>vault/seal.env</code> ;</li>
+        <li><code>manual</code> : les clés sont réparties entre opérateurs et chiffrées pour leurs clés PGP (<code>.secrets/vault-pgp/*.asc</code>) ; <code>scripts/vault-unseal.sh</code> après chaque redémarrage de Vault ;</li>
+        <li><code>file</code> (défaut) : clés sur disque, réservé au développement et à la recette.</li>
+      </ul>
+
       <h2>Démarrage</h2>
       <pre><code>./scripts/init-secrets.sh
 docker compose pull
@@ -59,8 +67,20 @@ docker compose up -d
 docker compose ps</code></pre>
       <p>L’ordre est géré par Compose : PostgreSQL, Vault (initialisé et déverrouillé), Garage, amorçage (politiques Vault, buckets), migrations, puis les services applicatifs. Le profil <code>dev</code> (<code>--profile dev</code>) ajoute Mailpit et un LLM factice : ne l’activez pas en production.</p>
 
-      <h2>Reverse proxy et TLS</h2>
-      <p>Placez un reverse proxy TLS (Caddy, Traefik, nginx…) devant les deux ports : l’application sur <code>CAP_HTTP_PORT</code> (8080) et les previews sur <code>CAP_PREVIEW_PORT</code> (8090). Il doit transmettre les en-têtes <code>Host</code> et <code>X-Forwarded-*</code> et ne pas mettre en tampon les flux SSE.</p>
+      <h2>TLS intégré (recommandé)</h2>
+      <p>Le profil <code>tls</code> ajoute Caddy sur les ports 80 et 443, avec des certificats Let’s Encrypt automatiques pour l’application et les previews :</p>
+      <pre><code>CAP_DOMAIN=code.exemple.com
+CAP_PREVIEW_DOMAIN=preview.exemple.com   # DNS : *.preview.exemple.com → l’hôte
+CAP_TLS_EMAIL=admin@exemple.com
+CAP_PUBLIC_URL=https://code.exemple.com
+CAP_PREVIEW_SCHEME=https
+CAP_PREVIEW_PORT=443
+CAP_COOKIE_SECURE=true</code></pre>
+      <pre><code>docker compose --profile tls up -d</code></pre>
+      <p>Les certificats de preview sont émis à la demande, uniquement pour une preview ouverte. Si les previews sont nombreuses (limites d’émission de Let’s Encrypt), fournissez un certificat wildcard : <code>CAP_TLS_PREVIEW=files</code> et <code>edge/certs/preview.crt</code> / <code>preview.key</code>.</p>
+
+      <h2>Votre propre reverse proxy</h2>
+      <p>Sinon, placez un reverse proxy TLS (Caddy, Traefik, nginx…) devant les deux ports : l’application sur <code>CAP_HTTP_PORT</code> (8080) et les previews sur <code>CAP_PREVIEW_PORT</code> (8090). Il doit transmettre les en-têtes <code>Host</code> et <code>X-Forwarded-*</code> et ne pas mettre en tampon les flux SSE.</p>
       <pre><code>code.exemple.com {
   reverse_proxy 127.0.0.1:8080 {
     flush_interval -1

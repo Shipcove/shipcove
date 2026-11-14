@@ -6,6 +6,9 @@ export const WorkerEnvSchema = BaseEnvSchema.extend({
   PORT: z.coerce.number().int().default(3001),
   SANDBOX_PROVIDER: z.enum(['docker', 'kubernetes']).default('docker'),
   DOCKER_SOCKET: z.string().default('/var/run/docker.sock'),
+  /** Garde Docker (ADR 0014) : si défini, le worker n'utilise jamais le socket directement. */
+  DOCKER_GUARD_URL: z.string().optional(),
+  DOCKER_GUARD_TOKEN: z.string().min(32).optional(),
   SANDBOX_NETWORK: z.string().default('cap-sandbox'),
   /** Image officielle par défaut (si aucune image active en base). */
   SANDBOX_IMAGE: z.string().default('cap-sandbox:0.1.0'),

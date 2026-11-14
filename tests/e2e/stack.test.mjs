@@ -191,8 +191,11 @@ test('forges via la plateforme seulement : TLS intercepté, jeton de run, garde-
   // Le registre npm (liste blanche) reste accessible.
   const conv2 = await ctx.dev.get(`/workspaces/${ctx.ws.id}/conversation`);
   const npm = await ctx.dev.post(`/workspaces/${ctx.ws.id}/messages`, { text: 'npm [[tool:bash {"command":"curl -s -o /dev/null -w npm:%{http_code} https://registry.npmjs.org/left-pad"}]]' });
+  assert.equal(npm.status, 201, JSON.stringify(npm.body));
   const ev2 = await ctx.dev.events(ctx.ws.id, conv2.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === npm.body.runId, 300_000);
-  assert.match(ev2.find((e) => e.type === 'tool.completed').data.output, /npm:200/);
+  const npmTool = ev2.find((e) => e.type === 'tool.completed' && e.runId === npm.body.runId);
+  assert.ok(npmTool, `aucun outil exécuté : ${JSON.stringify(ev2.map((e) => [e.type, e.runId === npm.body.runId, e.data?.error ?? e.data?.reason ?? '']))}`);
+  assert.match(npmTool.data.output, /npm:200/);
 });
 
 test('quotas : réservation refusée → run suspendu proprement, puis reprise', async () => {

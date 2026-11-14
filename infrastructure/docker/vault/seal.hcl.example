@@ -1,0 +1,29 @@
+# Déverrouillage automatique de Vault (CAP_VAULT_UNSEAL_MODE=auto). Copier en vault/seal.hcl
+# et garder UNE seule stanza. Documentation : docs/operations/vault.md
+
+# --- AWS KMS ---
+# seal "awskms" {
+#   region     = "eu-west-3"
+#   kms_key_id = "arn:aws:kms:eu-west-3:123456789012:key/…"
+# }
+
+# --- Google Cloud KMS ---
+# seal "gcpckms" {
+#   project    = "mon-projet"
+#   region     = "europe-west1"
+#   key_ring   = "vault"
+#   crypto_key = "unseal"
+# }
+
+# --- Azure Key Vault ---
+# seal "azurekeyvault" {
+#   vault_name = "mon-coffre"
+#   key_name   = "vault-unseal"
+# }
+
+# --- Transit (Vault de l’entreprise ; jeton dans vault/seal.env : VAULT_TOKEN) ---
+# seal "transit" {
+#   address    = "https://vault.exemple.com:8200"
+#   key_name   = "cap-unseal"
+#   mount_path = "transit/"
+# }

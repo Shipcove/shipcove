@@ -40,10 +40,15 @@ services:
     restart: unless-stopped
     command: ["server"]
     cap_add: [IPC_LOCK]
+    # Déverrouillage par un service de clés (mode auto) : stanza `seal` dans vault/seal.hcl,
+    # identifiants éventuels du fournisseur dans vault/seal.env (docs/operations/vault.md).
+    env_file:
+      - path: ./vault/seal.env
+        required: false
     environment:
       VAULT_ADDR: http://127.0.0.1:8200
     volumes:
-      - ./vault/vault.hcl:/vault/config/vault.hcl:ro
+      - ./vault:/vault/config:ro
       - vault-data:/vault/file
       - vault-logs:/vault/logs
     ports: ["127.0.0.1:${CAP_VAULT_PORT:-8200}:8200"]
@@ -74,6 +79,9 @@ services:
       VAULT_ADDR: http://vault:8200
       GARAGE_ADMIN_URL: http://garage:3903
       SECRETS_DIR: /secrets
+      VAULT_UNSEAL_MODE: ${CAP_VAULT_UNSEAL_MODE:-file}
+      # Modes manual / auto : jeton d'administration fourni ponctuellement (mise à jour des politiques).
+      VAULT_TOKEN: ${VAULT_TOKEN:-}
     volumes:
       - ./bootstrap:/bootstrap:ro
       - ./.secrets:/secrets
@@ -90,6 +98,7 @@ services:
       VAULT_ADDR: http://vault:8200
       GARAGE_ADMIN_URL: http://garage:3903
       SECRETS_DIR: /secrets
+      VAULT_UNSEAL_MODE: ${CAP_VAULT_UNSEAL_MODE:-file}
       WATCH_UNSEAL: "1"
     volumes:
       - ./bootstrap:/bootstrap:ro
@@ -175,8 +184,7 @@ services:
   worker:
     image: ${CAP_REGISTRY:-}cap-worker:${CAP_VERSION:-0.1.0}
     restart: unless-stopped
-    # Accès au moteur Docker pour créer les sandboxes (worker uniquement ; jamais monté dans une sandbox).
-    group_add: ["${CAP_DOCKER_GID:-999}"]
+    # Aucun accès direct au socket Docker : les sandboxes sont créées via le garde (ADR 0014).
     environment:
       <<: *app-env
       DATABASE_URL_FILE: /run/secrets/database_url_worker
@@ -187,14 +195,34 @@ services:
       SANDBOX_IMAGE: ${CAP_SANDBOX_IMAGE:-cap-sandbox:0.1.0}
       GATEWAY_INTERNAL_URL: http://gateway:8081
       EGRESS_PROXY_URL: http://gateway:3128
-    secrets: [database_url_worker]
+      DOCKER_GUARD_URL: http://docker-guard:2375
+      DOCKER_GUARD_TOKEN_FILE: /run/secrets/docker_guard_token
+    secrets: [database_url_worker, docker_guard_token]
     volumes:
       - ./.secrets/approle/worker:/secrets/approle/worker:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks: [backend]
+    networks: [backend, dockerctl]
     depends_on:
       migrate: { condition: service_completed_successfully }
       bootstrap: { condition: service_completed_successfully }
+      docker-guard: { condition: service_healthy }
+
+  # Seul détenteur du socket Docker : n'autorise que les opérations du modèle des sandboxes
+  # (conteneurs durcis étiquetés cap.*), jamais de conteneur privilégié ni de montage de l'hôte.
+  docker-guard:
+    image: ${CAP_REGISTRY:-}cap-docker-guard:${CAP_VERSION:-0.1.0}
+    restart: unless-stopped
+    group_add: ["${CAP_DOCKER_GID:-999}"]
+    environment:
+      GUARD_TOKEN_FILE: /run/secrets/docker_guard_token
+      SANDBOX_NETWORK: cap-sandbox
+      GUARD_ALLOWED_RUNTIMES: ${CAP_SANDBOX_RUNTIMES:-}
+    secrets: [docker_guard_token]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [dockerctl]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
 
   gateway:
     image: ${CAP_REGISTRY:-}cap-gateway:${CAP_VERSION:-0.1.0}
@@ -237,6 +265,28 @@ services:
     networks: [backend]
     depends_on: [api]
 
+  # Point d'entrée TLS optionnel (profil « tls ») : Caddy, certificats automatiques.
+  edge:
+    image: caddy:2.10.2-alpine
+    profiles: ["tls"]
+    restart: unless-stopped
+    environment:
+      CAP_DOMAIN: ${CAP_DOMAIN:-}
+      CAP_PREVIEW_DOMAIN: ${CAP_PREVIEW_DOMAIN:-preview.localhost}
+      CAP_TLS_EMAIL: ${CAP_TLS_EMAIL:-}
+      CAP_TLS_PREVIEW: ${CAP_TLS_PREVIEW:-on-demand}
+      CAP_TLS_ISSUER: ${CAP_TLS_ISSUER:-acme}
+    ports:
+      - "${CAP_TLS_BIND:-0.0.0.0}:${CAP_TLS_HTTP_PORT:-80}:80"
+      - "${CAP_TLS_BIND:-0.0.0.0}:${CAP_TLS_HTTPS_PORT:-443}:443"
+      - "${CAP_TLS_BIND:-0.0.0.0}:${CAP_TLS_HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - ./edge:/etc/caddy:ro
+      - edge-data:/data
+      - edge-config:/config
+    networks: [backend]
+    depends_on: [web, preview]
+
 secrets:
   postgres_password: { file: ./.secrets/postgres_password }
   garage_rpc_secret: { file: ./.secrets/garage_rpc_secret }
@@ -245,15 +295,21 @@ secrets:
   database_url_api: { file: ./.secrets/database_url_api }
   database_url_worker: { file: ./.secrets/database_url_worker }
   database_url_gateway: { file: ./.secrets/database_url_gateway }
+  docker_guard_token: { file: ./.secrets/docker_guard_token }
 
 networks:
   backend: {}
+  # Canal worker → garde Docker uniquement.
+  dockerctl:
+    internal: true
   # Réseau des sandboxes : AUCUNE route vers l'extérieur ni vers le backend.
   sandbox:
     name: cap-sandbox
     internal: true
 
 volumes:
+  edge-data: {}
+  edge-config: {}
   pg-data: {}
   vault-data: {}
   vault-logs: {}

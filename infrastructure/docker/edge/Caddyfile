@@ -1,0 +1,27 @@
+# Point d'entrée TLS (profil Compose « tls ») : certificats automatiques (ACME) pour l'application
+# et pour les previews. Documentation : docs/operations/tls.md
+{
+	import issuer-{$CAP_TLS_ISSUER:acme}.caddy
+	# Certificats de preview à la demande : seulement pour une preview ouverte (vérifié par la plateforme).
+	on_demand_tls {
+		ask http://preview:8090/__cap_tls_ask
+	}
+}
+
+(proxy_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+}
+
+{$CAP_DOMAIN} {
+	import proxy_headers
+	encode zstd gzip
+	reverse_proxy web:8080 {
+		# Flux temps réel (SSE) : aucune mise en tampon.
+		flush_interval -1
+	}
+}
+
+import preview-{$CAP_TLS_PREVIEW:on-demand}.caddy

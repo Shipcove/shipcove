@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { apiTarget, decideApi, decideRefUpdate, extractRunToken, gitRequest, parseReceivePack, receivePackRejection } from './forge-policy.js';
+import { apiTarget, decideApi, graphqlText, methodOverride, normalizeApiPath, decideRefUpdate, extractRunToken, gitRequest, parseReceivePack, receivePackRejection } from './forge-policy.js';
 
 const RT = 'cap_rt_' + 'a'.repeat(32);
 const pkt = (s: string) => (s.length + 4).toString(16).padStart(4, '0') + s;
@@ -105,5 +105,34 @@ describe('API des forges', () => {
     expect(decideApi('github', 'POST', '/graphql', 'mutation M { x: mergePullRequest(input:{}) { clientMutationId } }').allowed).toBe(false);
     expect(decideApi('github', 'POST', '/graphql', 'mutation { createCommitOnBranch(input:{}) { commit { oid } } }').allowed).toBe(false);
     expect(decideApi('gitlab', 'POST', '/graphql', 'mutation { mergeRequestAccept(input:{}) { errors } }').allowed).toBe(false);
+  });
+});
+
+describe('contournements des garde-fous (revue de sécurité)', () => {
+  it('chemins non canoniques : barres multiples, points, encodage, suffixe, casse', () => {
+    expect(normalizeApiPath('//projects//1/merge_requests/2/merge/')).toBe('/projects/1/merge_requests/2/merge');
+    expect(normalizeApiPath('/projects/1/x/../merge_requests/2/merge.json')).toBe('/projects/1/merge_requests/2/merge');
+    expect(normalizeApiPath('/repos/o/r/%2e%2e/r/pulls/1/MERGE')).toBe('/repos/o/r/pulls/1/merge');
+    for (const p of ['//projects/1/merge_requests/2/merge', '/projects/1/merge_requests/2/merge.json', '/PROJECTS/1/MERGE_REQUESTS/2/MERGE', '/projects/1/./merge_requests/2/merge']) {
+      expect(decideApi('gitlab', 'PUT', p).allowed, p).toBe(false);
+    }
+    expect(decideApi('github', 'PUT', '/Repos/O/R/Pulls/1/Merge').allowed).toBe(false);
+    expect(apiTarget('gitlab', 'g.corp', '/api/v4//projects/1/merge_requests/2/merge?x=/info/lfs/')).toEqual({ kind: 'rest', path: '/projects/1/merge_requests/2/merge' });
+  });
+
+  it('GraphQL : lots, corps brut, GET, requêtes persistées, commentaires', () => {
+    const merge = 'mutation { mergePullRequest(input:{}) { clientMutationId } }';
+    expect(graphqlText(Buffer.from(JSON.stringify([{ query: 'query { a }' }, { query: merge }])), '')).toContain('mergePullRequest');
+    expect(graphqlText(Buffer.from(merge), '')).toBe(merge);
+    expect(graphqlText(null, `?query=${encodeURIComponent(merge)}`)).toBe(merge);
+    expect(graphqlText(Buffer.from(JSON.stringify({ extensions: { persistedQuery: { sha256Hash: 'x' } } })), '')).toBeNull();
+    expect(decideApi('github', 'POST', '/graphql', 'mutation { mergePullRequest #c\n (input:{}) { x } }').allowed).toBe(false);
+    expect(decideApi('gitlab', 'POST', '/graphql', 'MUTATION { MergeRequestAccept(input:{}) { errors } }').allowed).toBe(false);
+  });
+
+  it('surcharge de méthode refusée', () => {
+    expect(methodOverride({ 'x-http-method-override': 'PUT' }, '')).toBe(true);
+    expect(methodOverride({}, '?_method=PUT')).toBe(true);
+    expect(methodOverride({}, '?state=open')).toBe(false);
   });
 });

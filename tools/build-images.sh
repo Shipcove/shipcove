@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 VERSION="${CAP_VERSION:-0.1.0}"
 REGISTRY="${CAP_REGISTRY:-}"
 
-for target in api worker gateway preview; do
+for target in api worker gateway preview docker-guard; do
   echo "▶ ${REGISTRY}cap-${target}:${VERSION}"
   docker build -f infrastructure/docker/Dockerfile.node --target "$target" -t "${REGISTRY}cap-${target}:${VERSION}" .
 done

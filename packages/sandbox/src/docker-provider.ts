@@ -19,6 +19,11 @@ import {
 export interface DockerProviderOptions {
   /** Socket Docker (worker uniquement ; jamais monté dans une sandbox). */
   socketPath?: string;
+  /**
+   * Garde Docker (ADR 0014) : URL `http://hôte:port` et secret partagé. Prioritaire sur `socketPath` ;
+   * en production, le worker n'accède jamais directement au socket.
+   */
+  guard?: { url: string; token: string };
   /** Réseau interne des sandboxes (Compose : `cap-sandbox`, `internal: true`). */
   network: string;
   /** Proxy d'egress (gateway) injecté dans l'environnement. */
@@ -42,7 +47,12 @@ export class DockerSandboxProvider implements SandboxProvider {
   private readonly docker: Docker;
 
   constructor(private readonly opts: DockerProviderOptions) {
-    this.docker = new Docker({ socketPath: opts.socketPath ?? '/var/run/docker.sock' });
+    if (opts.guard) {
+      const u = new URL(opts.guard.url);
+      this.docker = new Docker({ protocol: 'http', host: u.hostname, port: Number(u.port || 2375), headers: { 'X-Cap-Guard-Token': opts.guard.token } });
+    } else {
+      this.docker = new Docker({ socketPath: opts.socketPath ?? '/var/run/docker.sock' });
+    }
   }
 
   async create(spec: SandboxSpec): Promise<SandboxHandle> {

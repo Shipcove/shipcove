@@ -51,6 +51,18 @@ export class PreviewProxyService implements OnModuleInit, OnModuleDestroy {
     await new Promise<void>((r) => (this.server ? this.server.close(() => r()) : r()));
   }
 
+  /** Un certificat n'est émis que pour le nom d'une preview ouverte d'un workspace existant. */
+  private async tlsAllowed(domain: string): Promise<boolean> {
+    const parsed = parsePreviewHost(domain, this.env.PREVIEW_DOMAIN);
+    if (!parsed) return false;
+    const [row] = await this.db
+      .select({ id: previewPorts.id })
+      .from(previewPorts)
+      .innerJoin(workspaces, eq(workspaces.id, previewPorts.workspaceId))
+      .where(and(eq(previewPorts.workspaceId, parsed.workspaceId), eq(previewPorts.port, parsed.port), isNull(previewPorts.closedAt), isNull(workspaces.deletedAt)));
+    return Boolean(row);
+  }
+
   /** Vérifie l'accès et renvoie la cible (IP sandbox + port ouvert). */
   private async authorize(req: http.IncomingMessage): Promise<{ target: Target; ws: string; port: number } | { status: number; message: string }> {
     const parsed = parsePreviewHost(req.headers.host ?? '', this.env.PREVIEW_DOMAIN);
@@ -85,6 +97,11 @@ export class PreviewProxyService implements OnModuleInit, OnModuleDestroy {
         return;
       }
       if (url.pathname === '/__cap_auth') return await this.exchange(req, res, url);
+      if (url.pathname === '/__cap_tls_ask' && !parsePreviewHost(req.headers.host ?? '', this.env.PREVIEW_DOMAIN)) {
+        // Reverse proxy TLS (certificats à la demande) : seulement pour une preview ouverte.
+        res.writeHead((await this.tlsAllowed(url.searchParams.get('domain') ?? '')) ? 200 : 404).end();
+        return;
+      }
       const auth = await this.authorize(req);
       if ('status' in auth) {
         res.writeHead(auth.status, { 'Content-Type': 'text/plain; charset=utf-8' }).end(auth.message);

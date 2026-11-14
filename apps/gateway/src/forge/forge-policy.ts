@@ -159,6 +159,23 @@ export function receivePackRejection(updates: RefUpdate[], reasons: Map<string, 
 
 const WRITE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+/**
+ * Forme canonique d'un chemin d'API avant les règles : décodage des points, barres multiples,
+ * segments `.`/`..`, suffixe de format (`.json`), barre finale, casse.
+ */
+export function normalizeApiPath(path: string): string {
+  const raw = path.split('?')[0].replace(/%2e/gi, '.').replace(/%5c/gi, '/').replace(/\\/g, '/');
+  const out: string[] = [];
+  for (const seg of raw.split('/')) {
+    if (seg === '' || seg === '.') continue;
+    if (seg === '..') out.pop();
+    else out.push(seg);
+  }
+  let p = '/' + out.join('/');
+  p = p.replace(/\.(json|xml)$/i, '');
+  return p.toLowerCase();
+}
+
 interface Rule {
   methods: string[] | '*write';
   path: RegExp;
@@ -189,7 +206,7 @@ const GITHUB_RULES: Rule[] = [
 
 /** Mutations GraphQL GitHub interdites (les noms de champ ne peuvent pas venir des variables). */
 const GITHUB_MUTATIONS =
-  /\b(mergePullRequest|enablePullRequestAutoMerge|enqueuePullRequest|mergeBranch|deleteRef|updateRef|updateRefs|deleteRepository|updateRepository|archiveRepository|transferRepository|createBranchProtectionRule|updateBranchProtectionRule|deleteBranchProtectionRule|createRepositoryRuleset|updateRepositoryRuleset|deleteRepositoryRuleset|addDeployKey|createDeployKey|updateRepositoryWebCommitSignoffSetting|addPublicKey|updateEnterprise\w*|createEnvironment|deleteEnvironment)\s*[(@{]/;
+  /\b(mergePullRequest|enablePullRequestAutoMerge|enqueuePullRequest|mergeBranch|deleteRef|updateRef|updateRefs|deleteRepository|updateRepository|archiveRepository|transferRepository|createBranchProtectionRule|updateBranchProtectionRule|deleteBranchProtectionRule|createRepositoryRuleset|updateRepositoryRuleset|deleteRepositoryRuleset|addDeployKey|createDeployKey|updateRepositoryWebCommitSignoffSetting|addPublicKey|updateEnterprise\w*|createEnvironment|deleteEnvironment)\b/i;
 
 const GITLAB_RULES: Rule[] = [
   { methods: ['PUT', 'POST'], path: /^\/projects\/[^/]+\/merge_requests\/\d+\/(merge|merge_when_pipeline_succeeds|rebase)$/, reason: MERGE },
@@ -207,7 +224,7 @@ const GITLAB_RULES: Rule[] = [
 ];
 
 const GITLAB_MUTATIONS =
-  /\b(mergeRequestAccept|mergeRequestSetAutoMerge|mergeRequestRebase|projectDelete|projectUpdate|projectSettingsUpdate|branchRuleCreate|branchRuleUpdate|branchRuleDelete|branchRuleSquashOptionUpdate|branchRuleApprovalProjectRuleCreate|personalAccessTokenCreate|projectAccessTokenCreate|deployKeyCreate|ciVariable\w*|projectCiCdSettingsUpdate|runnerCreate|runnerUpdate|userPreferencesUpdate|groupUpdate|groupDelete|namespace\w*|projectMemberBulkUpdate|projectInitializeProductAnalytics|repositoryDelete|branchDelete)\s*[(@{]/;
+  /\b(mergeRequestAccept|mergeRequestSetAutoMerge|mergeRequestRebase|projectDelete|projectUpdate|projectSettingsUpdate|branchRuleCreate|branchRuleUpdate|branchRuleDelete|branchRuleSquashOptionUpdate|branchRuleApprovalProjectRuleCreate|personalAccessTokenCreate|projectAccessTokenCreate|deployKeyCreate|ciVariable\w*|projectCiCdSettingsUpdate|runnerCreate|runnerUpdate|userPreferencesUpdate|groupUpdate|groupDelete|namespace\w*|projectMemberBulkUpdate|projectInitializeProductAnalytics|repositoryDelete|branchDelete)\b/i;
 
 /**
  * `apiPath` : chemin sans préfixe d'API ni requête (`/repos/o/r/pulls/1/merge`, `/projects/12/…`).
@@ -216,14 +233,16 @@ const GITLAB_MUTATIONS =
 export function decideApi(family: ForgeFamily, method: string, apiPath: string, graphqlQuery?: string): Decision {
   const m = method.toUpperCase();
   if (graphqlQuery !== undefined) {
+    const isMutation = /\bmutation\b/i.test(graphqlQuery);
     const forbidden = (family === 'github' ? GITHUB_MUTATIONS : GITLAB_MUTATIONS).exec(graphqlQuery);
-    if (forbidden && /\bmutation\b/.test(graphqlQuery)) return deny(`mutation GraphQL ${forbidden[1]} : opération soumise à approbation ou réservée à un humain`);
-    if (/\bmutation\b/.test(graphqlQuery) && /\b(createCommitOnBranch|commitCreate)\s*[(@{]/.test(graphqlQuery)) {
+    if (forbidden && isMutation) return deny(`mutation GraphQL ${forbidden[1]} : opération soumise à approbation ou réservée à un humain`);
+    if (isMutation && /\b(createCommitOnBranch|commitCreate)\b/i.test(graphqlQuery)) {
       return deny('commit direct par GraphQL non pris en charge : utilisez git push');
     }
     return ALLOW;
   }
   if (!WRITE.has(m)) return ALLOW;
+  apiPath = normalizeApiPath(apiPath);
   const contents =
     family === 'github'
       ? /^\/repos\/([^/]+\/[^/]+)\/contents\/.+$/.exec(apiPath)
@@ -244,16 +263,50 @@ export function decideApi(family: ForgeFamily, method: string, apiPath: string, 
  * - GitLab : `/api/v4/…`, GraphQL `/api/graphql`.
  */
 export function apiTarget(family: ForgeFamily, host: string, path: string): { kind: 'rest'; path: string } | { kind: 'graphql' } | null {
-  const p = path.split('?')[0];
+  const p = normalizeApiPath(path);
   if (family === 'github') {
-    if (host === 'api.github.com') return p === '/graphql' ? { kind: 'graphql' } : { kind: 'rest', path: p };
+    if (host === 'api.github.com' || host === 'uploads.github.com') return p === '/graphql' ? { kind: 'graphql' } : { kind: 'rest', path: p };
     if (p === '/api/graphql') return { kind: 'graphql' };
-    if (p.startsWith('/api/v3/')) return { kind: 'rest', path: p.slice('/api/v3'.length) };
+    if (p.startsWith('/api/v3/') || p.startsWith('/api/uploads/')) return { kind: 'rest', path: p.slice(p.indexOf('/', 5)) };
     return null;
   }
   if (p === '/api/graphql') return { kind: 'graphql' };
   if (p.startsWith('/api/v4/')) return { kind: 'rest', path: p.slice('/api/v4'.length) };
   return null;
+}
+
+/**
+ * Texte GraphQL à contrôler, quelle que soit la forme : JSON `{query}`, lot `[{query}, …]`,
+ * corps `application/graphql`, ou paramètre `?query=` (GET). `null` si aucune requête lisible
+ * (ex. requête persistée par empreinte) : refusée, faute de pouvoir la contrôler.
+ */
+export function graphqlText(body: Buffer | null, search: string): string | null {
+  const parts: string[] = [];
+  const q = new URLSearchParams(search).get('query');
+  if (q) parts.push(q);
+  if (body && body.length) {
+    const text = body.toString('utf8');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = undefined;
+    }
+    if (parsed === undefined) parts.push(text);
+    else {
+      for (const item of Array.isArray(parsed) ? parsed : [parsed]) {
+        const query = item && typeof item === 'object' ? (item as { query?: unknown }).query : undefined;
+        if (typeof query !== 'string' || !query.trim()) return null;
+        parts.push(query);
+      }
+    }
+  }
+  return parts.length ? parts.join('\n') : null;
+}
+
+/** Surcharge de méthode (X-HTTP-Method-Override, `_method`) : jamais acceptée. */
+export function methodOverride(headers: Record<string, string | string[] | undefined>, search: string): boolean {
+  return Boolean(headers['x-http-method-override'] || headers['x-method-override'] || headers['x-http-method'] || new URLSearchParams(search).has('_method'));
 }
 
 /** Les pages web d'une forge (hors API et Git) : lecture seule depuis la sandbox. */

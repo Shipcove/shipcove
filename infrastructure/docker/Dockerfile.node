@@ -18,15 +18,17 @@ COPY apps/worker/package.json apps/worker/
 COPY apps/gateway/package.json apps/gateway/
 COPY apps/preview/package.json apps/preview/
 COPY apps/web/package.json apps/web/
+COPY apps/docker-guard/package.json apps/docker-guard/
 COPY tools ./tools
-RUN pnpm install --frozen-lockfile --filter "./packages/**" --filter api --filter worker --filter gateway --filter preview
+RUN pnpm install --frozen-lockfile --filter "./packages/**" --filter api --filter worker --filter gateway --filter preview --filter docker-guard
 COPY apps/api ./apps/api
 COPY apps/worker ./apps/worker
 COPY apps/gateway ./apps/gateway
 COPY apps/preview ./apps/preview
-RUN pnpm --filter "./packages/**" -r build && pnpm --filter api --filter worker --filter gateway --filter preview -r build
+COPY apps/docker-guard ./apps/docker-guard
+RUN pnpm --filter "./packages/**" -r build && pnpm --filter api --filter worker --filter gateway --filter preview --filter docker-guard -r build
 # Dépendances de production isolées par application.
-RUN for app in api worker gateway preview; do pnpm --filter "$app" deploy --prod --legacy "/out/$app"; done
+RUN for app in api worker gateway preview docker-guard; do pnpm --filter "$app" deploy --prod --legacy "/out/$app"; done
 
 FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production
@@ -48,6 +50,13 @@ CMD ["node", "dist/main.js"]
 FROM runtime AS preview
 COPY --from=build --chown=node:node /out/preview /app
 EXPOSE 8090
+CMD ["node", "dist/main.js"]
+
+# Garde Docker : aucune dépendance d'exécution ; le groupe du socket est ajouté par Compose.
+FROM runtime AS docker-guard
+COPY --from=build --chown=node:node /out/docker-guard /app
+EXPOSE 2375
+HEALTHCHECK --interval=10s --timeout=3s --retries=5 CMD ["node", "-e", "require('net').connect(2375,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
 CMD ["node", "dist/main.js"]
 
 # Le worker a besoin de git (Git Broker : bundle + push côté serveur).

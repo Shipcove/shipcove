@@ -1,0 +1,8 @@
+# Certificat wildcard fourni (ex. obtenu par défi DNS) : edge/certs/preview.crt et preview.key.
+*.{$CAP_PREVIEW_DOMAIN} {
+	tls /etc/caddy/certs/preview.crt /etc/caddy/certs/preview.key
+	header -Server
+	reverse_proxy preview:8090 {
+		flush_interval -1
+	}
+}

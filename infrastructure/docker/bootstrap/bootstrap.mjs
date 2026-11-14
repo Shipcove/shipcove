@@ -10,8 +10,19 @@ import { randomBytes } from 'node:crypto';
 const VAULT = process.env.VAULT_ADDR ?? 'http://vault:8200';
 const GARAGE_ADMIN = process.env.GARAGE_ADMIN_URL ?? 'http://garage:3903';
 const SECRETS = process.env.SECRETS_DIR ?? '/secrets';
-const SHARES = Number(process.env.VAULT_KEY_SHARES ?? 1);
-const THRESHOLD = Number(process.env.VAULT_KEY_THRESHOLD ?? 1);
+/**
+ * Déverrouillage de Vault (docs/operations/vault.md) :
+ * - `file`   : clés et jeton root dans .secrets/vault-init.json, déverrouillage automatique
+ *              (développement, recette) ;
+ * - `manual` : clés réparties entre opérateurs (chiffrées pour leurs clés PGP), déverrouillage
+ *              humain (scripts/vault-unseal.sh), jeton root révoqué après l'amorçage ;
+ * - `auto`   : déverrouillage par un service de clés (KMS, transit) configuré dans vault/seal.env ;
+ *              clés de récupération chiffrées pour les opérateurs, jeton root révoqué.
+ */
+const MODE = process.env.VAULT_UNSEAL_MODE || 'file';
+if (!['file', 'manual', 'auto'].includes(MODE)) throw new Error(`VAULT_UNSEAL_MODE inconnu : ${MODE}`);
+const SHARES = Number(process.env.VAULT_KEY_SHARES ?? (MODE === 'file' ? 1 : 5));
+const THRESHOLD = Number(process.env.VAULT_KEY_THRESHOLD ?? (MODE === 'file' ? 1 : 3));
 const BUCKETS = (process.env.S3_BUCKETS ?? 'cap-workspaces,cap-attachments').split(',');
 const SERVICES = ['api', 'worker', 'gateway', 'preview'];
 // Propriétaire des fichiers d'identité (utilisateur `node` des images applicatives).
@@ -114,26 +125,89 @@ path "cap/data/infra/preview"      { capabilities = ["read"] }
 `,
 };
 
+/** Clés publiques PGP des opérateurs (.secrets/vault-pgp/*.asc, armure ASCII) → base64 attendu par Vault. */
+async function operatorPgpKeys() {
+  const dir = `${SECRETS}/vault-pgp`;
+  if (!(await exists(dir))) return [];
+  const { readdir } = await import('node:fs/promises');
+  const files = (await readdir(dir)).filter((f) => f.endsWith('.asc')).sort();
+  const keys = [];
+  for (const f of files) {
+    const armored = await readFile(`${dir}/${f}`, 'utf8');
+    const body = armored
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('-----') && !/^[A-Za-z-]+: /.test(l) && !l.startsWith('='))
+      .join('');
+    if (!body) throw new Error(`clé PGP illisible : ${f}`);
+    keys.push(body);
+  }
+  return keys;
+}
+
+async function adminToken() {
+  if (process.env.VAULT_TOKEN) return process.env.VAULT_TOKEN;
+  if (process.env.VAULT_TOKEN_FILE) return (await readFile(process.env.VAULT_TOKEN_FILE, 'utf8')).trim();
+  return null;
+}
+
+/** Renvoie un jeton d'administration et indique s'il faut le révoquer à la fin (jeton root éphémère). */
 async function bootstrapVault() {
   await waitFor('Vault', async () => (await fetch(`${VAULT}/v1/sys/health?uninitcode=200&sealedcode=200&standbyok=true`)).ok);
   const initFile = `${SECRETS}/vault-init.json`;
   const { json: init } = await http('GET', `${VAULT}/v1/sys/init`);
+  let token = null;
+  let ephemeral = false;
   if (!init.initialized) {
-    log('Initialisation de Vault…');
-    const { json } = await http('PUT', `${VAULT}/v1/sys/init`, { body: { secret_shares: SHARES, secret_threshold: THRESHOLD } });
-    await writeSecretFile(initFile, JSON.stringify({ keys_base64: json.keys_base64, root_token: json.root_token }, null, 2));
-    log(`Vault initialisé (${SHARES} part(s), seuil ${THRESHOLD}). Clés écrites dans .secrets/vault-init.json`);
-  }
-  const initData = JSON.parse(await readFile(initFile, 'utf8'));
-  const { json: seal } = await http('GET', `${VAULT}/v1/sys/seal-status`);
-  if (seal.sealed) {
-    log('Descellement de Vault…');
-    for (const key of initData.keys_base64.slice(0, THRESHOLD)) {
-      await http('PUT', `${VAULT}/v1/sys/unseal`, { body: { key } });
+    log(`Initialisation de Vault (mode ${MODE})…`);
+    const pgp = MODE === 'file' ? [] : await operatorPgpKeys();
+    const shares = pgp.length || SHARES;
+    const threshold = Math.min(THRESHOLD, shares);
+    const body =
+      MODE === 'auto'
+        ? { recovery_shares: shares, recovery_threshold: threshold, ...(pgp.length ? { recovery_pgp_keys: pgp } : {}) }
+        : { secret_shares: shares, secret_threshold: threshold, ...(pgp.length ? { pgp_keys: pgp } : {}) };
+    const { json } = await http('PUT', `${VAULT}/v1/sys/init`, { body });
+    if (MODE === 'file') {
+      await writeSecretFile(initFile, JSON.stringify({ keys_base64: json.keys_base64, root_token: json.root_token }, null, 2));
+      log(`Vault initialisé (${shares} part(s), seuil ${threshold}). Clés écrites dans .secrets/vault-init.json`);
+    } else {
+      const keys = MODE === 'auto' ? json.recovery_keys_base64 : json.keys_base64;
+      const label = MODE === 'auto' ? 'clés de récupération' : 'clés de déverrouillage';
+      // Clés chiffrées pour chaque opérateur (PGP) : sans valeur pour qui détient l'hôte.
+      // Sans clés PGP, elles sont écrites UNE fois en clair et doivent quitter l'hôte immédiatement.
+      const out = pgp.length ? `${SECRETS}/vault-${MODE === 'auto' ? 'recovery' : 'unseal'}-keys.pgp.json` : `${SECRETS}/vault-keys-A-RETIRER-DE-L-HOTE.json`;
+      await writeSecretFile(out, JSON.stringify({ [label]: keys, threshold, operators: pgp.length || null }, null, 2));
+      log(`Vault initialisé : ${shares} ${label} (seuil ${threshold}) → ${out.replace(SECRETS, '.secrets')}`);
+      if (!pgp.length) log('ATTENTION : clés en clair. Remettez-les à leurs détenteurs puis supprimez ce fichier de l’hôte.');
+      token = json.root_token;
+      ephemeral = true;
     }
   }
-  const token = initData.root_token;
-  await waitFor('Vault actif', async () => (await fetch(`${VAULT}/v1/sys/health`)).status === 200);
+
+  const { json: seal } = await http('GET', `${VAULT}/v1/sys/seal-status`);
+  if (seal.sealed) {
+    if (MODE === 'file') {
+      const initData = JSON.parse(await readFile(initFile, 'utf8'));
+      log('Descellement de Vault…');
+      for (const key of initData.keys_base64.slice(0, THRESHOLD)) await http('PUT', `${VAULT}/v1/sys/unseal`, { body: { key } });
+    } else if (MODE === 'manual') {
+      log('Vault est scellé : déverrouillez-le (infrastructure/docker/scripts/vault-unseal.sh, seuil de clés requis). En attente…');
+    }
+  }
+  await waitFor('Vault actif', async () => (await fetch(`${VAULT}/v1/sys/health`)).status === 200, MODE === 'file' ? 90 : 720);
+
+  if (!token) token = MODE === 'file' ? JSON.parse(await readFile(initFile, 'utf8')).root_token : await adminToken();
+  if (!token) {
+    // Mode production après l'initialisation : sans jeton d'administration, la configuration
+    // existante est conservée (politiques à jour seulement si un opérateur fournit VAULT_TOKEN).
+    const ready = await Promise.all(SERVICES.map((svc) => exists(`${SECRETS}/approle/${svc}/secret_id`)));
+    if (ready.every(Boolean)) {
+      log('Aucun jeton d’administration (VAULT_TOKEN) : politiques et secrets inchangés.');
+      return { token: null, ephemeral: false };
+    }
+    throw new Error('Identités des services absentes et aucun jeton d’administration : fournissez VAULT_TOKEN (voir docs/operations/vault.md).');
+  }
 
   const { json: mounts } = await http('GET', `${VAULT}/v1/sys/mounts`, { token });
   if (!mounts['cap/']) {
@@ -169,7 +243,7 @@ async function bootstrapVault() {
       log(`AppRole cap-${svc} créé`);
     }
   }
-  return token;
+  return { token, ephemeral };
 }
 
 async function putIfAbsent(token, path, data) {
@@ -224,16 +298,38 @@ async function bootstrapGarage() {
 
 /* -------------------------------- Main ------------------------------- */
 
-const token = await bootstrapVault();
+// Surveillance seule (conteneur vault-unsealer) hors mode `file` : aucun jeton, aucune clé.
+if (process.env.WATCH_UNSEAL === '1' && MODE !== 'file') {
+  log(`Mode ${MODE} : aucun déverrouillage automatique par la plateforme ; surveillance de l’état seulement.`);
+  for (;;) {
+    try {
+      const { json } = await http('GET', `${VAULT}/v1/sys/seal-status`);
+      if (json.sealed) log(MODE === 'manual' ? 'Vault est scellé : scripts/vault-unseal.sh' : 'Vault est scellé : vérifiez le service de clés (vault/seal.env)');
+    } catch (err) {
+      log(`surveillance : ${err.message}`);
+    }
+    await sleep(60000);
+  }
+}
+
+const { token, ephemeral } = await bootstrapVault();
 await chown(`${SECRETS}/vault-init.json`, OWNER_UID, OWNER_GID).catch(() => undefined);
-const s3 = await bootstrapGarage();
-await putIfAbsent(token, 'infra/s3', s3);
-await putIfAbsent(token, 'infra/litellm', { masterKey: await readSecret('litellm_master_key') });
-await putIfAbsent(token, 'infra/preview', { key: randomBytes(32).toString('base64url') });
-await putIfAbsent(token, 'infra/session', { key: randomBytes(32).toString('base64url') });
+// BOOTSTRAP_ONLY_VAULT : tests des modes de déverrouillage, sans stockage objet.
+const s3 = process.env.BOOTSTRAP_ONLY_VAULT === '1' ? null : await bootstrapGarage();
+if (token && s3) {
+  await putIfAbsent(token, 'infra/s3', s3);
+  await putIfAbsent(token, 'infra/litellm', { masterKey: await readSecret('litellm_master_key') });
+  await putIfAbsent(token, 'infra/preview', { key: randomBytes(32).toString('base64url') });
+  await putIfAbsent(token, 'infra/session', { key: randomBytes(32).toString('base64url') });
+}
+if (ephemeral) {
+  // Le jeton root n'a servi qu'à l'amorçage : il n'existe plus nulle part.
+  await http('POST', `${VAULT}/v1/auth/token/revoke-self`, { token });
+  log('Jeton root révoqué (régénérable par les détenteurs des clés : vault operator generate-root).');
+}
 log('Amorçage terminé.');
 
-// Mode surveillance : redescelle Vault après un redémarrage (Compose non-HA, sans auto-unseal).
+// Mode surveillance (mode `file`) : redescelle Vault après un redémarrage.
 if (process.env.WATCH_UNSEAL === '1') {
   log('Surveillance du scellement de Vault active');
   for (;;) {
