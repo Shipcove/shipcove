@@ -1,14 +1,15 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import type { InvitationDto, TeamDto, TeamMemberDto, UserSummaryDto } from '@cap/contracts';
+import type { InvitationDto, TeamDto, TeamMemberDto, UserSummaryDto, EnvVarDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
 import { AuthStore } from '../../core/auth.store';
 import { ToastService } from '../../core/toast.service';
 import { AgoPipe } from '../../shared/pipes';
+import { EnvVarsEditor } from '../projects/project-environment';
 
 @Component({
   selector: 'cap-team-detail',
-  imports: [FormsModule, AgoPipe],
+  imports: [FormsModule, AgoPipe, EnvVarsEditor],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="h-full overflow-y-auto"><div class="mx-auto max-w-4xl px-6 py-8">
@@ -59,6 +60,9 @@ import { AgoPipe } from '../../shared/pipes';
           } @empty { <p class="px-4 py-3 text-sm text-stone-500">Aucune invitation.</p> }
         </div>
       }
+      <h2 class="mt-6 mb-1 text-sm font-semibold text-stone-500 uppercase">Variables et secrets de l’équipe</h2>
+      <p class="mb-2 text-xs text-stone-500">Injectés dans les sandboxes de tous les projets de l’équipe (une variable de projet du même nom l’emporte). Secrets conservés dans Vault, jamais réaffichés, masqués dans les sorties.</p>
+      <cap-env-vars [endpoint]="'/teams/' + teamId() + '/environment/variables'" [variables]="envVars()" [canManage]="isAdmin()" label="Variables de l’équipe" (changed)="loadEnv()" />
     </div></div>
   `,
   host: { class: 'block h-full' },
@@ -72,6 +76,7 @@ export class TeamDetailPage implements OnInit {
   protected readonly members = signal<TeamMemberDto[]>([]);
   protected readonly invitations = signal<InvitationDto[]>([]);
   protected readonly results = signal<UserSummaryDto[]>([]);
+  protected readonly envVars = signal<EnvVarDto[]>([]);
   protected readonly isAdmin = computed(() => this.team()?.myRole === 'team_admin' || this.auth.isAdmin());
   protected q = '';
   protected email = '';
@@ -82,6 +87,10 @@ export class TeamDetailPage implements OnInit {
     this.team.set(await this.api.get<TeamDto>(`/teams/${id}`));
     this.members.set(await this.api.get<TeamMemberDto[]>(`/teams/${id}/members`));
     if (this.isAdmin()) this.invitations.set(await this.api.get<InvitationDto[]>(`/teams/${id}/invitations`).catch(() => []));
+    await this.loadEnv();
+  }
+  async loadEnv() {
+    this.envVars.set(await this.api.get<EnvVarDto[]>(`/teams/${this.teamId()}/environment/variables`).catch(() => []));
   }
   protected async search() {
     if (this.q.length < 2) return this.results.set([]);

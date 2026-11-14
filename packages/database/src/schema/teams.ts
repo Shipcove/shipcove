@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, pgTable, primaryKey, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, pgTable, primaryKey, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { createdAt, pk, ts, updatedAt } from './_common.js';
 import { gitConnections, users } from './iam.js';
 
@@ -66,6 +66,10 @@ export const projects = pgTable(
     updatedAt: updatedAt(),
     archivedAt: ts(),
     deletedAt: ts(),
+    /** Image de sandbox choisie parmi celles autorisées par l'administrateur (sinon : défaut). */
+    sandboxImageId: uuid(),
+    /** Script de préparation exécuté dans la sandbox (dépendances, outils) ; rejoué s'il change. */
+    setupScript: text(),
   },
   (t) => [index().on(t.teamId), uniqueIndex('projects_team_name_uq').on(t.teamId, sql`lower(${t.name})`).where(sql`${t.deletedAt} is null`)],
 );
@@ -88,3 +92,27 @@ export const projectMembers = pgTable(
   },
   (t) => [primaryKey({ columns: [t.projectId, t.userId] })],
 );
+
+/**
+ * Variables d'environnement injectées dans les sandboxes (processus de Pi et ses commandes) :
+ * portée équipe (administrateurs d'équipe) ou projet (administrateurs du projet), le projet
+ * l'emportant. Les secrets sont dans Vault (`secretRef`), jamais relus par l'interface.
+ */
+export const environmentVariables = pgTable(
+  'environment_variables',
+  {
+    id: pk(),
+    scope: text({ enum: ['team', 'project'] }).notNull(),
+    subjectId: uuid().notNull(),
+    name: text().notNull(),
+    secret: boolean().notNull().default(false),
+    /** Valeur en clair (variables non secrètes uniquement). */
+    value: text(),
+    secretRef: text(),
+    createdBy: uuid().references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('environment_variables_uq').on(t.scope, t.subjectId, t.name), index().on(t.subjectId)],
+);
+

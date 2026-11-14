@@ -17,6 +17,7 @@ import { AdminAuthProvidersController, SsoController } from './auth/providers/ss
 import { AccessService } from './access/access.service.js';
 import { TeamsController, UsersDirectoryController } from './teams/teams.controller.js';
 import { ProjectsController } from './projects/projects.controller.js';
+import { EnvironmentController } from './projects/environment.controller.js';
 import { HealthController } from './health/health.controller.js';
 import { PlatformConfigController } from './health/platform-config.controller.js';
 import { WorkspacesController } from './workspaces/workspaces.controller.js';
@@ -50,6 +51,7 @@ export class AppModule {
         TeamsController,
         UsersDirectoryController,
         ProjectsController,
+        EnvironmentController,
         WorkspacesController,
         ConversationController,
         SharesController,

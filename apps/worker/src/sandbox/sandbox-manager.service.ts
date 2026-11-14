@@ -129,6 +129,37 @@ export class SandboxManager {
     return this.start(ws);
   }
 
+  /** Image du projet si elle est autorisée (active), sinon l'image par défaut de la plateforme. */
+  async imageFor(workspaceId: string): Promise<typeof sandboxImages.$inferSelect | null> {
+    const [p] = await this.db
+      .select({ imageId: projects.sandboxImageId })
+      .from(workspaces)
+      .innerJoin(projects, eq(projects.id, workspaces.projectId))
+      .where(eq(workspaces.id, workspaceId));
+    if (p?.imageId) {
+      const [img] = await this.db.select().from(sandboxImages).where(and(eq(sandboxImages.id, p.imageId), eq(sandboxImages.status, 'active')));
+      if (img) return img;
+    }
+    const [def] = await this.db.select().from(sandboxImages).where(and(eq(sandboxImages.isDefault, true), eq(sandboxImages.status, 'active')));
+    return def ?? null;
+  }
+
+  /**
+   * Image du projet modifiée : la sandbox active (autre image) est arrêtée proprement (checkpoint)
+   * pour être recréée avec la bonne image au démarrage suivant.
+   */
+  async ensureImage(workspaceId: string): Promise<boolean> {
+    const [live] = await this.db
+      .select()
+      .from(sandboxInstances)
+      .where(and(eq(sandboxInstances.workspaceId, workspaceId), eq(sandboxInstances.status, 'running')));
+    if (!live) return false;
+    const desired = await this.imageFor(workspaceId);
+    if ((desired?.id ?? null) === (live.imageId ?? null)) return false;
+    await this.stop(workspaceId, 'changement d’image');
+    return true;
+  }
+
   private async adopt(inst: typeof sandboxInstances.$inferSelect): Promise<ActiveSandbox> {
     const lease = await this.leases.current(inst.workspaceId);
     if (!lease || Number(lease.fencingToken) !== Number(inst.leaseToken)) {
@@ -159,7 +190,7 @@ export class SandboxManager {
       .where(inArray(sandboxInstances.status, ['creating', 'restoring', 'running']));
     if (total >= cfg.maxActiveSandboxesTotal) throw new AppError('workspace_busy', 'Capacité de la plateforme atteinte, réessayez plus tard');
 
-    const [image] = await this.db.select().from(sandboxImages).where(and(eq(sandboxImages.isDefault, true), eq(sandboxImages.status, 'active')));
+    const image = await this.imageFor(ws.id);
     const imageRef = image ? (image.digest ? `${image.reference}@${image.digest}` : image.reference) : this.env.SANDBOX_IMAGE;
 
     // Instance + lease exclusif (fencing token) dans une même transaction logique.

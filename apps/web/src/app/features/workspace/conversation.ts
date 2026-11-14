@@ -35,9 +35,15 @@ import { WorkspaceStore } from './workspace.store';
               </div>
             </div>
           } @else if (m.role === 'system') {
-            <div class="my-3 flex items-center gap-2 rounded-lg border border-dashed border-stone-300 px-3 py-2 text-sm text-stone-600 [overflow-wrap:anywhere] dark:border-stone-700 dark:text-stone-400" [attr.aria-label]="m.meta?.['kind'] === 'rewind' ? 'Retour en arrière' : null">
-              @if (m.meta?.['kind'] === 'rewind') { <cap-icon name="undo" [size]="14" /> }
-              <span class="min-w-0 flex-1">{{ m.text }}</span>
+            <div class="my-3 flex items-start gap-2 rounded-lg border border-dashed border-stone-300 px-3 py-2 text-sm text-stone-600 [overflow-wrap:anywhere] dark:border-stone-700 dark:text-stone-400" [attr.aria-label]="m.meta?.['kind'] === 'rewind' ? 'Retour en arrière' : m.meta?.['kind'] === 'setup' ? 'Préparation de l’environnement' : null">
+              @if (m.meta?.['kind'] === 'rewind') { <cap-icon name="undo" [size]="14" class="mt-0.5" /> }
+              @if (m.meta?.['kind'] === 'setup') { <cap-icon [name]="m.meta?.['status'] === 'failed' ? 'alert' : 'terminal'" [size]="14" class="mt-0.5" [class.text-red-600]="m.meta?.['status'] === 'failed'" /> }
+              <span class="min-w-0 flex-1">{{ m.text }}
+                @if (m.meta?.['kind'] === 'setup' && m.meta?.['output']) {
+                  <details class="mt-1" [open]="m.meta?.['status'] === 'failed'"><summary class="cursor-pointer text-xs select-none">Sortie du script de préparation</summary>
+                    <pre class="mt-1 max-h-72 overflow-auto rounded bg-stone-100 p-2 text-xs whitespace-pre-wrap dark:bg-stone-900">{{ m.meta?.['output'] }}</pre></details>
+                }
+              </span>
               @if (m.meta?.['kind'] === 'rewind' && store.isOwner()) {
                 <button class="btn-ghost shrink-0 !py-0.5 text-xs" (click)="undoRewind(m)" [disabled]="busy()">Annuler</button>
               }

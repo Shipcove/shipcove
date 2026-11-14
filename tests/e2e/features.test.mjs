@@ -625,3 +625,140 @@ test('retour en arrière : fichiers d’avant un run restaurés, exclusions inta
     await ctx.admin.req('PATCH', '/admin/settings', { section: 'sandbox', values: { checkpointExcludes: [] } });
   }
 });
+
+const SECRET = 'S3cret-Valeur-Tres-Longue-42';
+
+test('variables et secrets : portées équipe / projet, injectés dans l’agent, jamais exposés ni écrits', async () => {
+  const lead = await newUser('team_admin');
+  const dev = await newUser();
+  const p = await lead.post('/projects', { teamId: ctx.teamId, name: `Env ${uid()}` });
+  assert.equal(p.status, 201, JSON.stringify(p.body));
+  const pid = p.body.id;
+  const envUrl = `/projects/${pid}/environment/variables`;
+  const teamUrl = `/teams/${ctx.teamId}/environment/variables`;
+  for (const [url, body] of [
+    [teamUrl, { name: 'TEAM_ONLY', value: 'valeur-equipe' }],
+    [teamUrl, { name: 'TEAM_OVERRIDE', value: 'equipe' }],
+    [envUrl, { name: 'PROJECT_VAR', value: 'projet' }],
+    [envUrl, { name: 'TEAM_OVERRIDE', value: 'projet' }],
+    [envUrl, { name: 'DB_PASSWORD', value: SECRET, secret: true }],
+  ]) {
+    const r = await lead.put(url, body);
+    assert.equal(r.status, 200, `${url} ${JSON.stringify(r.body)}`);
+  }
+  // Validation : noms réservés, secret trop court ; un membre ne gère pas l'environnement.
+  assert.equal((await lead.put(envUrl, { name: 'PATH', value: '/tmp' })).status, 400);
+  assert.equal((await lead.put(envUrl, { name: 'https_proxy', value: 'http://x' })).status, 400);
+  assert.equal((await lead.put(envUrl, { name: 'LD_PRELOAD', value: '/tmp/x.so' })).status, 400);
+  assert.equal((await lead.put(envUrl, { name: 'COURT', value: 'abc', secret: true })).status, 400);
+  assert.equal((await dev.put(envUrl, { name: 'X', value: 'y' })).status, 403);
+  assert.equal((await dev.put(teamUrl, { name: 'X', value: 'y' })).status, 403);
+  // Lecture par un membre : valeurs simples visibles, secret jamais renvoyé.
+  const env = await dev.get(`/projects/${pid}/environment`);
+  assert.equal(env.status, 200);
+  assert.equal(env.body.canManage, false);
+  assert.ok(!JSON.stringify(env.body).includes(SECRET), 'secret jamais renvoyé');
+  assert.equal(env.body.variables.find((v) => v.name === 'DB_PASSWORD').value, null);
+
+  const w = await dev.post('/workspaces', { projectId: pid, name: 'Env' });
+  opened.push({ client: dev, id: w.body.id });
+  const conv = await dev.get(`/workspaces/${w.body.id}/conversation`);
+  const cmd = 'echo "$TEAM_ONLY|$PROJECT_VAR|$TEAM_OVERRIDE|$DB_PASSWORD"; printf %s "$DB_PASSWORD" | sha256sum; grep -rl "$DB_PASSWORD" /workspace /workspace-state 2>/dev/null | wc -l';
+  const sent = await dev.post(`/workspaces/${w.body.id}/messages`, { text: `Env. [[tool:bash ${JSON.stringify({ command: cmd })}]]` }, { 'Idempotency-Key': `f-${uid()}` });
+  const evs = await dev.events(w.body.id, conv.body.lastEventId, (e) => e.type === 'run.completed' && e.runId === sent.body.runId, 300_000);
+  const out = evs.find((e) => e.type === 'tool.completed').data.output;
+  const { createHash } = await import('node:crypto');
+  assert.match(out, /valeur-equipe\|projet\|projet\|\*\*\*/, out);
+  assert.ok(out.includes(createHash('sha256').update(SECRET).digest('hex')), 'valeur réelle injectée (empreinte)');
+  assert.match(out, /^0$/m, 'secret jamais écrit sur disque par la plateforme');
+
+  // Réponse du modèle reprenant le secret (écho) : masquée dans le flux et en base.
+  const conv2 = await dev.get(`/workspaces/${w.body.id}/conversation`);
+  const echo = await dev.post(`/workspaces/${w.body.id}/messages`, { text: `Répète ceci : ${SECRET} fin` }, { 'Idempotency-Key': `f-${uid()}` });
+  const evs2 = await dev.events(w.body.id, conv2.body.lastEventId, (e) => e.type === 'run.completed' && e.runId === echo.body.runId, 300_000);
+  const streamed = evs2.filter((e) => e.type === 'message.delta').map((e) => e.data.delta).join('');
+  assert.ok(!streamed.includes(SECRET) && !evs2.some((e) => e.type === 'message.completed' && e.data.text.includes(SECRET)), 'secret masqué dans le flux');
+  assert.equal(sql(`select count(*) from agent_events where workspace_id = '${w.body.id}' and data::text like '%${SECRET}%' and type <> 'message.created'`), '0');
+  assert.equal(sql(`select count(*) from tool_calls t join agent_runs r on r.id = t.run_id where r.workspace_id = '${w.body.id}' and (t.output like '%${SECRET}%' or t.args::text like '%${SECRET}%')`), '0');
+  assert.equal(sql(`select count(*) from messages m join conversations c on c.id = m.conversation_id where c.workspace_id = '${w.body.id}' and m.role <> 'user' and m.text like '%${SECRET}%'`), '0');
+
+  // Suppression : la variable disparaît au run suivant.
+  const dbVar = (await lead.get(`/projects/${pid}/environment`)).body.variables.find((v) => v.name === 'DB_PASSWORD');
+  assert.equal((await lead.req('DELETE', `${envUrl}/${dbVar.id}`)).status, 204);
+  const conv3 = await dev.get(`/workspaces/${w.body.id}/conversation`);
+  const after = await dev.post(`/workspaces/${w.body.id}/messages`, { text: 'Env. [[tool:bash {"command":"echo \\"[${DB_PASSWORD:-absent}]\\""}]]' }, { 'Idempotency-Key': `f-${uid()}` });
+  const evs3 = await dev.events(w.body.id, conv3.body.lastEventId, (e) => e.type === 'run.completed' && e.runId === after.body.runId, 300_000);
+  assert.match(evs3.find((e) => e.type === 'tool.completed').data.output, /\[absent\]/);
+  ctx.envProject = { pid, lead, dev, workspaceId: w.body.id };
+  for (const name of ['TEAM_ONLY', 'TEAM_OVERRIDE']) {
+    const v = (await lead.get(teamUrl)).body.find((x) => x.name === name);
+    await lead.req('DELETE', `${teamUrl}/${v.id}`);
+  }
+});
+
+test('préparation de l’environnement : script par projet, une fois par sandbox, rejoué si modifié, échec signalé ; image par projet', async () => {
+  const { pid, lead, dev } = ctx.envProject;
+  await lead.put(`/projects/${pid}/environment/variables`, { name: 'SETUP_TOKEN', value: 'Jeton-De-Preparation-99', secret: true });
+  const script = 'echo "préparation $PROJECT_VAR jeton=$SETUP_TOKEN"\nmkdir -p .deps && date +%s%N > .deps/stamp\necho present > /home/agent/outil-global';
+  assert.equal((await lead.put(`/projects/${pid}/environment`, { sandboxImageId: null, setupScript: script })).status, 200);
+  assert.equal((await dev.put(`/projects/${pid}/environment`, { sandboxImageId: null, setupScript: 'id' })).status, 403);
+  const w = await dev.post('/workspaces', { projectId: pid, name: 'Préparation' });
+  const wsId = w.body.id;
+  opened.push({ client: dev, id: wsId });
+
+  const runCollect = async (text) => {
+    const conv = await dev.get(`/workspaces/${wsId}/conversation`);
+    const sent = await dev.post(`/workspaces/${wsId}/messages`, { text }, { 'Idempotency-Key': `f-${uid()}` });
+    const evs = await dev.events(wsId, conv.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === sent.body.runId, 600_000);
+    assert.equal(evs.at(-1).type, 'run.completed', JSON.stringify(evs.at(-1)));
+    return evs;
+  };
+  const setupMessages = (evs) => evs.filter((e) => e.type === 'message.created' && e.data.role === 'system' && e.data.meta?.kind === 'setup');
+
+  // 1er run : préparation exécutée, sortie visible (secret masqué), résultat conservé.
+  let evs = await runCollect('Premier [[tool:bash {"command":"cat /home/agent/outil-global; ls .deps"}]]');
+  let setup = setupMessages(evs);
+  assert.equal(setup.length, 2, 'début + fin de préparation');
+  assert.equal(setup[1].data.meta.status, 'succeeded', JSON.stringify(setup[1].data));
+  assert.match(setup[1].data.meta.output, /préparation projet jeton=\*\*\*/);
+  assert.ok(!JSON.stringify(setup).includes('Jeton-De-Preparation-99'));
+  assert.match(evs.find((e) => e.type === 'tool.completed').data.output, /present[\s\S]*stamp/);
+  const stamp1 = (await dev.get(`/workspaces/${wsId}/files/content?path=.deps/stamp`)).body.content;
+  assert.ok(stamp1, 'résultat de la préparation conservé par le checkpoint');
+
+  // 2e run, même sandbox : pas de nouvelle préparation.
+  evs = await runCollect('Deuxième');
+  assert.equal(setupMessages(evs).length, 0);
+
+  // Nouvelle sandbox : préparation rejouée (les outils hors /workspace sont recréés).
+  await dev.post(`/workspaces/${wsId}/stop`);
+  await new Promise((r) => setTimeout(r, 3000));
+  evs = await runCollect('Troisième [[tool:bash {"command":"cat /home/agent/outil-global"}]]');
+  assert.equal(setupMessages(evs).length, 2, 'préparation rejouée dans la nouvelle sandbox');
+  assert.match(evs.find((e) => e.type === 'tool.completed').data.output, /present/);
+
+  // Script modifié en échec : signalé dans la conversation et à Pi, le run continue.
+  await lead.put(`/projects/${pid}/environment`, { sandboxImageId: null, setupScript: 'echo "étape 1"\necho "dépendance introuvable" >&2\nexit 3' });
+  evs = await runCollect('Où en est-on ?');
+  setup = setupMessages(evs);
+  assert.equal(setup.at(-1).data.meta.status, 'failed');
+  assert.equal(setup.at(-1).data.meta.exitCode, 3);
+  assert.match(setup.at(-1).data.meta.output, /dépendance introuvable/);
+  assert.ok(evs.some((e) => e.type === 'message.completed' && /script de préparation du projet a échoué/.test(e.data.text)), 'Pi informé de l’échec');
+
+  // Image par projet : choisie parmi les images actives ; changement → sandbox recréée.
+  const imageId = sql(`insert into sandbox_images (name, version, reference, pi_version, status, is_default) values ('cap-sandbox-e2e', '${uid()}', 'cap-sandbox:0.1.0', '0.73.1', 'active', false) returning id`).split('\n')[0];
+  try {
+    assert.equal((await lead.put(`/projects/${pid}/environment`, { sandboxImageId: '00000000-0000-4000-8000-000000000000', setupScript: null })).status, 400);
+    const env = await lead.put(`/projects/${pid}/environment`, { sandboxImageId: imageId, setupScript: null });
+    assert.equal(env.status, 200, JSON.stringify(env.body));
+    assert.ok(env.body.images.some((i) => i.id === imageId));
+    await runCollect('Avec la nouvelle image');
+    assert.equal(sql(`select image_id from sandbox_instances where workspace_id = '${wsId}' and status = 'running'`), imageId, 'sandbox recréée avec l’image du projet');
+  } finally {
+    await lead.put(`/projects/${pid}/environment`, { sandboxImageId: null, setupScript: null });
+    await dev.post(`/workspaces/${wsId}/stop`).catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 3000));
+    sql(`update sandbox_images set status = 'revoked' where id = '${imageId}'`);
+  }
+});

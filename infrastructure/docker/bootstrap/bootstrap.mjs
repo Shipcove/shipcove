@@ -74,6 +74,8 @@ path "cap/data/oauth-apps/*"       { capabilities = ["create","update","read","d
 path "cap/metadata/oauth-apps/*"   { capabilities = ["read","delete"] }
 path "cap/data/mcp/*"              { capabilities = ["create","update","read","delete"] }
 path "cap/metadata/mcp/*"          { capabilities = ["read","delete"] }
+path "cap/data/env/*"              { capabilities = ["create","update","read","delete"] }
+path "cap/metadata/env/*"          { capabilities = ["read","delete"] }
 path "cap/data/models/*"           { capabilities = ["create","update","read","delete"] }
 path "cap/metadata/models/*"       { capabilities = ["read","delete"] }
 path "cap/data/mfa/*"              { capabilities = ["create","update","read","delete"] }
@@ -89,6 +91,7 @@ path "sys/health"                  { capabilities = ["read"] }
 `,
   // Le worker exécute les opérations Git approuvées, envoie les emails, gère les checkpoints.
   worker: `
+path "cap/data/env/*"              { capabilities = ["read"] }
 path "cap/data/git-connections/*"  { capabilities = ["read","update"] }
 path "cap/data/oauth-apps/*"       { capabilities = ["read"] }
 path "cap/data/mcp/*"              { capabilities = ["read"] }
@@ -103,6 +106,7 @@ path "cap/data/infra/litellm"      { capabilities = ["read"] }
 path "cap/data/git-connections/*"  { capabilities = ["read","update"] }
 path "cap/data/oauth-apps/*"       { capabilities = ["read"] }
 path "cap/data/mcp/*"              { capabilities = ["read"] }
+path "cap/data/env/*"              { capabilities = ["read"] }
 `,
   preview: `
 path "cap/data/infra/preview"      { capabilities = ["read"] }

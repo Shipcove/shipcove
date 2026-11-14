@@ -5,11 +5,12 @@ import type { ProjectDto, WorkspaceDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
+import { ProjectEnvironment } from './project-environment';
 import { AgoPipe } from '../../shared/pipes';
 
 @Component({
   selector: 'cap-project-detail',
-  imports: [FormsModule, RouterLink, Icon, AgoPipe],
+  imports: [FormsModule, RouterLink, Icon, AgoPipe, ProjectEnvironment],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="h-full overflow-y-auto"><div class="mx-auto max-w-5xl px-6 py-8">
@@ -40,6 +41,7 @@ import { AgoPipe } from '../../shared/pipes';
             </div>
           } @empty { <p class="px-4 py-4 text-sm text-stone-500">Aucun workspace sur ce projet.</p> }
         </div>
+        <cap-project-environment [projectId]="p.id" />
       }
     </div></div>
   `,

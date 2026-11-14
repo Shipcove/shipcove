@@ -15,6 +15,8 @@ import {
   normalizeOpenAiUsage,
   redactString,
   type NormalizedUsage,
+  EnvironmentService,
+  scrubSecrets,
 } from '@cap/server-core';
 import type { GatewayEnv } from '../env.js';
 import { RunTokenService, type RunPrincipal } from '../run-token.service.js';
@@ -42,6 +44,7 @@ export class LlmProxyController {
     private readonly quotas: QuotaService,
     private readonly settings: SettingsService,
     private readonly events: EventsService,
+    private readonly environment: EnvironmentService,
   ) {}
 
   private async litellmKey(): Promise<string> {
@@ -121,7 +124,9 @@ export class LlmProxyController {
       upstream = await fetch(`${this.env.LITELLM_URL}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await this.litellmKey()}`, 'x-litellm-call-id': reservation.requestId },
-        body: JSON.stringify(upstreamBody),
+        // Secrets de l'environnement du workspace retirés de ce qui part vers le fournisseur LLM
+        // (ex. sortie d'une commande ayant affiché une variable secrète).
+        body: scrubSecrets(JSON.stringify(upstreamBody), (await this.environment.forWorkspace(principal.workspaceId)).secretValues),
         signal: abort.signal,
       });
     } catch (err) {

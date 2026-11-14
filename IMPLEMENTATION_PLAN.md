@@ -36,6 +36,9 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
 - ☑ Projets Git / vierges, workspaces multiples, conversation unique
 - ☑ UI Angular : conversation, outils repliables, explorateur, Monaco, PO-1 à PO-4
 - ☑ Pièces jointes, consommation (pourcentages)
+- ☑ Retour en arrière des fichiers (« Revenir avant ce message », annulable)
+- ☑ Environnement par projet : variables et secrets (équipe / projet, Vault, masquage y compris
+  vers le LLM), script de préparation, image de sandbox (docs/operations/project-environment.md)
 
 ## Lot 4 — Contrôles
 - ☑ Ledger, coefficients versionnés, fenêtres 5 h / 7 j, plafonds équipe, exemptions, pause/reprise
@@ -56,10 +59,10 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
 - ☐ Helm chart + manifestes Kubernetes ; tests résilience / charge
 
 ## Tests
-- `tests/e2e` (`pnpm test`, pile Compose réelle, 37 scénarios) :
+- `tests/e2e` (`pnpm test`, pile Compose réelle, 40 scénarios) :
   - pile (8) et interface Playwright (1) ;
   - SSO contre Keycloak + OpenLDAP (7) ;
-  - fonctionnels (9) : édition manuelle et conflits, skills, MCP, pièces jointes, notifications
+  - fonctionnels (12) : retour en arrière, variables et secrets, préparation et image par projet, édition manuelle et conflits, skills, MCP, pièces jointes, notifications
     email, rétention, limite de sandboxes, appels LLM concurrents (plafond, facturation unique),
     utilisateur de plusieurs équipes ;
   - Git contre GitLab CE (7) : forges administrées, rattachement OAuth dans le navigateur,
@@ -87,3 +90,4 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
   résolues à chaque requête et bascule rapide (une instance redémarrée ne recevait plus de trafic,
   et l'arrêt d'une instance provoquait des 502/504).
 - 2026-11-14 : PO-5, connexions Git par OAuth administré (docs/operations/git-forges.md).
+- 2026-11-14 : retour en arrière, variables / secrets et préparation par projet.

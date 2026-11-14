@@ -423,17 +423,34 @@ export class AdminController {
     return img;
   }
 
-  /** Activation contrôlée : image par défaut des nouvelles sandboxes (verrouillée par digest). */
+  /**
+   * Activation contrôlée (image verrouillée par digest) : proposée aux projets, et image par
+   * défaut des nouvelles sandboxes si `makeDefault` (comportement par défaut).
+   */
   @Post('sandbox-images/:imageId/activate')
-  async activateImage(@Param('imageId', uuid) id: string, @CurrentUser() user: AuthUser) {
+  async activateImage(
+    @Param('imageId', uuid) id: string,
+    @Body({ schema: z.object({ makeDefault: z.boolean().default(true) }).default({ makeDefault: true }) }) body: { makeDefault: boolean },
+    @CurrentUser() user: AuthUser,
+  ) {
     const [img] = await this.db.select().from(sandboxImages).where(eq(sandboxImages.id, id));
     if (!img) throw new AppError('not_found', 'Image introuvable');
     if (!img.digest) throw new AppError('validation_failed', 'Une image doit être verrouillée par digest avant activation');
     await this.db.transaction(async (tx) => {
-      await tx.update(sandboxImages).set({ isDefault: false }).where(eq(sandboxImages.isDefault, true));
-      await tx.update(sandboxImages).set({ isDefault: true, status: 'active', verifiedAt: new Date() }).where(eq(sandboxImages.id, id));
+      if (body.makeDefault) await tx.update(sandboxImages).set({ isDefault: false }).where(eq(sandboxImages.isDefault, true));
+      await tx.update(sandboxImages).set({ isDefault: body.makeDefault || img.isDefault, status: 'active', verifiedAt: new Date() }).where(eq(sandboxImages.id, id));
     });
-    await this.audit.record({ actorId: user.id, action: 'admin.sandbox_image_activate', targetId: id });
+    await this.audit.record({ actorId: user.id, action: 'admin.sandbox_image_activate', targetId: id, metadata: { makeDefault: body.makeDefault } });
+    return { ok: true };
+  }
+
+  /** Retrait : une image dépréciée ou révoquée n'est plus proposée (les projets reviennent au défaut). */
+  @Post('sandbox-images/:imageId/status')
+  @HttpCode(200)
+  async imageStatus(@Param('imageId', uuid) id: string, @Body({ schema: z.object({ status: z.enum(['deprecated', 'revoked']) }) }) body: { status: 'deprecated' | 'revoked' }, @CurrentUser() user: AuthUser) {
+    const [img] = await this.db.update(sandboxImages).set({ status: body.status, isDefault: false }).where(eq(sandboxImages.id, id)).returning();
+    if (!img) throw new AppError('not_found', 'Image introuvable');
+    await this.audit.record({ actorId: user.id, action: `admin.sandbox_image_${body.status}`, targetId: id });
     return { ok: true };
   }
 

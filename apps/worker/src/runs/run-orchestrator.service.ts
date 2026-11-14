@@ -12,12 +12,13 @@ import {
   type Database,
 } from '@cap/database';
 import { PI_PROVIDER, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
-import { DB, ENV, EventsService, NotificationService, ObjectStorage, PgNotifier, QuotaService, RunQueueService, redactString, type NewEvent } from '@cap/server-core';
+import { DB, ENV, EnvironmentService, EventsService, NotificationService, ObjectStorage, PgNotifier, QuotaService, RunQueueService, StreamScrubber, redactString, scrubDeep, scrubSecrets, type NewEvent } from '@cap/server-core';
 import { toUserPath } from '@cap/storage';
 import type { WorkerEnv } from '../env.js';
 import { JobRunner } from '../jobs/job-runner.service.js';
 import { CheckpointService } from '../sandbox/checkpoint.service.js';
 import { SandboxManager, type ActiveSandbox } from '../sandbox/sandbox-manager.service.js';
+import { SetupService } from '../sandbox/setup.service.js';
 import { BridgeRpcService } from './bridge-rpc.service.js';
 
 const RUN_LEASE_MS = 60_000;
@@ -45,6 +46,10 @@ interface RunContext {
   interruptRequested: boolean;
   /** File de traitement : les événements Pi sont appliqués strictement dans l'ordre. */
   queue: Promise<void>;
+  /** Valeurs secrètes de l'environnement, masquées dans tout ce qui est persisté ou diffusé. */
+  secretValues: string[];
+  /** Masquage des flux de texte / raisonnement (secret éventuellement coupé entre fragments). */
+  scrubbers: Map<string, StreamScrubber>;
 }
 
 /**
@@ -73,6 +78,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     private readonly storage: ObjectStorage,
     private readonly bridge: BridgeRpcService,
     private readonly runQueue: RunQueueService,
+    private readonly environment: EnvironmentService,
+    private readonly setup: SetupService,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -136,11 +143,28 @@ export class RunOrchestrator implements OnApplicationBootstrap {
 
     let sandbox: ActiveSandbox;
     try {
+      // Image du projet modifiée depuis le démarrage de la sandbox : recréation (après checkpoint).
+      await this.sandboxes.ensureImage(ws.id);
       sandbox = await this.sandboxes.ensureRunning(ws.id);
       await this.sandboxes.refreshAgentConfig(sandbox);
     } catch (err) {
       await this.finish(runId, ws.id, 'failed', `Sandbox indisponible : ${(err as Error).message}`);
       return { status: 'failed' };
+    }
+    // Script de préparation du projet : nouvelle sandbox ou script modifié.
+    let setupNote: string | null = null;
+    if (await this.setup.needed(sandbox)) {
+      await this.systemMessage(ws.id, conv.id, runId, 'Préparation de l’environnement du projet…', { kind: 'setup', status: 'running' });
+      const r = await this.setup.run(sandbox, await this.environment.forWorkspace(ws.id, { fresh: true }));
+      const seconds = Math.round(r.durationMs / 1000);
+      await this.systemMessage(
+        ws.id,
+        conv.id,
+        runId,
+        r.ok ? `Environnement préparé (${seconds} s)` : `La préparation de l’environnement a échoué (code ${r.exitCode ?? 'inconnu'}, ${seconds} s)`,
+        { kind: 'setup', status: r.ok ? 'succeeded' : 'failed', exitCode: r.exitCode, durationMs: r.durationMs, output: r.output },
+      );
+      if (!r.ok) setupNote = `[Note de la plateforme : le script de préparation du projet a échoué (code ${r.exitCode ?? 'inconnu'}). Fin de sa sortie :\n${r.output.slice(-3000)}\nTiens-en compte : des dépendances peuvent manquer.]`;
     }
     const startGen = await this.checkpoints.storage.currentGeneration(ws.id);
     await this.db.update(agentRuns).set({ startGeneration: startGen }).where(eq(agentRuns.id, runId));
@@ -164,9 +188,12 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       skillDirs: [],
       ...(planMode ? { tools: PLAN_MODE_TOOLS, appendSystemPrompt: PLAN_MODE_PROMPT } : {}),
     });
+    // Variables et secrets du projet / de l'équipe : processus de Pi (donc ses commandes) uniquement,
+    // jamais écrits sur disque par la plateforme. Les variables de la plateforme l'emportent.
+    const environment = await this.environment.forWorkspace(ws.id, { fresh: true });
     const proc = await this.sandboxes.provider.exec(sandbox.handle, command, {
       interactive: true,
-      env: { [PI_TOKEN_ENV]: sandbox.runToken, HOME: '/home/agent', PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1' },
+      env: { ...environment.vars, [PI_TOKEN_ENV]: sandbox.runToken, HOME: '/home/agent', PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1' },
       workdir: '/workspace',
     });
     const runtime = new PiAgentRuntime({ stdin: proc.stdin!, stdout: proc.stdout, stderr: proc.stderr, wait: () => proc.wait(), kill: () => proc.kill() });
@@ -191,6 +218,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       finished,
       interruptRequested: false,
       queue: Promise.resolve(),
+      secretValues: environment.secretValues,
+      scrubbers: new Map(),
     };
     this.active.set(runId, ctx);
     const flusher = setInterval(() => void this.flush(ctx), FLUSH_MS);
@@ -212,7 +241,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       await runtime.setThinkingLevel(level).catch((e) => this.logger.warn(`thinking level ${level} : ${e.message}`));
       await this.events.emit(ws.id, 'model.changed', { modelId: model.id, modelName: model.displayName }, runId);
       const { text, images } = await this.promptFor(run);
-      await runtime.prompt(text, images);
+      await runtime.prompt(setupNote ? `${setupNote}\n\n${text}` : text, images);
       outcome = await finished;
     } catch (err) {
       outcome = { error: redactString((err as Error).message) };
@@ -383,6 +412,18 @@ export class RunOrchestrator implements OnApplicationBootstrap {
 
   /* ------------------------ Traduction des événements ------------------ */
 
+  /** Message système de la conversation (préparation, retour en arrière…), diffusé en temps réel. */
+  private async systemMessage(workspaceId: string, conversationId: string, runId: string, text: string, meta: Record<string, unknown>): Promise<void> {
+    const [m] = await this.db.insert(messages).values({ conversationId, runId, role: 'system', text, meta }).returning({ id: messages.id });
+    await this.events.emit(workspaceId, 'message.created', { messageId: m.id, role: 'system', text, attachmentIds: [], meta }, runId);
+  }
+
+  private scrubber(ctx: RunContext, key: string): StreamScrubber {
+    let sc = ctx.scrubbers.get(key);
+    if (!sc) ctx.scrubbers.set(key, (sc = new StreamScrubber(ctx.secretValues)));
+    return sc;
+  }
+
   private push(ctx: RunContext, e: NewEvent): void {
     // Fusion des deltas consécutifs d'un même message (moins d'écritures, même contenu).
     const last = ctx.pending.at(-1);
@@ -430,31 +471,40 @@ export class RunOrchestrator implements OnApplicationBootstrap {
         case 'text_delta': {
           const id = ctx.messageIds.get(e.messageKey);
           if (!id) break;
-          ctx.texts.set(e.messageKey, (ctx.texts.get(e.messageKey) ?? '') + e.delta);
-          this.push(ctx, { type: 'message.delta', runId: ctx.runId, data: { messageId: id, delta: e.delta } });
+          const sc = this.scrubber(ctx, `text:${e.messageKey}`);
+          const delta = sc.push(e.delta);
+          ctx.texts.set(e.messageKey, sc.current());
+          if (delta) this.push(ctx, { type: 'message.delta', runId: ctx.runId, data: { messageId: id, delta } });
           break;
         }
         case 'thinking_delta': {
           const id = ctx.messageIds.get(e.messageKey);
-          if (id) this.push(ctx, { type: 'thinking.delta', runId: ctx.runId, data: { messageId: id, delta: e.delta } });
+          const delta = this.scrubber(ctx, `thinking:${e.messageKey}`).push(e.delta);
+          if (id && delta) this.push(ctx, { type: 'thinking.delta', runId: ctx.runId, data: { messageId: id, delta } });
           break;
         }
         case 'assistant_end': {
           const id = ctx.messageIds.get(e.messageKey);
           if (!id) break;
           ctx.texts.delete(e.messageKey);
+          const textEnd = this.scrubber(ctx, `text:${e.messageKey}`).end(e.text);
+          const thinkingEnd = this.scrubber(ctx, `thinking:${e.messageKey}`).end(e.thinking ?? '');
+          if (textEnd.rest) this.push(ctx, { type: 'message.delta', runId: ctx.runId, data: { messageId: id, delta: textEnd.rest } });
+          if (thinkingEnd.rest) this.push(ctx, { type: 'thinking.delta', runId: ctx.runId, data: { messageId: id, delta: thinkingEnd.rest } });
+          ctx.scrubbers.delete(`text:${e.messageKey}`);
+          ctx.scrubbers.delete(`thinking:${e.messageKey}`);
           await this.db
             .update(messages)
             .set({
-              text: e.text,
-              thinking: e.thinking || null,
+              text: textEnd.text,
+              thinking: thinkingEnd.text || null,
               stopReason: e.stopReason,
               model: e.model,
               usage: e.usage,
               completedAt: new Date(),
             })
             .where(eq(messages.id, id));
-          this.push(ctx, { type: 'message.completed', runId: ctx.runId, data: { messageId: id, text: e.text, stopReason: e.stopReason } });
+          this.push(ctx, { type: 'message.completed', runId: ctx.runId, data: { messageId: id, text: textEnd.text, stopReason: e.stopReason } });
           if (e.usage) {
             const stats = await ctx.runtime.sessionStats().catch(() => null);
             const percent = stats?.contextTokens && stats.contextWindow ? Math.min(100, Math.round((stats.contextTokens / stats.contextWindow) * 100)) : null;
@@ -466,9 +516,9 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           ctx.toolStarts.set(e.toolCallId, Date.now());
           await this.db
             .insert(toolCalls)
-            .values({ runId: ctx.runId, messageId: ctx.lastAssistantMessageId, externalId: e.toolCallId, toolName: e.toolName, args: redactArgs(e.args) })
+            .values({ runId: ctx.runId, messageId: ctx.lastAssistantMessageId, externalId: e.toolCallId, toolName: e.toolName, args: scrubDeep(redactArgs(e.args), ctx.secretValues) })
             .onConflictDoNothing();
-          this.push(ctx, { type: 'tool.started', runId: ctx.runId, data: { toolCallId: e.toolCallId, messageId: ctx.lastAssistantMessageId, toolName: e.toolName, args: redactArgs(e.args) } });
+          this.push(ctx, { type: 'tool.started', runId: ctx.runId, data: { toolCallId: e.toolCallId, messageId: ctx.lastAssistantMessageId, toolName: e.toolName, args: scrubDeep(redactArgs(e.args), ctx.secretValues) } });
           await this.sandboxes.touch(ctx.workspaceId);
           break;
         }
@@ -476,8 +526,9 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           const last = ctx.lastToolOutputAt.get(e.toolCallId) ?? 0;
           if (Date.now() - last < 250) break;
           ctx.lastToolOutputAt.set(e.toolCallId, Date.now());
-          const out = e.output.length > TOOL_OUTPUT_SSE_LIMIT ? e.output.slice(-TOOL_OUTPUT_SSE_LIMIT) : e.output;
-          this.push(ctx, { type: 'tool.output', runId: ctx.runId, data: { toolCallId: e.toolCallId, output: out, truncated: out.length < e.output.length } });
+          const full = scrubSecrets(e.output, ctx.secretValues);
+          const out = full.length > TOOL_OUTPUT_SSE_LIMIT ? full.slice(-TOOL_OUTPUT_SSE_LIMIT) : full;
+          this.push(ctx, { type: 'tool.output', runId: ctx.runId, data: { toolCallId: e.toolCallId, output: out, truncated: out.length < full.length } });
           break;
         }
         case 'tool_end': {
@@ -488,23 +539,24 @@ export class RunOrchestrator implements OnApplicationBootstrap {
             await this.checkpointForTool(ctx, e.toolCallId).catch(() => undefined);
           }
           const files = ctx.toolFiles.get(e.toolCallId) ?? [];
+          const output = scrubSecrets(e.output, ctx.secretValues);
           await this.db
             .update(toolCalls)
             .set({
               status: e.isError ? 'failed' : 'completed',
-              output: e.output,
-              outputTruncated: e.output.includes('[sortie tronquée]'),
+              output,
+              outputTruncated: output.includes('[sortie tronquée]'),
               isError: e.isError,
               filesTouched: files,
               completedAt: new Date(),
               durationMs,
             })
             .where(and(eq(toolCalls.runId, ctx.runId), eq(toolCalls.externalId, e.toolCallId)));
-          const out = e.output.length > TOOL_OUTPUT_SSE_LIMIT ? e.output.slice(-TOOL_OUTPUT_SSE_LIMIT) : e.output;
+          const out = output.length > TOOL_OUTPUT_SSE_LIMIT ? output.slice(-TOOL_OUTPUT_SSE_LIMIT) : output;
           this.push(ctx, {
             type: 'tool.completed',
             runId: ctx.runId,
-            data: { toolCallId: e.toolCallId, isError: e.isError, output: out, truncated: out.length < e.output.length, durationMs, filesTouched: files },
+            data: { toolCallId: e.toolCallId, isError: e.isError, output: out, truncated: out.length < output.length, durationMs, filesTouched: files },
           });
           await this.sandboxes.touch(ctx.workspaceId);
           break;

@@ -10,6 +10,7 @@ import { BridgeRpcService } from './runs/bridge-rpc.service.js';
 import { GitBrokerService } from './git/git-broker.service.js';
 import { McpBridgeService } from './mcp/mcp-bridge.service.js';
 import { SkillsMaterializer } from './mcp/skills-materializer.service.js';
+import { SetupService } from './sandbox/setup.service.js';
 import { SandboxRpcService } from './rpc/sandbox-rpc.service.js';
 import { EmailService } from './email/email.service.js';
 import { MaintenanceService } from './maintenance/maintenance.service.js';
@@ -27,6 +28,7 @@ export class WorkerModule {
         JobRunner,
         CheckpointService,
         SkillsMaterializer,
+        SetupService,
         SandboxManager,
         GitBrokerService,
         McpBridgeService,

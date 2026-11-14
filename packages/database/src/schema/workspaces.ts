@@ -30,6 +30,12 @@ export const workspaces = pgTable(
     thinkingLevel: text({ enum: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'] }).notNull().default('medium'),
     /** Mode d'exécution : autonome (défaut) ou plan (outils en lecture seule). */
     agentMode: text({ enum: ['autonomous', 'plan'] }).notNull().default('autonomous'),
+    /** Empreinte du script de préparation déjà exécuté avec succès (rejoué s'il change). */
+    setupHash: text(),
+    setupStatus: text({ enum: ['none', 'running', 'succeeded', 'failed'] }).notNull().default('none'),
+    /** Instance de sandbox ayant exécuté la préparation (rejouée dans chaque nouvelle sandbox). */
+    setupInstanceId: uuid(),
+    setupAt: ts(),
     /** Initialisé (clone ou répertoire vierge) au moins une fois. */
     initialized: boolean().notNull().default(false),
     /** Dernier manifeste validé (génération) ; publication conditionnée au fencing token. */
