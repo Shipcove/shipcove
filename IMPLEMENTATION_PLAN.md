@@ -48,16 +48,23 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
 
 ## Lot 6 — Administration & production
 - ☑ Console admin, rétention/purge, audit + export
+- ☑ Résilience : pannes API, worker, S3, LiteLLM, Vault testées de bout en bout
 - ◐ Observabilité : logs JSON + correlation IDs + health/readiness ☑ ; métriques / OpenTelemetry ☐
 - ☐ Sauvegarde / restauration documentées et outillées
 - ☐ Helm chart + manifestes Kubernetes ; tests résilience / charge
 
 ## Tests
-- `tests/e2e` (`pnpm test`, pile Compose réelle, 27 scénarios) : pile (8), interface Playwright (1),
-  SSO contre Keycloak + OpenLDAP (7), fonctionnels (7 : édition manuelle et conflits, skills, MCP,
-  pièces jointes, notifications email, rétention, limite de sandboxes), Git contre GitLab CE (4 :
-  clone, publication et MR après approbation, commit exact, refus). Les suites SSO et Git
-  s'ignorent si leurs fournisseurs de test ne sont pas démarrés (`pnpm sso:up`, `pnpm forge:up`).
+- `tests/e2e` (`pnpm test`, pile Compose réelle, 34 scénarios) :
+  - pile (8) et interface Playwright (1) ;
+  - SSO contre Keycloak + OpenLDAP (7) ;
+  - fonctionnels (9) : édition manuelle et conflits, skills, MCP, pièces jointes, notifications
+    email, rétention, limite de sandboxes, appels LLM concurrents (plafond, facturation unique),
+    utilisateur de plusieurs équipes ;
+  - Git contre GitLab CE (4) : clone, publication et MR après approbation, opération figée, refus ;
+  - résilience (5) : arrêt brutal de chaque instance API pendant un run (SSE repris sans trou ni
+    doublon), perte du worker, pannes S3, LiteLLM et Vault avec reprise automatique.
+  Les suites SSO et Git s'ignorent si leurs fournisseurs de test ne sont pas démarrés
+  (`pnpm sso:up`, `pnpm forge:up`).
 - Unitaires / intégration : `apps/api`, `apps/gateway`, `packages/server-core`, `packages/agent-runtime`, `packages/secrets`.
 
 ## Limites connues
@@ -71,3 +78,7 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
   entre instances, skills révoqués actifs, permissions MCP lisibles par tous, archives non
   inspectées, antivirus en échec ouvert, en-têtes dupliqués, message d'erreur perdu, jeton Git
   présentable à un autre hôte, suppression de compte en collision).
+- 2026-11-14 : résilience (SPEC §25 n°6, 16) et critères n°2, n°10 couverts ; fenêtre de quota
+  exacte lors d'une suspension (équipe vs personnel), libellés sans crédits ; nginx : répliques API
+  résolues à chaque requête et bascule rapide (une instance redémarrée ne recevait plus de trafic,
+  et l'arrêt d'une instance provoquait des 502/504).

@@ -12,6 +12,7 @@
     "sso:up": "docker compose -f sso/compose.sso.yml up -d --wait",
     "sso:down": "docker compose -f sso/compose.sso.yml down",
     "test:git": "node --test --test-concurrency=1 --test-timeout=600000 git.test.mjs",
+    "test:resilience": "node --test --test-concurrency=1 --test-timeout=900000 resilience.test.mjs",
     "test:features": "node --test --test-concurrency=1 --test-timeout=900000 features.test.mjs",
     "forge:up": "docker compose -f forge/compose.forge.yml up -d --wait",
     "forge:down": "docker compose -f forge/compose.forge.yml down -v",

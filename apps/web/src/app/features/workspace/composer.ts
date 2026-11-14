@@ -42,7 +42,7 @@ const TOP_MODELS = 4;
     <div class="mx-auto max-w-3xl px-6 pb-3">
       @if (store.quotaPaused(); as q) {
         <div class="mb-2 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200" role="status">
-          <cap-icon name="alert" /> Quota atteint ({{ q.window === '5h' ? 'limite de 5 heures' : '7 jours glissants' }}). L’agent est suspendu.
+          <cap-icon name="alert" /> {{ pausedLabel(q.window) }}. L’agent est suspendu.
           <button class="btn-secondary ml-auto !py-1" (click)="resume()">Reprendre</button>
         </div>
       }
@@ -297,6 +297,16 @@ export class Composer {
   private orderedModels(): ModelDto[] {
     const list = [...this.store.models()];
     return list.sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.displayName.localeCompare(b.displayName));
+  }
+
+  protected pausedLabel(window: string): string {
+    const labels: Record<string, string> = {
+      '5h': 'Quota atteint (limite de 5 heures)',
+      '7d': 'Quota atteint (7 jours glissants)',
+      team_5h: 'Quota de l’équipe atteint (limite de 5 heures)',
+      team_7d: 'Quota de l’équipe atteint (7 jours glissants)',
+    };
+    return labels[window] ?? 'Quota atteint';
   }
 
   private row(w: QuotaWindowDto, label: string) {

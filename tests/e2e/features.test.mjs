@@ -476,3 +476,93 @@ test('limite de sandboxes actives par utilisateur : le run échoue avec un messa
   assert.equal(end.type, 'run.failed');
   assert.match(end.data.error, /Limite de 3 sandbox/, end.data.error);
 });
+
+test('appels LLM concurrents : plafond jamais dépassé, une seule facturation par appel, aucune réservation orpheline', async () => {
+  const user = await newUser();
+  const ws = [];
+  for (let i = 0; i < 3; i++) ws.push(await workspace(user, `Concurrence ${i}`));
+  // Plafond faible : une partie des appels sera refusée faute de crédits réservables.
+  // Une réservation ≈ 11 crédits (coût maximal estimé), un appel réel ≈ 1 : deux réservations simultanées dépassent 20.
+  const limit = 20;
+  assert.equal((await ctx.admin.put('/admin/quotas/policies', { scope: 'user', subjectId: user.id, limit5h: String(limit), limit7d: null, exempt: false })).status, 200);
+  try {
+    const steps = [1, 2, 3, 4, 5].map((i) => `[[tool:bash {"command":"echo ${i}"}]]`).join(' ');
+    const starts = await Promise.all(ws.map(async (w) => {
+      const conv = await user.get(`/workspaces/${w.id}/conversation`);
+      const sent = await user.post(`/workspaces/${w.id}/messages`, { text: `Concurrence. ${steps}` }, { 'Idempotency-Key': `f-${uid()}` });
+      assert.equal(sent.status, 201, JSON.stringify(sent.body));
+      return { w, runId: sent.body.runId, from: conv.body.lastEventId };
+    }));
+    // Chaque run se termine ou est suspendu faute de quota.
+    await Promise.all(starts.map(({ w, runId, from }) => user.events(w.id, from, (e) => e.runId === runId && ['run.completed', 'run.failed', 'quota.paused'].includes(e.type), 420_000)));
+    for (const { w, runId } of starts) await user.post(`/workspaces/${w.id}/runs/${runId}/interrupt`).catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 3000));
+
+    const q = (s) => sql(s);
+    const used = Number(q(`select coalesce(sum(amount), 0) from credit_ledger where user_id = '${user.id}' and kind = 'usage'`));
+    const settled = Number(q(`select count(*) from llm_requests where user_id = '${user.id}' and status = 'settled'`));
+    const rejected = Number(q(`select count(*) from llm_requests where user_id = '${user.id}' and status = 'rejected'`));
+    assert.ok(settled > 0, 'des appels ont abouti');
+    assert.ok(rejected > 0, 'le plafond a bien limité des appels concurrents');
+    assert.ok(used <= limit, `consommation ${used} ≤ plafond ${limit}`);
+    // Exactement une écriture de facturation par appel abouti, aucune pour un appel refusé.
+    assert.equal(q(`select count(*) from credit_ledger l join llm_requests r on r.id = l.llm_request_id where r.user_id = '${user.id}' and l.kind = 'usage'`), String(settled));
+    assert.equal(q(`select count(*) from (select llm_request_id from credit_ledger where user_id = '${user.id}' and kind = 'usage' group by 1 having count(*) > 1) d`), '0');
+    assert.equal(q(`select count(*) from credit_ledger l join llm_requests r on r.id = l.llm_request_id where r.user_id = '${user.id}' and r.status = 'rejected'`), '0');
+    // Montant facturé = somme des coûts des appels aboutis ; plus aucune réservation ouverte.
+    assert.equal(Number(q(`select coalesce(sum(credits), 0) from llm_requests where user_id = '${user.id}' and status = 'settled'`)), used);
+    assert.equal(q(`select count(*) from credit_reservations where user_id = '${user.id}' and status = 'open'`), '0');
+  } finally {
+    await ctx.admin.put('/admin/quotas/policies', { scope: 'user', subjectId: user.id, limit5h: null, limit7d: null, exempt: true });
+  }
+});
+
+test('utilisateur de plusieurs équipes : quota de l’équipe propriétaire du projet, rôles distincts par équipe', async () => {
+  const mk = async (label) => {
+    const slug = `${label}-${uid()}`;
+    const t = await ctx.admin.post('/teams', { name: `${label} ${slug}`, slug });
+    assert.equal(t.status, 201);
+    return t.body.id;
+  };
+  const teamA = await mk('equipe-a');
+  const teamB = await mk('equipe-b');
+  const teamC = await mk('equipe-c');
+  const user = await newUser(); // membre de l'équipe de test
+  assert.equal((await ctx.admin.post(`/teams/${teamA}/members`, { userId: user.id, role: 'member' })).status, 204);
+  assert.equal((await ctx.admin.post(`/teams/${teamB}/members`, { userId: user.id, role: 'team_admin' })).status, 204);
+  const project = async (teamId) => {
+    const p = await user.post('/projects', { teamId, name: `P ${uid()}` });
+    assert.equal(p.status, 201, JSON.stringify(p.body));
+    const w = await user.post('/workspaces', { projectId: p.body.id, name: 'Multi-équipes' });
+    opened.push({ client: user, id: w.body.id });
+    return { project: p.body, ws: w.body };
+  };
+  const a = await project(teamA);
+  const b = await project(teamB);
+  // Équipe hors appartenance : ni création ni lecture.
+  // 404 : l'existence d'une équipe dont on n'est pas membre n'est pas révélée.
+  assert.ok([403, 404].includes((await user.post('/projects', { teamId: teamC, name: 'Interdit' })).status));
+  assert.ok(!(await user.get('/projects')).body.some((p) => p.teamId === teamC));
+  // Rôles par équipe : administrateur de B (gère les membres), simple membre de A.
+  const other = await newUser();
+  assert.equal((await user.post(`/teams/${teamB}/members`, { userId: other.id, role: 'member' })).status, 204);
+  assert.equal((await user.post(`/teams/${teamA}/members`, { userId: other.id, role: 'member' })).status, 403);
+
+  // Plafond de l'équipe A épuisé : le run du projet A est suspendu, celui du projet B passe.
+  assert.equal((await ctx.admin.put('/admin/quotas/policies', { scope: 'team', subjectId: teamA, limit5h: '0.001', limit7d: null, exempt: false })).status, 200);
+  try {
+    const conv = await user.get(`/workspaces/${a.ws.id}/conversation`);
+    const sentA = await user.post(`/workspaces/${a.ws.id}/messages`, { text: 'Projet A' }, { 'Idempotency-Key': `f-${uid()}` });
+    if (sentA.status === 201) {
+      const ev = await user.events(a.ws.id, conv.body.lastEventId, (e) => e.runId === sentA.body.runId && ['quota.paused', 'run.completed', 'run.failed'].includes(e.type), 300_000);
+      assert.equal(ev.at(-1).type, 'quota.paused', JSON.stringify(ev.at(-1)));
+      assert.match(ev.at(-1).data.window, /team/);
+      await user.post(`/workspaces/${a.ws.id}/runs/${sentA.body.runId}/interrupt`);
+    } else {
+      assert.equal(sentA.body.error.code, 'quota_exceeded', JSON.stringify(sentA.body));
+    }
+    await run(user, b.ws.id, 'Projet B');
+  } finally {
+    await ctx.admin.put('/admin/quotas/policies', { scope: 'team', subjectId: teamA, limit5h: null, limit7d: null, exempt: false });
+  }
+});
