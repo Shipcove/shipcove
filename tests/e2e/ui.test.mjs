@@ -114,10 +114,25 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     await page.waitForSelector('[role="menuitemradio"]:has-text("Élevé")');
     await page.screenshot({ path: new URL('composer-model.png', OUT).pathname });
     await page.keyboard.press('Escape');
-    await page.click('button[aria-label="Consommation de crédits"]');
+    // Quotas : pourcentages uniquement, orange à l'approche de la limite, rouge au-delà de 90 %.
+    const used = await page.evaluate(async () => (await (await fetch('/api/v1/usage', { credentials: 'include' })).json()).user.windows.map((w) => Number(w.used) + Number(w.reserved)));
+    assert.ok(used[0] > 0, 'consommation mesurée');
+    await admin.put('/admin/quotas/policies', { scope: 'user', subjectId: user.body.id, limit5h: (used[0] / 0.8).toFixed(4), limit7d: (used[1] / 0.95).toFixed(4), exempt: false });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.click('button[aria-label="Utilisation des quotas"]');
     await page.waitForSelector('text=Limite de 5 heures');
+    const popover = page.locator('div:has(> div > span:text("Utilisation des quotas"))');
+    const popText = await popover.innerText();
+    assert.doesNotMatch(popText, /crédit/i, 'aucun crédit affiché');
+    assert.match(popText, /80\s%/);
+    assert.match(popText, /95\s%/);
+    assert.equal(await popover.locator('.bg-orange-500').count(), 1, 'jauge orange');
+    assert.equal(await popover.locator('.bg-red-600').count(), 1, 'jauge rouge');
     await page.screenshot({ path: new URL('composer-usage.png', OUT).pathname });
     await page.keyboard.press('Escape');
+    await admin.put('/admin/quotas/policies', { scope: 'user', subjectId: user.body.id, limit5h: null, limit7d: null, exempt: true });
+    // Pas de tokens (entrée / sortie) sous les réponses.
+    assert.equal(await page.locator('cap-conversation :text("entrée")').count(), 0, 'pas de tokens sous les réponses');
 
     // Mode Plan : outils en lecture seule imposés par Pi → aucune écriture possible.
     await page.click('button[aria-haspopup="menu"]:has-text("Autonome")');

@@ -1,12 +1,12 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, output, signal, viewChild } from '@angular/core';
 import { Icon } from '../../shared/icon';
-import { MarkdownPipe, TokensPipe } from '../../shared/pipes';
+import { MarkdownPipe } from '../../shared/pipes';
 import { ToolCard } from './tool-card';
 import { WorkspaceStore } from './workspace.store';
 
 @Component({
   selector: 'cap-conversation',
-  imports: [ToolCard, MarkdownPipe, TokensPipe, Icon],
+  imports: [ToolCard, MarkdownPipe, Icon],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div #scroller class="h-full overflow-x-hidden overflow-y-auto" (scroll)="onScroll()">
@@ -41,13 +41,6 @@ import { WorkspaceStore } from './workspace.store';
               }
               @if (m.text) { <div class="prose-chat" [innerHTML]="m.text | markdown"></div> }
               @for (t of m.toolCalls; track t.id) { <cap-tool-card [call]="t" (openFile)="openFile.emit($event)" /> }
-              @if (m.usage) {
-                <div class="mt-1 text-[11px] text-stone-400">
-                  entrée {{ m.usage.inputTokens | tokens }} · sortie {{ m.usage.outputTokens | tokens }}
-                  @if (m.usage.cacheReadTokens) { · cache lu {{ m.usage.cacheReadTokens | tokens }} }
-                  @if (m.usage.cacheWriteTokens) { · cache écrit {{ m.usage.cacheWriteTokens | tokens }} }
-                </div>
-              }
               @if (m.stopReason === 'error') { <div class="mt-1 text-sm text-red-600">La réponse du modèle s’est terminée en erreur.</div> }
             </div>
           }

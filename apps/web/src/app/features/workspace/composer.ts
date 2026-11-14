@@ -6,6 +6,7 @@ import { Api } from '../../core/api.service';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
 import { BytesPipe } from '../../shared/pipes';
+import { QUOTA_DANGER, QUOTA_WARN, formatReset, quotaBarClass, quotaPct, quotaStroke, quotaTextClass, windowLabel } from '../../shared/quota';
 import { WorkspaceStore } from './workspace.store';
 
 type Menu = 'plus' | 'model' | 'effort' | 'more' | 'mode' | 'usage' | 'slash' | null;
@@ -41,7 +42,7 @@ const TOP_MODELS = 4;
     <div class="mx-auto max-w-3xl px-6 pb-3">
       @if (store.quotaPaused(); as q) {
         <div class="mb-2 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200" role="status">
-          <cap-icon name="alert" /> Quota de crédits atteint ({{ q.window }}). L’agent est suspendu.
+          <cap-icon name="alert" /> Quota atteint ({{ q.window === '5h' ? 'limite de 5 heures' : '7 jours glissants' }}). L’agent est suspendu.
           <button class="btn-secondary ml-auto !py-1" (click)="resume()">Reprendre</button>
         </div>
       }
@@ -181,23 +182,28 @@ const TOP_MODELS = 4;
         </div>
 
         <div class="relative">
-          <button class="rounded-md p-1 hover:bg-stone-200/70 dark:hover:bg-stone-800" [class.bg-stone-200]="menu() === 'usage'" [class.dark:bg-stone-800]="menu() === 'usage'" (click)="toggle('usage', $event)" aria-label="Consommation de crédits" [title]="usageTitle()">
+          <button class="rounded-md p-1 hover:bg-stone-200/70 dark:hover:bg-stone-800" [class.bg-stone-200]="menu() === 'usage'" [class.dark:bg-stone-800]="menu() === 'usage'" (click)="toggle('usage', $event)" aria-label="Utilisation des quotas" [title]="usageTitle()">
             <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true">
               <circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="2.5" class="text-stone-200 dark:text-stone-700" />
               <circle cx="10" cy="10" r="7.5" fill="none" stroke-width="2.5" stroke-linecap="round" transform="rotate(-90 10 10)"
-                [attr.stroke]="usagePct() >= 90 ? '#dc2626' : '#2563eb'" [attr.stroke-dasharray]="ringDash()" />
+                [attr.stroke]="stroke(usagePct())" [attr.stroke-dasharray]="ringDash()" />
             </svg>
           </button>
           @if (menu() === 'usage') {
             <div class="absolute right-0 bottom-full z-30 mb-2 w-[22rem] rounded-xl border border-stone-200 bg-white p-4 shadow-lg dark:border-stone-700 dark:bg-stone-900">
-              <div class="mb-3 flex items-center text-sm"><span class="text-stone-500">Crédits · quotas de la plateforme</span><a routerLink="/usage" class="ml-auto font-medium hover:underline" (click)="menu.set(null)">Tout voir →</a></div>
-              @if (!store.usage()?.quotasEnabled) { <p class="mb-2 text-xs text-stone-500">Les quotas sont désactivés ; la consommation reste mesurée.</p> }
+              <div class="mb-3 flex items-center text-sm"><span class="text-stone-500">Utilisation des quotas</span><a routerLink="/usage" class="ml-auto font-medium hover:underline" (click)="menu.set(null)">Tout voir →</a></div>
+              @if (!store.usage()?.quotasEnabled) { <p class="mb-2 text-xs text-stone-500">Les quotas sont désactivés.</p> }
               @for (w of usageRows(); track w.label) {
                 <div class="mb-3">
-                  <div class="flex items-baseline text-sm"><span class="font-medium">{{ w.label }}</span><span class="ml-auto text-xs text-stone-500">{{ w.reset }} {{ w.pct === null ? '' : w.pct + ' %' }}</span></div>
-                  <div class="mt-1.5 h-1.5 rounded bg-stone-200 dark:bg-stone-800"><div class="h-1.5 rounded" [class]="(w.pct ?? 0) >= 90 ? 'bg-red-600' : 'bg-blue-600'" [style.width.%]="w.pct ?? 0"></div></div>
-                  @if (w.pct === null) { <div class="mt-1 text-xs text-stone-500">{{ w.used }} crédits · sans limite</div> }
+                  <div class="flex items-baseline gap-2 text-sm"><span class="shrink-0 font-medium whitespace-nowrap">{{ w.label }}</span><span class="ml-auto min-w-0 truncate text-xs whitespace-nowrap text-stone-500">{{ w.reset }}</span>
+                    <span class="w-12 shrink-0 text-right whitespace-nowrap text-xs tabular-nums" [class]="textClass(w.pct)">{{ w.pct === null ? 'Illimité' : w.pct + '\u00a0%' }}</span></div>
+                  @if (w.pct !== null) {
+                    <div class="mt-1.5 h-1.5 rounded bg-stone-200 dark:bg-stone-800"><div class="h-1.5 rounded transition-all" [class]="barClass(w.pct)" [style.width.%]="w.pct"></div></div>
+                  }
                 </div>
+              }
+              @if (usagePct() >= warnAt) {
+                <p class="text-xs" [class]="textClass(usagePct())">{{ usagePct() >= dangerAt ? 'Quota presque épuisé : l’agent sera suspendu à 100\u00a0%.' : 'Vous approchez de votre limite.' }}</p>
               }
             </div>
           }
@@ -268,11 +274,16 @@ export class Composer {
     return this.slashCommands().filter((c) => c.command.slice(1).toLowerCase().includes(q));
   });
 
-  /** Fenêtres de crédits (utilisateur puis équipes avec plafond). */
+  /** Fenêtres de quota en pourcentage (utilisateur puis équipes avec plafond) ; jamais de crédits. */
+  protected readonly warnAt = QUOTA_WARN;
+  protected readonly dangerAt = QUOTA_DANGER;
+  protected readonly barClass = quotaBarClass;
+  protected readonly textClass = quotaTextClass;
+  protected readonly stroke = quotaStroke;
   protected readonly usageRows = computed(() => {
     const u = this.store.usage();
     if (!u) return [];
-    const rows = u.user.windows.map((w) => this.row(w, w.window === '5h' ? 'Limite de 5 heures' : '7 jours glissants'));
+    const rows = u.user.windows.map((w) => this.row(w, windowLabel(w.window)));
     for (const t of u.teams) for (const w of t.windows) if (w.limit !== null) rows.push(this.row(w, `Équipe ${t.teamName} · ${w.window === '5h' ? '5 h' : '7 j'}`));
     return rows;
   });
@@ -289,9 +300,9 @@ export class Composer {
   }
 
   private row(w: WindowUsageDto, label: string) {
-    const pct = w.limit === null || Number(w.limit) === 0 ? null : Math.min(100, Math.round(((Number(w.used) + Number(w.reserved)) / Number(w.limit)) * 100));
-    const reset = w.resetsAt ? `Réinitialisation ${formatReset(w.resetsAt)}` : '';
-    return { label, pct, reset, used: Number(w.used).toLocaleString('fr-FR', { maximumFractionDigits: 2 }) };
+    const pct = quotaPct(w);
+    const reset = pct !== null && w.resetsAt ? `Réinitialisation ${formatReset(w.resetsAt)}` : '';
+    return { label, pct, reset };
   }
 
   /* ------------------------------- Menus ------------------------------- */
@@ -487,9 +498,3 @@ export class Composer {
   }
 }
 
-function formatReset(iso: string): string {
-  const d = new Date(iso);
-  const sameDay = d.toDateString() === new Date().toDateString();
-  const time = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  return sameDay ? `à ${time}` : `le ${d.toLocaleDateString('fr-FR', { weekday: 'short' })} ${time}`;
-}

@@ -4,11 +4,12 @@ import type { NotificationDto, UsageSummaryDto, WorkspaceDto } from '@cap/contra
 import { Api } from '../../core/api.service';
 import { AuthStore } from '../../core/auth.store';
 import { Icon } from '../../shared/icon';
-import { AgoPipe, CreditsPipe } from '../../shared/pipes';
+import { AgoPipe } from '../../shared/pipes';
+import { QUOTA_WARN, formatReset, quotaBarClass, quotaPct, quotaTextClass } from '../../shared/quota';
 
 @Component({
   selector: 'cap-home',
-  imports: [RouterLink, Icon, AgoPipe, CreditsPipe],
+  imports: [RouterLink, Icon, AgoPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="h-full overflow-y-auto">
@@ -17,11 +18,15 @@ import { AgoPipe, CreditsPipe } from '../../shared/pipes';
         <p class="mt-1 text-sm text-stone-500">Reprenez un workspace ou démarrez une nouvelle tâche.</p>
         <div class="mt-6 grid gap-4 md:grid-cols-3">
           @for (w of windows(); track w.window) {
+            @let p = pct(w);
             <div class="card p-4">
-              <div class="text-xs text-stone-500 uppercase">Crédits {{ w.window === '5h' ? '5 heures' : '7 jours' }}</div>
-              <div class="mt-1 text-2xl font-semibold">{{ w.used | credits }}<span class="text-sm font-normal text-stone-500"> / {{ w.limit | credits }}</span></div>
-              @if (w.limit) {
-                <div class="mt-2 h-1.5 rounded bg-stone-200 dark:bg-stone-800"><div class="h-1.5 rounded bg-accent-500" [style.width.%]="pct(w.used, w.limit)"></div></div>
+              <div class="text-xs text-stone-500 uppercase">Quota · {{ w.window === '5h' ? '5 heures' : '7 jours' }}</div>
+              @if (p === null) {
+                <div class="mt-1 text-2xl font-semibold">Illimité</div>
+              } @else {
+                <div class="mt-1 text-2xl font-semibold tabular-nums" [class]="p >= warnAt ? textClass(p) : ''">{{ p }} %<span class="text-sm font-normal text-stone-500"> utilisé</span></div>
+                <div class="mt-2 h-1.5 rounded bg-stone-200 dark:bg-stone-800"><div class="h-1.5 rounded" [class]="barClass(p)" [style.width.%]="p"></div></div>
+                @if (w.resetsAt) { <div class="mt-1.5 text-xs text-stone-500">Réinitialisation {{ reset(w.resetsAt) }}</div> }
               }
             </div>
           }
@@ -77,7 +82,9 @@ export class HomePage implements OnInit {
     this.notifications.set(n.items.slice(0, 5));
   }
 
-  protected pct(used: string, limit: string) {
-    return Math.min(100, (Number(used) / Number(limit)) * 100);
-  }
+  protected readonly pct = quotaPct;
+  protected readonly barClass = quotaBarClass;
+  protected readonly textClass = quotaTextClass;
+  protected readonly reset = formatReset;
+  protected readonly warnAt = QUOTA_WARN;
 }
