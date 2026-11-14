@@ -20,12 +20,13 @@
       <table>
         <thead><tr><th>Image</th><th>Rôle</th></tr></thead>
         <tbody>
-          <tr><td><code>ghcr.io/shadow-p99/cap-web</code></td><td>Interface Angular et nginx (point d’entrée HTTP)</td></tr>
-          <tr><td><code>ghcr.io/shadow-p99/cap-api</code></td><td>API REST, authentification, flux temps réel (aussi utilisée pour les migrations)</td></tr>
-          <tr><td><code>ghcr.io/shadow-p99/cap-worker</code></td><td>Orchestration des runs, sandboxes, checkpoints, broker Git</td></tr>
-          <tr><td><code>ghcr.io/shadow-p99/cap-gateway</code></td><td>Proxy LLM et quotas, egress filtré, lecture Git</td></tr>
-          <tr><td><code>ghcr.io/shadow-p99/cap-preview</code></td><td>Accès aux previews</td></tr>
-          <tr><td><code>ghcr.io/shadow-p99/cap-sandbox</code></td><td>Image de sandbox (Pi, Git, Python, Node.js)</td></tr>
+          <tr><td><code>ghcr.io/shadow-p99/shipcove-web</code></td><td>Interface Angular et nginx (point d’entrée HTTP)</td></tr>
+          <tr><td><code>ghcr.io/shadow-p99/shipcove-api</code></td><td>API REST, authentification, flux temps réel (aussi utilisée pour les migrations)</td></tr>
+          <tr><td><code>ghcr.io/shadow-p99/shipcove-worker</code></td><td>Orchestration des runs, sandboxes, checkpoints, broker Git</td></tr>
+          <tr><td><code>ghcr.io/shadow-p99/shipcove-gateway</code></td><td>Proxy LLM et quotas, egress filtré, lecture Git</td></tr>
+          <tr><td><code>ghcr.io/shadow-p99/shipcove-preview</code></td><td>Accès aux previews</td></tr>
+          <tr><td><code>ghcr.io/shadow-p99/shipcove-docker-guard</code></td><td>Garde du moteur Docker (seul détenteur du socket)</td></tr>
+          <tr><td><code>ghcr.io/shadow-p99/shipcove-sandbox</code></td><td>Image de sandbox (Pi, Git, Python, Node.js)</td></tr>
         </tbody>
       </table>
       <p>Toutes les images portent la même version (<code>0.1.0</code>…). Épinglez-la ; ne déployez pas <code>latest</code> en production.</p>
@@ -39,7 +40,7 @@ cp .env.example .env</code></pre>
         <tbody>
           <tr><td><code>CAP_REGISTRY</code></td><td><code>ghcr.io/shadow-p99/</code> (avec la barre finale). Vide = images construites localement.</td></tr>
           <tr><td><code>CAP_VERSION</code></td><td>Version des images de la plateforme.</td></tr>
-          <tr><td><code>CAP_SANDBOX_IMAGE</code></td><td>Image de sandbox par défaut, ex. <code>ghcr.io/shadow-p99/cap-sandbox:0.1.0</code>.</td></tr>
+          <tr><td><code>CAP_SANDBOX_IMAGE</code></td><td>Image de sandbox par défaut, ex. <code>ghcr.io/shadow-p99/shipcove-sandbox:0.1.0</code>.</td></tr>
           <tr><td><code>CAP_PUBLIC_URL</code></td><td>URL publique, ex. <code>https://code.exemple.com</code> (liens des emails, URL de retour SSO et OAuth).</td></tr>
           <tr><td><code>CAP_PREVIEW_DOMAIN</code>, <code>CAP_PREVIEW_SCHEME</code>, <code>CAP_PREVIEW_PORT</code></td><td>Domaine des previews, ex. <code>preview.exemple.com</code>, <code>https</code>, <code>443</code>.</td></tr>
           <tr><td><code>CAP_COOKIE_SECURE</code></td><td><code>true</code> derrière HTTPS (obligatoire en production).</td></tr>
@@ -62,7 +63,7 @@ cp .env.example .env</code></pre>
       <h2>Démarrage</h2>
       <pre><code>./scripts/init-secrets.sh
 docker compose pull
-docker pull ghcr.io/shadow-p99/cap-sandbox:0.1.0
+docker pull ghcr.io/shadow-p99/shipcove-sandbox:0.1.0
 docker compose up -d
 docker compose ps</code></pre>
       <p>L’ordre est géré par Compose : PostgreSQL, Vault (initialisé et déverrouillé), Garage, amorçage (politiques Vault, buckets), migrations, puis les services applicatifs. Le profil <code>dev</code> (<code>--profile dev</code>) ajoute Mailpit et un LLM factice : ne l’activez pas en production.</p>

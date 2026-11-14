@@ -22,7 +22,7 @@ import {
   type SandboxHandle,
   type SandboxProvider,
 } from '@cap/sandbox';
-import { buildModelsJson, buildSettingsJson, type PiModelConfig } from '@cap/agent-runtime';
+import { PI_PLUGINS, buildModelsJson, buildSettingsJson, type PiModelConfig } from '@cap/agent-runtime';
 import { AppError, DB, ENV, EventsService, GitProviderClient, SettingsService, randomToken, sha256Hex } from '@cap/server-core';
 import { isUniqueViolation } from '@cap/server-core';
 import { LeaseService } from '@cap/storage';
@@ -292,6 +292,18 @@ export class SandboxManager {
   }
 
   private forgeCa: { at: number; pem: string } | null = null;
+  private readonly plugins = new Map<string, string[]>();
+
+  /** Plugins Pi présents dans l'image de cette sandbox (une image dérivée ou ancienne peut ne pas les avoir). */
+  async availablePlugins(sb: ActiveSandbox): Promise<string[]> {
+    const hit = this.plugins.get(sb.instanceId);
+    if (hit) return hit;
+    const r = await execCollect(this.provider, sb.handle, ['sh', '-c', PI_PLUGINS.map((p) => `[ -f '${p}' ] && echo '${p}'`).join('; ') + '; true'], { timeoutMs: 15_000 });
+    const found = r.stdout.toString('utf8').split('\n').filter((l) => (PI_PLUGINS as readonly string[]).includes(l));
+    if (this.plugins.size > 500) this.plugins.clear();
+    this.plugins.set(sb.instanceId, found);
+    return found;
+  }
 
   /** Certificat public de l'autorité des forges, servi par la gateway. */
   private async forgeCaPem(): Promise<string | null> {

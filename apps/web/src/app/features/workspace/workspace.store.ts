@@ -196,6 +196,7 @@ export class WorkspaceStore {
           outputTruncated: false,
           isError: false,
           filesTouched: [],
+          images: [],
           startedAt: e.ts,
           completedAt: null,
           durationMs: null,
@@ -216,6 +217,7 @@ export class WorkspaceStore {
           outputTruncated: d['truncated'] as boolean,
           durationMs: d['durationMs'] as number,
           filesTouched: d['filesTouched'] as string[],
+          images: (d['images'] as ToolCallDto['images'] | undefined) ?? t.images ?? [],
           completedAt: e.ts,
         }));
         return;

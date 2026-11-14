@@ -200,6 +200,8 @@ export const toolCalls = pgTable(
     outputTruncated: boolean().notNull().default(false),
     isError: boolean().notNull().default(false),
     filesTouched: jsonb().$type<string[]>().notNull().default([]),
+    /** Captures d'écran produites pendant l'appel (pièces jointes `source = agent`). */
+    images: jsonb().$type<Array<{ attachmentId: string; fileName: string; width: number | null; height: number | null }>>().notNull().default([]),
     startedAt: ts().notNull().defaultNow(),
     completedAt: ts(),
     durationMs: integer(),
@@ -238,6 +240,8 @@ export const attachments = pgTable(
     declaredMimeType: text(),
     detectedMimeType: text().notNull(),
     kind: text({ enum: ['image', 'text', 'archive', 'binary'] }).notNull(),
+    /** `user` : déposée par l'utilisateur ; `agent` : produite par Pi (capture d'écran). */
+    source: text({ enum: ['user', 'agent'] }).notNull().default('user'),
     size: bigint({ mode: 'number' }).notNull(),
     sha256: text().notNull(),
     /** Clé S3 dans le préfixe `attachments/` (permissions distinctes des snapshots). */

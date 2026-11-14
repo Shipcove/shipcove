@@ -63,7 +63,8 @@ export class CheckpointService {
   }
 
   private async doCheckpoint(req: CheckpointRequest): Promise<CheckpointResult> {
-    const { excludes } = { excludes: (await this.settings.section('sandbox')).checkpointExcludes };
+    // Captures d'écran de Pi : conservées comme pièces jointes, jamais dans les checkpoints.
+    const excludes = [...(await this.settings.section('sandbox')).checkpointExcludes, '.cap/screenshots'];
     await this.db.update(workspaces).set({ syncState: 'syncing' }).where(eq(workspaces.id, req.workspaceId));
     let attempt = 0;
     for (;;) {

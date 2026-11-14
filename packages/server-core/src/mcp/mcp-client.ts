@@ -21,7 +21,7 @@ interface JsonRpcResponse {
   error?: { code: number; message: string };
 }
 
-const CLIENT_INFO = { name: 'coding-agent-platform', version: '0.1.0' };
+const CLIENT_INFO = { name: 'shipcove', version: '0.1.0' };
 
 function resultText(result: unknown): McpCallResult {
   const r = result as { content?: Array<{ type: string; text?: string }>; isError?: boolean; structuredContent?: unknown };

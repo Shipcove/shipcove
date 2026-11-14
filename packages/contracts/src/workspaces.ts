@@ -107,6 +107,14 @@ export interface MessageDto {
   completedAt: string | null;
 }
 
+/** Capture d'écran produite par Pi pendant un appel d'outil (servie par `/workspaces/:id/screenshots/:attachmentId`). */
+export interface ToolImageDto {
+  attachmentId: string;
+  fileName: string;
+  width: number | null;
+  height: number | null;
+}
+
 export interface ToolCallDto {
   id: string;
   runId: string;
@@ -118,6 +126,7 @@ export interface ToolCallDto {
   outputTruncated: boolean;
   isError: boolean;
   filesTouched: string[];
+  images: ToolImageDto[];
   startedAt: string;
   completedAt: string | null;
   durationMs: number | null;

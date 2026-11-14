@@ -10,7 +10,7 @@ const cfg: GuardConfig = { sandboxNetwork: 'cap-sandbox', sandboxUser: '10001:10
 const TOKEN = 't'.repeat(40);
 
 const sandboxBody = () => ({
-  Image: 'cap-sandbox:0.1.0',
+  Image: 'shipcove-sandbox:0.1.0',
   User: '10001:10001',
   Labels: { 'cap.sandbox': 'true' },
   HostConfig: {
@@ -131,7 +131,7 @@ describe.skipIf(!DOCKER)('garde Docker contre le vrai moteur', () => {
       instanceId: `guard-test-${Date.now()}`,
       workspaceId: 'w',
       ownerId: 'o',
-      image: 'cap-sandbox:0.1.0',
+      image: 'shipcove-sandbox:0.1.0',
       resources: { cpu: 1, memoryMb: 512, diskMb: 1024, pidsLimit: 256 },
       env: {},
     } as never);

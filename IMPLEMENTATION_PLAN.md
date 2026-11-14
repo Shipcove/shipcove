@@ -105,3 +105,7 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
   interne du proxy des forges : 5 contournements corrigés (chemin LFS dans la requête et en-tête
   Host imposé par la sandbox, chemins non canoniques, GraphQL groupé / brut / persisté / GET,
   surcharge de méthode, commentaire entre nom de mutation et arguments).
+- 2026-11-15 : renommage Shipcove (marque, images `shipcove-*` ; préfixe interne `cap` conservé) ;
+  captures d'écran par Pi (plugin `browser` : Chromium de la sandbox, actions avant capture),
+  miniatures et visionneuse dans la conversation ; correctif : « Connection error » intermittent de
+  Pi vers la gateway (délai keep-alive du serveur plus court que celui du client).

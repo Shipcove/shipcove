@@ -34,7 +34,7 @@ export class MfaService {
     const ref = await this.secrets.write(`mfa/${userId}/totp-pending`, { secret });
     await this.db.delete(mfaFactors).where(and(eq(mfaFactors.userId, userId), eq(mfaFactors.type, 'totp')));
     await this.db.insert(mfaFactors).values({ userId, type: 'totp', secretEnc: ref });
-    return { secret, otpauthUrl: generateURI({ issuer: 'Coding Agent Platform', label, secret }) };
+    return { secret, otpauthUrl: generateURI({ issuer: 'Shipcove', label, secret }) };
   }
 
   /** Confirme l'enrôlement et renvoie les codes de récupération (affichés une seule fois). */

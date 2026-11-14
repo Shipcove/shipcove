@@ -100,6 +100,7 @@ export class ConversationController {
           outputTruncated: c.outputTruncated,
           isError: c.isError,
           filesTouched: c.filesTouched,
+          images: c.images,
           startedAt: c.startedAt.toISOString(),
           completedAt: c.completedAt?.toISOString() ?? null,
           durationMs: c.durationMs,
@@ -151,7 +152,7 @@ export class ConversationController {
         const owned = await this.db
           .select({ id: attachments.id, kind: attachments.kind })
           .from(attachments)
-          .where(and(inArray(attachments.id, body.attachmentIds), eq(attachments.ownerId, user.id), eq(attachments.workspaceId, id), eq(attachments.status, 'ready'), isNull(attachments.messageId)));
+          .where(and(inArray(attachments.id, body.attachmentIds), eq(attachments.ownerId, user.id), eq(attachments.workspaceId, id), eq(attachments.status, 'ready'), eq(attachments.source, 'user'), isNull(attachments.messageId)));
         if (owned.length !== body.attachmentIds.length) throw new AppError('attachment_rejected', 'Pièce jointe invalide ou déjà utilisée');
         // Capacités du modèle LiteLLM sélectionné : images refusées si non supportées.
         if (model && !model.supportsImages && owned.some((a) => a.kind === 'image')) {

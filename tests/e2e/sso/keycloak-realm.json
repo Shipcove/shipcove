@@ -53,7 +53,7 @@
   "clients": [
     {
       "clientId": "cap-oidc",
-      "name": "Coding Agent Platform (OIDC)",
+      "name": "Shipcove (OIDC)",
       "protocol": "openid-connect",
       "enabled": true,
       "publicClient": false,
@@ -73,7 +73,7 @@
     },
     {
       "clientId": "cap-saml-sp",
-      "name": "Coding Agent Platform (SAML)",
+      "name": "Shipcove (SAML)",
       "protocol": "saml",
       "enabled": true,
       "frontchannelLogout": true,

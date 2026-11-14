@@ -43,7 +43,7 @@ type Row = Record<string, never>;
     </table></div>
     <form class="card mt-3 grid gap-2 p-4 md:grid-cols-5" (ngSubmit)="addImage()">
       <input class="input" name="n" placeholder="nom" [(ngModel)]="img.name" /><input class="input" name="v" placeholder="version" [(ngModel)]="img.version" />
-      <input class="input" name="r" placeholder="référence (registre/cap-sandbox:0.1.0)" [(ngModel)]="img.reference" /><input class="input" name="d" placeholder="sha256:…" [(ngModel)]="img.digest" />
+      <input class="input" name="r" placeholder="référence (registre/shipcove-sandbox:0.1.0)" [(ngModel)]="img.reference" /><input class="input" name="d" placeholder="sha256:…" [(ngModel)]="img.digest" />
       <input class="input" name="p" placeholder="version de Pi" [(ngModel)]="img.piVersion" />
       <button class="btn-secondary md:w-fit">Enregistrer l’image</button>
     </form>
@@ -54,7 +54,7 @@ export class AdminSandboxes implements OnInit {
   private readonly toast = inject(ToastService);
   protected readonly instances = signal<Array<Record<string, Row>>>([]);
   protected readonly images = signal<Row[]>([]);
-  protected img = { name: 'cap-sandbox', version: '', reference: '', digest: '', piVersion: '0.73.1' };
+  protected img = { name: 'shipcove-sandbox', version: '', reference: '', digest: '', piVersion: '0.73.1' };
   async ngOnInit() {
     this.instances.set(await this.api.get('/admin/sandboxes'));
     this.images.set(await this.api.get('/admin/sandbox-images'));

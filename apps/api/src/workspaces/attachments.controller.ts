@@ -150,7 +150,7 @@ export class AttachmentsController {
     const [a] = await this.db
       .select()
       .from(attachments)
-      .where(and(eq(attachments.id, attachmentId), eq(attachments.workspaceId, id), isNull(attachments.messageId)));
+      .where(and(eq(attachments.id, attachmentId), eq(attachments.workspaceId, id), isNull(attachments.messageId), eq(attachments.source, 'user')));
     if (!a) throw new AppError('not_found', 'Pièce jointe introuvable ou déjà envoyée');
     if (a.status === 'ready') await this.storage.deleteMany(this.storage.attachmentsBucket, [a.storageKey]);
     await this.db.delete(attachments).where(eq(attachments.id, attachmentId));
@@ -169,5 +169,37 @@ function isProbablyText(buf: Buffer): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Captures d'écran produites par Pi : visibles par quiconque peut lire la conversation (propriétaire
+ * et personnes avec qui elle est partagée), contrairement aux pièces jointes déposées.
+ */
+@ApiTags('attachments')
+@Controller('workspaces/:id/screenshots')
+export class ScreenshotsController {
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    private readonly storage: ObjectStorage,
+    private readonly access: AccessService,
+  ) {}
+
+  @Get(':attachmentId')
+  async get(@Param('id', uuid) id: string, @Param('attachmentId', uuid) attachmentId: string, @CurrentUser() user: AuthUser, @Res() res: Response) {
+    await this.access.requireWorkspaceRead(user, id);
+    const [a] = await this.db
+      .select()
+      .from(attachments)
+      .where(and(eq(attachments.id, attachmentId), eq(attachments.workspaceId, id), eq(attachments.source, 'agent'), eq(attachments.status, 'ready'), isNull(attachments.deletedAt)));
+    if (!a || !IMAGE_TYPES.has(a.detectedMimeType)) throw new AppError('not_found', 'Capture introuvable');
+    const buf = await this.storage.getBuffer(this.storage.attachmentsBucket, a.storageKey);
+    if (!buf) throw new AppError('not_found', 'Capture indisponible');
+    res.setHeader('Content-Type', a.detectedMimeType);
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(a.fileName)}`);
+    res.setHeader('Cache-Control', 'private, max-age=86400, immutable');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.send(buf);
   }
 }

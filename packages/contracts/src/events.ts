@@ -10,6 +10,7 @@
  *   reprendre à `data.fromId`.
  * - Une reconnexion ne relance jamais Pi : le flux est lu depuis la base.
  */
+import type { ToolImageDto } from './workspaces.js';
 export const EVENT_SCHEMA_VERSION = 1 as const;
 
 export interface EventEnvelope<T extends AgentEventType = AgentEventType> {
@@ -47,6 +48,7 @@ export interface AgentEventDataMap {
     truncated: boolean;
     durationMs: number;
     filesTouched: string[];
+    images?: ToolImageDto[];
   };
   'file.changed': { paths: string[]; generation: number };
   'checkpoint.started': { generation: number };

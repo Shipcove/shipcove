@@ -69,7 +69,10 @@ export const PLAN_MODE_PROMPT =
   'L’utilisateur repassera en mode autonome pour exécuter le plan.';
 
 /** Ligne de commande de Pi en mode RPC dans la sandbox. */
-export function piCommand(opts: { sessionFile: string | null; skillDirs: string[]; tools?: readonly string[]; appendSystemPrompt?: string }): string[] {
+/** Plugins Pi livrés dans l'image de sandbox, chargés s'ils sont présents (images plus anciennes). */
+export const PI_PLUGINS = ['/opt/cap/pi-extension/browser.ts'] as const;
+
+export function piCommand(opts: { sessionFile: string | null; skillDirs: string[]; tools?: readonly string[]; appendSystemPrompt?: string; plugins?: readonly string[] }): string[] {
   return [
     'pi',
     '--mode',
@@ -79,6 +82,7 @@ export function piCommand(opts: { sessionFile: string | null; skillDirs: string[
     ...(opts.sessionFile ? ['--session', opts.sessionFile] : []),
     '--extension',
     '/opt/cap/pi-extension/index.ts',
+    ...(opts.plugins ?? []).flatMap((p) => ['--extension', p]),
     ...opts.skillDirs.flatMap((d) => ['--skill', d]),
     // Liste blanche appliquée par Pi à tous les outils (intégrés, extension, MCP).
     ...(opts.tools ? ['--tools', opts.tools.join(',')] : []),

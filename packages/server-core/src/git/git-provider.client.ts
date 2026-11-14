@@ -146,7 +146,7 @@ export class GitProviderClient {
     const url = isGitHub(forge.provider) ? `${origin}/login/oauth/access_token` : `${origin}/oauth/token`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'coding-agent-platform' },
+      headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'shipcove' },
       body: new URLSearchParams({ client_id: forge.clientId, client_secret: secret, ...params }),
       redirect: 'error',
       signal: AbortSignal.timeout(15_000),
@@ -209,7 +209,7 @@ export class GitProviderClient {
       ? { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
       : { Authorization: `Bearer ${token}` };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
-    headers['User-Agent'] = 'coding-agent-platform';
+    headers['User-Agent'] = 'shipcove';
     let res: Response;
     try {
       res = await fetch(`${await this.apiBase(conn.provider, conn.host)}${path}`, {
@@ -241,7 +241,7 @@ export class GitProviderClient {
   async whoAmI(provider: GitProviderKind, host: string, token: string): Promise<{ id: string; login: string; name: string | null; scopes: string[] }> {
     const isGh = isGitHub(provider);
     const res = await fetch(`${await this.apiBase(provider, host)}/user`, {
-      headers: isGh ? { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'coding-agent-platform' } : { Authorization: `Bearer ${token}` },
+      headers: isGh ? { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'shipcove' } : { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15_000),
     }).catch((err: Error) => {
       throw new GitProviderError(`Forge injoignable : ${err.message}`, null);

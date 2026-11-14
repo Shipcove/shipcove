@@ -4,8 +4,8 @@
   "private": true,
   "description": "Image officielle des sandboxes (Pi, git, gh, glab, Python, uv, Node.js LTS, npm).",
   "scripts": {
-    "image:build": "docker build -t cap-sandbox:0.1.0 -t cap-sandbox:latest .",
-    "image:test": "./test-image.sh cap-sandbox:0.1.0",
+    "image:build": "docker build -t shipcove-sandbox:0.1.0 -t shipcove-sandbox:latest .",
+    "image:test": "./test-image.sh shipcove-sandbox:0.1.0",
     "lint": "node --check bin/cap-snapshot"
   }
 }

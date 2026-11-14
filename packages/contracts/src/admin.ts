@@ -287,7 +287,7 @@ export const SmtpConfigSchema = z.object({
   username: z.string().max(500).optional(),
   password: z.string().max(4000).optional(),
   fromAddress: z.email(),
-  fromName: z.string().max(200).default('Coding Agent Platform'),
+  fromName: z.string().max(200).default('Shipcove'),
 });
 
 /* ---------- Utilisateurs (admin) ---------- */

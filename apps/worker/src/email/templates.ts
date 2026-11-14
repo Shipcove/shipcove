@@ -10,11 +10,11 @@ export const DEFAULT_TEMPLATES: Record<string, { subject: string; bodyText: stri
   },
   'auth.invitation': {
     subject: '{{inviter}} vous invite à rejoindre {{team}}',
-    bodyText: 'Bonjour,\n\n{{inviter}} vous invite à rejoindre l’équipe {{team}} sur Coding Agent Platform.\nCréez votre compte avec ce lien (valable 7 jours) :\n{{link}}',
+    bodyText: 'Bonjour,\n\n{{inviter}} vous invite à rejoindre l’équipe {{team}} sur Shipcove.\nCréez votre compte avec ce lien (valable 7 jours) :\n{{link}}',
   },
   'admin.smtp_test': {
     subject: 'Test de configuration SMTP',
-    bodyText: 'Ce message confirme que la configuration SMTP de Coding Agent Platform fonctionne.',
+    bodyText: 'Ce message confirme que la configuration SMTP de Shipcove fonctionne.',
   },
   'notification.generic': {
     subject: '{{title}}',

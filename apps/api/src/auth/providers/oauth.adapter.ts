@@ -50,7 +50,7 @@ export class GitHubAdapter {
       },
       'Échange du code GitHub',
     );
-    const headers = { accept: 'application/vnd.github+json', authorization: `Bearer ${token.access_token}`, 'user-agent': 'coding-agent-platform' };
+    const headers = { accept: 'application/vnd.github+json', authorization: `Bearer ${token.access_token}`, 'user-agent': 'shipcove' };
     const api = this.api(cfg);
     const user = await call<{ id: number; login: string; name: string | null; email: string | null; two_factor_authentication?: boolean }>(`${api}/user`, { headers }, 'Profil GitHub');
     const emails = await call<Array<{ email: string; primary: boolean; verified: boolean }>>(`${api}/user/emails`, { headers }, 'Emails GitHub').catch(() => []);
@@ -72,7 +72,7 @@ export class GitHubAdapter {
   }
 
   async test(cfg: GitHubOAuthConfig, clientSecret: string | undefined): Promise<string> {
-    const meta = await call<Record<string, unknown>>(`${this.api(cfg)}/meta`, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'coding-agent-platform' } }, 'API GitHub');
+    const meta = await call<Record<string, unknown>>(`${this.api(cfg)}/meta`, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'shipcove' } }, 'API GitHub');
     if (!clientSecret) throw new FederationError('sso_failed', 'Secret client absent');
     return `API GitHub joignable (${originOf(cfg.host)}${meta['installed_version'] ? `, version ${String(meta['installed_version'])}` : ''}) ; secret client présent`;
   }

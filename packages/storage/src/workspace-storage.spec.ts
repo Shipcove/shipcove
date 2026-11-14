@@ -1,6 +1,6 @@
 /**
  * Test d'intégration réel : sandbox Docker (image officielle), Garage S3, PostgreSQL.
- * Prérequis : `pnpm test:infra:up` et l'image `cap-sandbox:latest`.
+ * Prérequis : `pnpm test:infra:up` et l'image `shipcove-sandbox:latest`.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
@@ -59,7 +59,7 @@ async function sandbox(): Promise<SandboxHandle> {
     instanceId: randomUUID(),
     workspaceId,
     ownerId: randomUUID(),
-    image: 'cap-sandbox:latest',
+    image: 'shipcove-sandbox:latest',
     resources: { cpu: 1, memoryMb: 512, diskMb: 2048, pidsLimit: 256 },
     env: {},
   });

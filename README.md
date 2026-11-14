@@ -1,4 +1,6 @@
-# Coding Agent Platform
+# Shipcove
+
+> *Build in a safe cove. Ship with confidence.*
 
 Plateforme **auto-hébergeable** de coding agents pour équipes et entreprises.
 
@@ -53,6 +55,9 @@ supprimer exige une **approbation humaine**.
     `glab`.
   - Branche par défaut, branches protégées, fusion et suppression : uniquement après **approbation
     de l'opération exacte** (commit figé).
+- **Captures d'écran** : Pi lance le projet et le photographie avec le Chromium de la sandbox
+  (plugin Pi `browser`). Les captures s'affichent en miniatures dans la conversation et s'agrandissent
+  au clic.
 - **Previews** des applications lancées dans la sandbox, sur un domaine distinct et avec jeton.
 - **Pièces jointes** :
   - type réel détecté ;
@@ -105,8 +110,8 @@ cahier des charges dans [`SPEC.md`](SPEC.md).
 - `git` et `openssl` ;
 - 4 cœurs, 8 Go de RAM et 30 Go de disque au minimum.
 
-Les images sont publiées sur `ghcr.io/shadow-p99` (`cap-web`, `cap-api`, `cap-worker`,
-`cap-gateway`, `cap-preview`, `cap-sandbox`).
+Les images sont publiées sur `ghcr.io/shadow-p99` (`shipcove-web`, `shipcove-api`, `shipcove-worker`,
+`shipcove-gateway`, `shipcove-preview`, `shipcove-docker-guard`, `shipcove-sandbox`).
 
 ```bash
 # 1. Récupération de la pile Compose
@@ -117,7 +122,7 @@ cd coding-platform/infrastructure/docker
 cp .env.example .env
 #    → CAP_REGISTRY=ghcr.io/shadow-p99/
 #    → CAP_VERSION=0.1.0
-#    → CAP_SANDBOX_IMAGE=ghcr.io/shadow-p99/cap-sandbox:0.1.0
+#    → CAP_SANDBOX_IMAGE=ghcr.io/shadow-p99/shipcove-sandbox:0.1.0
 #    → CAP_ADMIN_PASSWORD : mot de passe de l'administrateur initial
 #    → CAP_DOCKER_GID     : groupe du socket Docker (stat -c %g /var/run/docker.sock)
 
@@ -126,14 +131,14 @@ cp .env.example .env
 
 # 4. Images de la plateforme et de la sandbox
 docker compose pull
-docker pull ghcr.io/shadow-p99/cap-sandbox:0.1.0
+docker pull ghcr.io/shadow-p99/shipcove-sandbox:0.1.0
 
 # 5. Démarrage (le profil « dev » ajoute Mailpit et un fournisseur LLM factice)
 docker compose --profile dev up -d
 ```
 
 **Depuis les sources** : avec Node.js 26 et pnpm 12.18, `pnpm install && pnpm images:build`
-construit les images localement (laisser `CAP_REGISTRY` vide et `CAP_SANDBOX_IMAGE=cap-sandbox:0.1.0`).
+construit les images localement (laisser `CAP_REGISTRY` vide et `CAP_SANDBOX_IMAGE=shipcove-sandbox:0.1.0`).
 
 Ouvrez <http://localhost:8080> et connectez-vous avec `CAP_ADMIN_EMAIL` / `CAP_ADMIN_PASSWORD`. La
 MFA (TOTP) est demandée aux administrateurs dès la première connexion. Ensuite :

@@ -149,7 +149,7 @@ services:
 
   # ----------------------------- Applications -----------------------------
   migrate:
-    image: ${CAP_REGISTRY:-}cap-api:${CAP_VERSION:-0.1.0}
+    image: ${CAP_REGISTRY:-}shipcove-api:${CAP_VERSION:-0.1.0}
     restart: "no"
     command: ["node", "node_modules/@cap/database/dist/migrate-cli.js"]
     environment:
@@ -160,7 +160,7 @@ services:
       postgres: { condition: service_healthy }
 
   api:
-    image: ${CAP_REGISTRY:-}cap-api:${CAP_VERSION:-0.1.0}
+    image: ${CAP_REGISTRY:-}shipcove-api:${CAP_VERSION:-0.1.0}
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -182,7 +182,7 @@ services:
       bootstrap: { condition: service_completed_successfully }
 
   worker:
-    image: ${CAP_REGISTRY:-}cap-worker:${CAP_VERSION:-0.1.0}
+    image: ${CAP_REGISTRY:-}shipcove-worker:${CAP_VERSION:-0.1.0}
     restart: unless-stopped
     # Aucun accès direct au socket Docker : les sandboxes sont créées via le garde (ADR 0014).
     environment:
@@ -192,7 +192,7 @@ services:
       VAULT_SECRET_ID_FILE: /secrets/approle/worker/secret_id
       SANDBOX_PROVIDER: docker
       SANDBOX_NETWORK: cap-sandbox
-      SANDBOX_IMAGE: ${CAP_SANDBOX_IMAGE:-cap-sandbox:0.1.0}
+      SANDBOX_IMAGE: ${CAP_SANDBOX_IMAGE:-shipcove-sandbox:0.1.0}
       GATEWAY_INTERNAL_URL: http://gateway:8081
       EGRESS_PROXY_URL: http://gateway:3128
       DOCKER_GUARD_URL: http://docker-guard:2375
@@ -209,7 +209,7 @@ services:
   # Seul détenteur du socket Docker : n'autorise que les opérations du modèle des sandboxes
   # (conteneurs durcis étiquetés cap.*), jamais de conteneur privilégié ni de montage de l'hôte.
   docker-guard:
-    image: ${CAP_REGISTRY:-}cap-docker-guard:${CAP_VERSION:-0.1.0}
+    image: ${CAP_REGISTRY:-}shipcove-docker-guard:${CAP_VERSION:-0.1.0}
     restart: unless-stopped
     group_add: ["${CAP_DOCKER_GID:-999}"]
     environment:
@@ -225,7 +225,7 @@ services:
     security_opt: ["no-new-privileges:true"]
 
   gateway:
-    image: ${CAP_REGISTRY:-}cap-gateway:${CAP_VERSION:-0.1.0}
+    image: ${CAP_REGISTRY:-}shipcove-gateway:${CAP_VERSION:-0.1.0}
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -242,7 +242,7 @@ services:
       bootstrap: { condition: service_completed_successfully }
 
   preview:
-    image: ${CAP_REGISTRY:-}cap-preview:${CAP_VERSION:-0.1.0}
+    image: ${CAP_REGISTRY:-}shipcove-preview:${CAP_VERSION:-0.1.0}
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -259,7 +259,7 @@ services:
       bootstrap: { condition: service_completed_successfully }
 
   web:
-    image: ${CAP_REGISTRY:-}cap-web:${CAP_VERSION:-0.1.0}
+    image: ${CAP_REGISTRY:-}shipcove-web:${CAP_VERSION:-0.1.0}
     restart: unless-stopped
     ports: ["${CAP_HTTP_BIND:-127.0.0.1}:${CAP_HTTP_PORT:-8080}:8080"]
     networks: [backend]

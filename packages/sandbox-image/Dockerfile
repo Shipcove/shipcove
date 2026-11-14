@@ -1,5 +1,5 @@
 # Image officielle des sandboxes — versionnée, verrouillée, testée (SPEC §10).
-# Contient : Pi (harness), Git, gh, glab, Bash, Python, pip, uv, Node.js LTS, npm, utilitaires.
+# Contient : Pi (harness), Git, gh, glab, Bash, Python, pip, uv, Node.js LTS, npm, Playwright + Chromium, utilitaires.
 # npm est présent pour les PROJETS DES UTILISATEURS uniquement (la plateforme utilise pnpm).
 ARG NODE_IMAGE=node:26-bookworm-slim
 FROM ${NODE_IMAGE}
@@ -8,6 +8,7 @@ ARG PI_VERSION=0.73.1
 ARG GH_VERSION=2.104.0
 ARG GLAB_VERSION=1.130.0
 ARG UV_VERSION=0.13.8
+ARG PLAYWRIGHT_VERSION=1.64.1
 ARG TARGETARCH=amd64
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -18,6 +19,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     NPM_CONFIG_FUND=false \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     UV_CACHE_DIR=/home/agent/.cache/uv \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/cap/browsers \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    NODE_PATH=/usr/local/lib/node_modules \
     npm_config_cache=/home/agent/.npm
 
 RUN apt-get update \
@@ -36,6 +40,15 @@ RUN curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_$
  && curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${UV_ARCH}-unknown-linux-gnu.tar.gz" -o /tmp/uv.tgz \
  && tar -xzf /tmp/uv.tgz -C /tmp && install -m 0755 /tmp/uv-${UV_ARCH}-unknown-linux-gnu/uv /tmp/uv-${UV_ARCH}-unknown-linux-gnu/uvx /usr/local/bin/ \
  && rm -rf /tmp/*
+
+# Navigateur pour les captures d'écran et les tests d'interface : Playwright (épinglé) et son
+# Chromium headless, avec polices et dépendances système. Utilisé par le plugin Pi « browser »
+# (/opt/cap/pi-extension/browser.ts) et disponible pour les scripts de l'agent (NODE_PATH).
+RUN npm install -g "playwright@${PLAYWRIGHT_VERSION}" \
+ && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD= playwright install --with-deps --only-shell chromium \
+ && apt-get install -y --no-install-recommends fonts-noto-color-emoji fonts-dejavu-core \
+ && rm -rf /var/lib/apt/lists/* /root/.npm \
+ && chmod -R a+rX /opt/cap/browsers
 
 # Harness Pi (version épinglée).
 RUN npm install -g --omit=dev "@mariozechner/pi-coding-agent@${PI_VERSION}" && npm cache clean --force
@@ -59,5 +72,5 @@ ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/opt/cap/bin/sandbox-init"]
 
 LABEL org.opencontainers.image.title="cap-sandbox" \
-      org.opencontainers.image.description="Image officielle des sandboxes Coding Agent Platform" \
+      org.opencontainers.image.description="Image officielle des sandboxes Shipcove" \
       cap.pi.version="${PI_VERSION}"

@@ -747,7 +747,7 @@ test('préparation de l’environnement : script par projet, une fois par sandbo
   assert.ok(evs.some((e) => e.type === 'message.completed' && /script de préparation du projet a échoué/.test(e.data.text)), 'Pi informé de l’échec');
 
   // Image par projet : choisie parmi les images actives ; changement → sandbox recréée.
-  const imageId = sql(`insert into sandbox_images (name, version, reference, pi_version, status, is_default) values ('cap-sandbox-e2e', '${uid()}', 'cap-sandbox:0.1.0', '0.73.1', 'active', false) returning id`).split('\n')[0];
+  const imageId = sql(`insert into sandbox_images (name, version, reference, pi_version, status, is_default) values ('cap-sandbox-e2e', '${uid()}', 'shipcove-sandbox:0.1.0', '0.73.1', 'active', false) returning id`).split('\n')[0];
   try {
     assert.equal((await lead.put(`/projects/${pid}/environment`, { sandboxImageId: '00000000-0000-4000-8000-000000000000', setupScript: null })).status, 400);
     const env = await lead.put(`/projects/${pid}/environment`, { sandboxImageId: imageId, setupScript: null });
@@ -844,4 +844,74 @@ test('services lancés par l’agent : rien sans demande, démarrage à la deman
   await lead.post(`/workspaces/${wsId}/stop`);
   for (let i = 0; i < 30 && serviceContainers(sbx).length; i++) await new Promise((r) => setTimeout(r, 1000));
   assert.equal(serviceContainers(sbx).length, 0, 'services supprimés avec la sandbox');
+});
+
+/** Lecture binaire authentifiée (images). */
+async function fetchBinary(client, path) {
+  const res = await fetch(`${BASE}/api/v1${path}`, { headers: { Cookie: [...client.cookies].map(([k, v]) => `${k}=${v}`).join('; ') } });
+  return { status: res.status, type: res.headers.get('content-type'), body: Buffer.from(await res.arrayBuffer()) };
+}
+
+test('captures d’écran : plugin browser de Pi (Chromium de la sandbox), scripts Playwright, miniatures dans la conversation, accès en lecture partagée', async () => {
+  const owner = await newUser();
+  const ws = await workspace(owner, 'Captures');
+  const html = '<!doctype html><meta charset="utf-8"><title>Démo captures</title><style>body{margin:0;font:32px sans-serif;background:#fef3c7}</style><h1 id="t">Bonjour Shipcove</h1><button id="b" onclick="document.getElementById(\'t\').textContent=\'Cliqué\'">Go</button>';
+  const setup = [
+    'mkdir -p /tmp/site',
+    `printf '%s' ${JSON.stringify(html).replace(/'/g, "'\\''")} > /tmp/site/index.html`,
+    '(cd /tmp/site && nohup python3 -m http.server 8000 --bind 127.0.0.1 > /tmp/http.log 2>&1 &)',
+    'for i in $(seq 30); do curl -sf -o /dev/null http://127.0.0.1:8000/ && break; sleep 0.5; done',
+  ].join(' && ');
+  const script = "const {chromium}=require('playwright');(async()=>{const b=await chromium.launch({args:['--no-sandbox','--disable-dev-shm-usage']});const p=await b.newPage({viewport:{width:640,height:480}});await p.goto('http://127.0.0.1:8000/');await p.screenshot({path:'/workspace/.cap/screenshots/script.png'});await b.close();})()";
+  const conv = await owner.get(`/workspaces/${ws.id}/conversation`);
+  const sent = await owner.post(
+    `/workspaces/${ws.id}/messages`,
+    {
+      text:
+        `Montre le site. [[tool:bash ${JSON.stringify({ command: setup })}]] ` +
+        `[[tool:browser_screenshot ${JSON.stringify({ url: 'http://127.0.0.1:8000/', name: 'Accueil' })}]] ` +
+        `[[tool:browser_screenshot ${JSON.stringify({ url: 'http://127.0.0.1:8000/', name: 'mobile après clic', mobile: true, actions: [{ type: 'click', selector: '#b' }] })}]] ` +
+        `[[tool:bash ${JSON.stringify({ command: `mkdir -p /workspace/.cap/screenshots && node -e ${JSON.stringify(script)}` })}]]`,
+    },
+    { 'Idempotency-Key': `f-${uid()}` },
+  );
+  assert.equal(sent.status, 201, JSON.stringify(sent.body));
+  const events = await owner.events(ws.id, conv.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === sent.body.runId, 420_000);
+  assert.equal(events.at(-1).type, 'run.completed', JSON.stringify(events.at(-1)));
+  const done = events.filter((e) => e.type === 'tool.completed');
+  assert.equal(done.length, 4, JSON.stringify(done.map((e) => e.data.output)));
+  const [, desktop, mobile, scripted] = done;
+  assert.ok(!desktop.data.isError, desktop.data.output);
+  assert.match(desktop.data.output, /Capture enregistrée/);
+  assert.match(desktop.data.output, /Démo captures/);
+  assert.match(desktop.data.output, /HTTP 200/);
+  assert.equal(desktop.data.images.length, 1);
+  assert.deepEqual([desktop.data.images[0].width, desktop.data.images[0].height], [1280, 800]);
+  assert.match(desktop.data.images[0].fileName, /-accueil\.png$/);
+  assert.equal(mobile.data.images[0].width, 780, 'mobile, densité 2');
+  assert.ok(Math.abs(mobile.data.images[0].height - 1688) <= 2, String(mobile.data.images[0].height));
+  assert.deepEqual([scripted.data.images[0].width, scripted.data.images[0].height], [640, 480], 'capture d’un script Playwright');
+  assert.equal(done[0].data.images.length, 0);
+
+  // Persistées dans la conversation et servies en PNG.
+  const reloaded = await owner.get(`/workspaces/${ws.id}/conversation`);
+  const calls = reloaded.body.messages.flatMap((m) => m.toolCalls);
+  assert.equal(calls.filter((c) => c.images.length).length, 3);
+  const img = await fetchBinary(owner, `/workspaces/${ws.id}/screenshots/${desktop.data.images[0].attachmentId}`);
+  assert.equal(img.status, 200);
+  assert.equal(img.type, 'image/png');
+  assert.equal(img.body.subarray(1, 4).toString(), 'PNG');
+
+  // Lecture : membre non autorisé refusé, puis autorisé une fois la conversation partagée.
+  const peer = await newUser();
+  const path = `/workspaces/${ws.id}/screenshots/${mobile.data.images[0].attachmentId}`;
+  assert.equal((await fetchBinary(peer, path)).status, 404);
+  assert.equal((await owner.post(`/conversations/${ws.conversationId}/shares`, { userId: peer.id })).status, 201);
+  assert.equal((await fetchBinary(peer, path)).status, 200);
+
+  // Une capture n'est pas une pièce jointe utilisateur : ni envoyable, ni supprimable par cette voie.
+  assert.equal((await owner.del(`/workspaces/${ws.id}/attachments/${desktop.data.images[0].attachmentId}`)).status, 404);
+  // Hors checkpoints : le dossier des captures n'apparaît pas dans les fichiers du workspace.
+  const files = await owner.get(`/workspaces/${ws.id}/files/all`);
+  assert.ok(!JSON.stringify(files.body ?? {}).includes('screenshots'), 'captures exclues des fichiers persistés');
 });

@@ -78,6 +78,13 @@
       "when": 1794680836194,
       "tag": "0010_service_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794698738481,
+      "tag": "0011_agent_screenshots",
+      "breakpoints": true
     }
   ]
 }

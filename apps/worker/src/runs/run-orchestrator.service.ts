@@ -19,6 +19,10 @@ import { JobRunner } from '../jobs/job-runner.service.js';
 import { CheckpointService } from '../sandbox/checkpoint.service.js';
 import { SandboxManager, type ActiveSandbox } from '../sandbox/sandbox-manager.service.js';
 import { SetupService } from '../sandbox/setup.service.js';
+import { ScreenshotsService } from '../sandbox/screenshots.service.js';
+
+/** Outils après lesquels on recherche de nouvelles captures d'écran. */
+const SCREENSHOT_TOOLS = new Set(['bash', 'browser_screenshot']);
 import { ServicesService } from '../sandbox/services.service.js';
 import { BridgeRpcService } from './bridge-rpc.service.js';
 
@@ -81,6 +85,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     private readonly runQueue: RunQueueService,
     private readonly environment: EnvironmentService,
     private readonly setup: SetupService,
+    private readonly screenshots: ScreenshotsService,
     private readonly services: ServicesService,
   ) {}
 
@@ -190,6 +195,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     const command = piCommand({
       sessionFile: conv.piSessionPath,
       skillDirs: [],
+      plugins: await this.sandboxes.availablePlugins(sandbox),
       ...(planMode ? { tools: PLAN_MODE_TOOLS, appendSystemPrompt: PLAN_MODE_PROMPT } : {}),
     });
     // Variables et secrets du projet / de l'équipe : processus de Pi (donc ses commandes) uniquement,
@@ -544,6 +550,13 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           }
           const files = ctx.toolFiles.get(e.toolCallId) ?? [];
           const output = scrubSecrets(e.output, ctx.secretValues);
+          // Captures d'écran de Pi (plugin browser ou scripts) : affichées dans la carte de l'outil.
+          const images = SCREENSHOT_TOOLS.has(e.toolName)
+            ? await this.screenshots.collect(ctx.sandbox, started).catch((err) => {
+                this.logger.warn(`captures (${ctx.runId}) : ${(err as Error).message}`);
+                return [];
+              })
+            : [];
           await this.db
             .update(toolCalls)
             .set({
@@ -552,6 +565,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
               outputTruncated: output.includes('[sortie tronquée]'),
               isError: e.isError,
               filesTouched: files,
+              images,
               completedAt: new Date(),
               durationMs,
             })
@@ -560,7 +574,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           this.push(ctx, {
             type: 'tool.completed',
             runId: ctx.runId,
-            data: { toolCallId: e.toolCallId, isError: e.isError, output: out, truncated: out.length < output.length, durationMs, filesTouched: files },
+            data: { toolCallId: e.toolCallId, isError: e.isError, output: out, truncated: out.length < output.length, durationMs, filesTouched: files, images },
           });
           await this.sandboxes.touch(ctx.workspaceId);
           break;

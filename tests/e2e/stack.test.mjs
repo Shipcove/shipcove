@@ -184,7 +184,7 @@ test('forges via la plateforme seulement : TLS intercepté, jeton de run, garde-
   const events = await ctx.dev.events(ctx.ws.id, conv.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === sent.body.runId, 300_000);
   const out = events.find((e) => e.type === 'tool.completed').data.output;
   assert.match(out, /token:cap_rt_/, out);
-  assert.match(out, /issuer:.*Coding Agent Platform/i, `certificat de l’autorité des forges :\n${out}`);
+  assert.match(out, /issuer:.*Shipcove/i, `certificat de l’autorité des forges :\n${out}`);
   assert.match(out, /HTTP\/1\.1 403/, out);
   assert.match(out, /x-cap-forge-denied: 1/i, out);
   for (const k of ['direct', 'registry', 'meta', 'pg']) assert.match(out, new RegExp(`${k}:blocked`), `${k} non bloqué :\n${out}`);

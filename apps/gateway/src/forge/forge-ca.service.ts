@@ -74,7 +74,7 @@ export class ForgeCaService implements OnModuleInit {
       const now = Date.now();
       const ca = await x509.X509CertificateGenerator.createSelfSigned({
         serialNumber: serial(),
-        name: 'CN=Coding Agent Platform - forges (sandboxes)',
+        name: 'CN=Shipcove - forges (sandboxes)',
         notBefore: new Date(now - DAY),
         notAfter: new Date(now + 10 * 365 * DAY),
         signingAlgorithm: ALG,

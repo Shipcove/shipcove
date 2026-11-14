@@ -25,7 +25,7 @@ interface NavItem {
         <aside class="flex w-64 shrink-0 flex-col border-r border-stone-200 bg-stone-100/60 dark:border-stone-800 dark:bg-stone-900/60" aria-label="Navigation principale">
           <div class="flex items-center gap-2 px-4 py-3">
             <div class="flex h-7 w-7 items-center justify-center rounded-md bg-accent-600 font-mono text-sm font-bold text-white">π</div>
-            <span class="text-sm font-semibold">Coding Agent Platform</span>
+            <span class="text-sm font-semibold">Shipcove</span>
             <button class="btn-ghost ml-auto !p-1" (click)="collapsed.set(true)" aria-label="Masquer la navigation"><cap-icon name="sidebar" /></button>
           </div>
           <nav class="space-y-0.5 px-2">

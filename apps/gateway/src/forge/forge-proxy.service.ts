@@ -219,7 +219,7 @@ export class ForgeProxyService {
       req.resume();
       if (res.headersSent) return void res.end();
       const headers: Record<string, string> = { 'Content-Type': 'application/json; charset=utf-8', 'X-Cap-Forge-Denied': '1' };
-      if (status === 401) headers['WWW-Authenticate'] = 'Basic realm="Coding Agent Platform"';
+      if (status === 401) headers['WWW-Authenticate'] = 'Basic realm="Shipcove"';
       res.writeHead(status, headers).end(JSON.stringify({ message, documentation_url: 'https://github.com/Shadow-p99/coding-platform' }));
     }
   }

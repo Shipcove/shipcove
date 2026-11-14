@@ -1,8 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, inject, input, output, signal, viewChild } from '@angular/core';
 import type { ToolCallDto } from '@cap/contracts';
 import { Icon } from '../../shared/icon';
+import { WorkspaceStore } from './workspace.store';
 
-/** Appel d'outil repliable : statut, commande, sortie, durée et fichiers touchés. */
+/**
+ * Appel d'outil repliable : statut, commande, sortie, durée et fichiers touchés. Les captures d'écran
+ * de Pi s'affichent en miniatures (toujours visibles) et s'agrandissent au clic.
+ */
 @Component({
   selector: 'cap-tool-card',
   imports: [Icon],
@@ -25,6 +29,50 @@ import { Icon } from '../../shared/icon';
           }
         </span>
       </button>
+      @if (images().length) {
+        <div class="flex gap-2 overflow-x-auto border-t border-stone-200 px-3 py-2 dark:border-stone-800" role="list" aria-label="Captures d’écran">
+          @for (img of images(); track img.attachmentId; let i = $index) {
+            <button
+              role="listitem"
+              class="group relative shrink-0 overflow-hidden rounded-md border border-stone-200 bg-white shadow-sm transition hover:border-accent-400 hover:shadow focus-visible:outline-2 focus-visible:outline-accent-500 dark:border-stone-700 dark:bg-stone-950"
+              (click)="viewer.set(i)"
+              [attr.aria-label]="'Agrandir la capture ' + img.fileName"
+            >
+              <img [src]="src(img.attachmentId)" [alt]="img.fileName" loading="lazy" class="h-28 w-auto max-w-56 object-cover object-top" [attr.width]="thumbWidth(img)" height="112" />
+              <span class="absolute right-1 bottom-1 rounded bg-black/55 p-0.5 text-white opacity-0 transition group-hover:opacity-100"><cap-icon name="maximize" [size]="12" /></span>
+            </button>
+          }
+        </div>
+      }
+      @if (viewer() !== null && images()[viewer()!]; as img) {
+        <div
+          #overlay
+          class="fixed inset-0 z-50 flex flex-col bg-black/85 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          [attr.aria-label]="'Capture ' + img.fileName"
+          tabindex="-1"
+          (click)="viewer.set(null)"
+          (keydown)="onKey($event)"
+        >
+          <div class="mb-3 flex items-center gap-3 text-sm text-stone-200" (click)="$event.stopPropagation()">
+            <span class="truncate font-mono">{{ img.fileName }}</span>
+            @if (img.width && img.height) { <span class="text-stone-400">{{ img.width }} × {{ img.height }}</span> }
+            @if (images().length > 1) { <span class="text-stone-400">{{ viewer()! + 1 }} / {{ images().length }}</span> }
+            <a class="ml-auto rounded px-2 py-1 hover:bg-white/10" [href]="src(img.attachmentId)" target="_blank" rel="noopener">Taille réelle</a>
+            <button class="rounded p-1 hover:bg-white/10" (click)="viewer.set(null)" aria-label="Fermer"><cap-icon name="x" [size]="18" /></button>
+          </div>
+          <div class="relative flex min-h-0 flex-1 items-center justify-center">
+            @if (images().length > 1) {
+              <button class="absolute left-0 z-10 rounded-full bg-white/10 p-2 text-white hover:bg-white/20" (click)="step(-1, $event)" aria-label="Capture précédente"><cap-icon name="chevronLeft" [size]="20" /></button>
+            }
+            <img [src]="src(img.attachmentId)" [alt]="img.fileName" class="max-h-full max-w-full rounded object-contain shadow-2xl" (click)="$event.stopPropagation()" />
+            @if (images().length > 1) {
+              <button class="absolute right-0 z-10 rounded-full bg-white/10 p-2 text-white hover:bg-white/20" (click)="step(1, $event)" aria-label="Capture suivante"><cap-icon name="chevronRight" [size]="20" /></button>
+            }
+          </div>
+        </div>
+      }
       @if (open()) {
         <div class="border-t border-stone-200 dark:border-stone-800">
           @if (argsText()) {
@@ -53,12 +101,41 @@ export class ToolCard {
   readonly openFile = output<string>();
   protected readonly open = signal(false);
   protected readonly copied = signal(false);
+  protected readonly viewer = signal<number | null>(null);
+  private readonly store = inject(WorkspaceStore);
+  private readonly overlay = viewChild<ElementRef<HTMLElement>>('overlay');
+  protected readonly images = computed(() => this.call().images ?? []);
 
-  protected readonly icon = computed(() => ({ bash: 'terminal', read: 'eye', write: 'file', edit: 'edit' })[this.call().toolName] ?? (this.call().toolName.startsWith('platform_') ? 'git' : this.call().toolName.startsWith('mcp__') ? 'puzzle' : 'cpu'));
-  protected readonly label = computed(() => ({ bash: 'Commande', read: 'Lecture', write: 'Écriture', edit: 'Modification' })[this.call().toolName] ?? this.call().toolName);
+  constructor() {
+    // Focus sur la visionneuse à l'ouverture (clavier : Échap, flèches).
+    effect(() => this.overlay()?.nativeElement.focus());
+  }
+
+  protected src(attachmentId: string): string {
+    return `/api/v1/workspaces/${this.store.workspace()?.id}/screenshots/${attachmentId}`;
+  }
+
+  protected thumbWidth(img: { width: number | null; height: number | null }): number | null {
+    return img.width && img.height ? Math.min(224, Math.round((112 * img.width) / img.height)) : null;
+  }
+
+  protected step(delta: number, ev?: Event) {
+    ev?.stopPropagation();
+    const n = this.images().length;
+    this.viewer.update((i) => (i === null ? null : (i + delta + n) % n));
+  }
+
+  protected onKey(ev: KeyboardEvent) {
+    if (ev.key === 'Escape') this.viewer.set(null);
+    else if (ev.key === 'ArrowRight') this.step(1);
+    else if (ev.key === 'ArrowLeft') this.step(-1);
+  }
+
+  protected readonly icon = computed(() => ({ bash: 'terminal', read: 'eye', write: 'file', edit: 'edit', browser_screenshot: 'image' })[this.call().toolName] ?? (this.call().toolName.startsWith('platform_') ? 'git' : this.call().toolName.startsWith('mcp__') ? 'puzzle' : 'cpu'));
+  protected readonly label = computed(() => ({ bash: 'Commande', read: 'Lecture', write: 'Écriture', edit: 'Modification', browser_screenshot: 'Capture d’écran' })[this.call().toolName] ?? this.call().toolName);
   protected readonly summary = computed(() => {
     const a = (this.call().args ?? {}) as Record<string, unknown>;
-    return String(a['command'] ?? a['path'] ?? a['file_path'] ?? a['local_branch'] ?? a['title'] ?? '').split('\n')[0].slice(0, 120);
+    return String(a['command'] ?? a['path'] ?? a['file_path'] ?? a['url'] ?? a['local_branch'] ?? a['title'] ?? '').split('\n')[0].slice(0, 120);
   });
   protected readonly argsText = computed(() => {
     const a = (this.call().args ?? {}) as Record<string, unknown>;

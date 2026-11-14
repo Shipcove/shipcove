@@ -11,7 +11,7 @@ export const WorkerEnvSchema = BaseEnvSchema.extend({
   DOCKER_GUARD_TOKEN: z.string().min(32).optional(),
   SANDBOX_NETWORK: z.string().default('cap-sandbox'),
   /** Image officielle par défaut (si aucune image active en base). */
-  SANDBOX_IMAGE: z.string().default('cap-sandbox:0.1.0'),
+  SANDBOX_IMAGE: z.string().default('shipcove-sandbox:0.1.0'),
   SANDBOX_RUNTIME: z.string().optional(),
   K8S_NAMESPACE: z.string().default('cap-sandboxes'),
   K8S_RUNTIME_CLASS: z.string().optional(),

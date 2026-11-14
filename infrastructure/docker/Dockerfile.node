@@ -1,5 +1,5 @@
 # Images des applications Node (api, worker, gateway, preview) — multi-stage, pnpm uniquement.
-# Usage : docker build -f infrastructure/docker/Dockerfile.node --target api -t cap-api:0.1.0 .
+# Usage : docker build -f infrastructure/docker/Dockerfile.node --target api -t shipcove-api:0.1.0 .
 ARG NODE_IMAGE=node:26-bookworm-slim
 ARG PNPM_VERSION=12.18.0
 

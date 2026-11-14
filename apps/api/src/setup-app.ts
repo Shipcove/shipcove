@@ -35,7 +35,7 @@ export async function createApp(env: ApiEnv, opts: { secretProvider?: SecretProv
 
 export function buildOpenApi(app: INestApplication): OpenAPIObject {
   const config = new DocumentBuilder()
-    .setTitle('Coding Agent Platform API')
+    .setTitle('Shipcove API')
     .setDescription(
       'API REST v1. Authentification par cookie de session `cap_session` + en-tête `X-CSRF-Token` ' +
         '(valeur du cookie `cap_csrf`) sur toute méthode non sûre. Erreurs : `{ error: { code, message, correlationId } }`. ' +

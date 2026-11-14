@@ -83,7 +83,7 @@ export class GitReadProxyController {
   }
 
   private async forward(url: string, method: 'GET' | 'POST', auth: string | null, req: Request, res: Response): Promise<void> {
-    const headers: Record<string, string> = { 'User-Agent': 'git/2 (coding-agent-platform)' };
+    const headers: Record<string, string> = { 'User-Agent': 'git/2 (shipcove)' };
     for (const h of ['content-type', 'content-encoding', 'accept', 'git-protocol']) {
       const v = req.headers[h];
       if (typeof v === 'string') headers[h] = v;

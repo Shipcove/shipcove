@@ -29,7 +29,7 @@ pip install -r requirements.txt</code></pre>
       </ul>
 
       <h2>Image de sandbox</h2>
-      <p>Chaque projet choisit parmi les images <strong>actives</strong> déclarées par l’administrateur (ex. une variante avec un JDK, Go ou Rust). L’image officielle <code>ghcr.io/shadow-p99/cap-sandbox</code> contient Pi, Git, Python, uv, Node.js et npm ; une image dérivée part de celle-ci (<code>FROM ghcr.io/shadow-p99/cap-sandbox:&lt;version&gt;@sha256:…</code>). Changer d’image recrée la sandbox au run suivant.</p>
+      <p>Chaque projet choisit parmi les images <strong>actives</strong> déclarées par l’administrateur (ex. une variante avec un JDK, Go ou Rust). L’image officielle <code>ghcr.io/shadow-p99/shipcove-sandbox</code> contient Pi (et son plugin de captures d’écran), Git, Python, uv, Node.js, npm, Playwright et Chromium ; une image dérivée part de celle-ci (<code>FROM ghcr.io/shadow-p99/shipcove-sandbox:&lt;version&gt;@sha256:…</code>). Changer d’image recrée la sandbox au run suivant.</p>
 
       <h2>Services lancés par l’agent</h2>
       <p>Pi démarre <strong>lui-même, quand il en a besoin</strong>, des bases de données, caches ou files de messages choisis dans un <strong>catalogue géré par l’administrateur</strong> (<em>Administration → Sandboxes &amp; previews</em>) : image, port, sonde de santé, variables par défaut, mémoire. Rien ne démarre tant que l’agent ne le demande pas ; aucun réglage côté utilisateur.</p>

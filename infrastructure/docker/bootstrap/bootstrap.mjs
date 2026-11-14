@@ -211,7 +211,7 @@ async function bootstrapVault() {
 
   const { json: mounts } = await http('GET', `${VAULT}/v1/sys/mounts`, { token });
   if (!mounts['cap/']) {
-    await http('POST', `${VAULT}/v1/sys/mounts/cap`, { token, body: { type: 'kv', options: { version: '2' }, description: 'Coding Agent Platform' } });
+    await http('POST', `${VAULT}/v1/sys/mounts/cap`, { token, body: { type: 'kv', options: { version: '2' }, description: 'Shipcove' } });
     log('KV v2 monté sur cap/');
   }
   const { json: audits } = await http('GET', `${VAULT}/v1/sys/audit`, { token });

@@ -2,7 +2,7 @@
 <html lang="fr">
   <head>
     <title>Démarrage rapide</title>
-    <meta name="description" content="Installer et lancer Coding Agent Platform avec Docker Compose à partir des images publiées sur ghcr.io." />
+    <meta name="description" content="Installer et lancer Shipcove avec Docker Compose à partir des images publiées sur ghcr.io." />
   </head>
   <body>
     <main>
@@ -32,7 +32,7 @@ cd coding-platform/infrastructure/docker</code></pre>
           <pre><code># Images publiées sur ghcr.io
 CAP_REGISTRY=ghcr.io/shadow-p99/
 CAP_VERSION=0.1.0
-CAP_SANDBOX_IMAGE=ghcr.io/shadow-p99/cap-sandbox:0.1.0
+CAP_SANDBOX_IMAGE=ghcr.io/shadow-p99/shipcove-sandbox:0.1.0
 
 # Administrateur initial (créé au premier démarrage s'il n'en existe aucun)
 CAP_ADMIN_EMAIL=admin@exemple.com
@@ -50,7 +50,7 @@ CAP_DOCKER_GID=989</code></pre>
         <li>
           <h3>Télécharger les images et démarrer</h3>
           <pre><code>docker compose pull
-docker pull ghcr.io/shadow-p99/cap-sandbox:0.1.0
+docker pull ghcr.io/shadow-p99/shipcove-sandbox:0.1.0
 docker compose up -d</code></pre>
           <p>Au premier démarrage, Vault est initialisé et déverrouillé, le stockage S3 (Garage) est configuré et les migrations de base de données sont appliquées. Vérifiez l’état :</p>
           <pre><code>docker compose ps
@@ -94,7 +94,7 @@ curl -s http://localhost:8080/api/v1/health/ready</code></pre>
       <pre><code># dans .env : CAP_VERSION et CAP_SANDBOX_IMAGE vers la nouvelle version
 git pull
 docker compose pull
-docker pull ghcr.io/shadow-p99/cap-sandbox:&lt;version&gt;
+docker pull ghcr.io/shadow-p99/shipcove-sandbox:&lt;version&gt;
 docker compose up -d</code></pre>
       <p>Les migrations sont appliquées automatiquement par le service <code>migrate</code> avant le démarrage des API. Les sandboxes en cours conservent leur image jusqu’à leur prochain redémarrage.</p>
 
