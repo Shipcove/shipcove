@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnDestroy, computed, effect, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ToastService } from '../../core/toast.service';
@@ -158,7 +158,7 @@ export class WorkspacePage implements OnDestroy {
   constructor() {
     effect(() => {
       const id = this.workspaceId();
-      void this.store.open(id).catch((err) => this.error.set(err?.message ?? 'Workspace introuvable'));
+      untracked(() => void this.store.open(id).catch((err) => this.error.set(err?.message ?? 'Workspace introuvable')));
     });
     effect(() => {
       if (this.approval()) {

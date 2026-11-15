@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, output, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import type { ChangeScope, ChangesResponse, FileChangeDto, FileDiffDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
@@ -97,11 +97,14 @@ export class ChangesPanel {
   });
   protected readonly totals = computed(() => this.filtered().reduce((a, f) => ({ add: a.add + f.additions, del: a.del + f.deletions }), { add: 0, del: 0 }));
 
+  /** Identifiant seul : l'objet workspace change à chaque sauvegarde. */
+  private readonly workspaceId = computed(() => this.store.workspace()?.id ?? null);
+
   constructor() {
     effect(() => {
       this.scope();
       this.store.filesVersion();
-      if (this.store.workspace()) void this.reload();
+      if (this.workspaceId()) untracked(() => void this.reload());
     });
   }
 

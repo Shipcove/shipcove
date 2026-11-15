@@ -171,6 +171,23 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     await page.waitForSelector('cap-explorer button[title="app/main.js"]');
     await page.waitForTimeout(500);
     await page.screenshot({ path: new URL('files-pane.png', OUT).pathname });
+    // Arborescence : aucun rechargement en boucle, dossiers repliables et dépliables.
+    await page.fill('input[aria-label="Rechercher des fichiers"]', '');
+    let fileRequests = 0;
+    const onFileRequest = (r) => {
+      if (/\/files(\/all)?(\?|$)/.test(r.url())) fileRequests++;
+    };
+    page.on('request', onFileRequest);
+    await page.waitForTimeout(4000);
+    page.off('request', onFileRequest);
+    assert.ok(fileRequests <= 2, `rechargements de l'arborescence en boucle : ${fileRequests} requêtes en 4 s`);
+    const appDir = page.locator('cap-explorer [role="treeitem"][title="app"]');
+    if ((await appDir.getAttribute('aria-expanded')) === 'true') {
+      await appDir.click();
+      await page.waitForSelector('cap-explorer [role="treeitem"][title="app/main.js"]', { state: 'detached', timeout: 5_000 });
+    }
+    await appDir.click();
+    await page.waitForSelector('cap-explorer [role="treeitem"][title="app/main.js"]', { timeout: 5_000 });
     // Bascule : le bouton du panneau latéral ferme l'explorateur.
     await page.click('button[aria-label="Panneau latéral"]');
     await page.waitForSelector('aside[aria-label="Explorateur de fichiers"]', { state: 'detached', timeout: 5_000 }).catch(() => assert.fail('explorateur fermé'));

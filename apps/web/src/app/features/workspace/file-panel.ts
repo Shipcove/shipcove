@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import type { FileContentDto } from '@cap/contracts';
 import { Api, ApiError } from '../../core/api.service';
 import { ToastService } from '../../core/toast.service';
@@ -68,11 +68,15 @@ export class FilePanel {
   protected readonly draft = signal<string | null>(null);
   protected readonly canEdit = computed(() => this.store.isOwner() && !!this.store.config()?.editor.manualEditingEnabled && this.file()?.content !== null && !this.file()?.binary);
 
+  /** Identifiant seul : l'objet workspace change à chaque sauvegarde. */
+  private readonly workspaceId = computed(() => this.store.workspace()?.id ?? null);
+
   constructor() {
     effect(() => {
       const p = this.path();
       this.store.filesVersion();
-      if (p && !this.editing()) void this.load(p);
+      const id = this.workspaceId();
+      if (p && id && !this.editing()) untracked(() => void this.load(p));
     });
   }
 

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import type { FileEntryDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
@@ -81,10 +81,16 @@ export class Explorer {
     return this.allFiles().filter((p) => !q || p.toLowerCase().includes(q)).slice(0, 2000);
   });
 
+  /** Identifiant seul : l'objet workspace change à chaque sauvegarde, pas l'arborescence. */
+  private readonly workspaceId = computed(() => this.store.workspace()?.id ?? null);
+
   constructor() {
+    // Dépendances explicites : version des fichiers et workspace. Le rechargement lit l'arbre
+    // courant (dossiers ouverts) : hors suivi, sinon chaque rechargement relancerait l'effet.
     effect(() => {
       this.store.filesVersion();
-      if (this.store.workspace()) void this.refresh();
+      const id = this.workspaceId();
+      if (id) untracked(() => void this.refresh());
     });
   }
 
@@ -112,7 +118,26 @@ export class Explorer {
     return items.map((i) => ({ ...i, depth }));
   }
 
+  private refreshing: Promise<void> | null = null;
+  private refreshAgain = false;
+
+  /** Un seul rechargement à la fois ; une demande pendant un rechargement en relance un à la fin. */
   private async refresh(): Promise<void> {
+    if (this.refreshing) {
+      this.refreshAgain = true;
+      return this.refreshing;
+    }
+    this.refreshing = this.reload().finally(() => {
+      this.refreshing = null;
+      if (this.refreshAgain) {
+        this.refreshAgain = false;
+        void this.refresh();
+      }
+    });
+    return this.refreshing;
+  }
+
+  private async reload(): Promise<void> {
     const id = this.store.workspace()!.id;
     void this.api
       .get<string[]>(`/workspaces/${id}/files/all`)
