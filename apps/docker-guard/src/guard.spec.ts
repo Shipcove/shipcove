@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -91,7 +92,12 @@ describe('politique du garde Docker', () => {
   });
 });
 
-const DOCKER = existsSync('/var/run/docker.sock');
+/**
+ * Intégration contre le vrai moteur : socket Docker ET image de sandbox présents (construite
+ * localement par tools/build-images.sh). Sinon (ex. CI des tests unitaires), le groupe est ignoré.
+ */
+const SANDBOX_IMAGE = 'shipcove-sandbox:0.1.0';
+const DOCKER = existsSync('/var/run/docker.sock') && spawnSync('docker', ['image', 'inspect', SANDBOX_IMAGE], { stdio: 'ignore' }).status === 0;
 
 describe.skipIf(!DOCKER)('garde Docker contre le vrai moteur', () => {
   let guard: http.Server;
