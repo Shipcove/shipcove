@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, injec
 import type { ToolCallDto } from '@cap/contracts';
 import { Icon } from '../../shared/icon';
 import { WorkspaceStore } from './workspace.store';
+import { CodeBlock } from '../../shared/code-block';
 
 /**
  * Appel d'outil repliable : statut, commande, sortie, durée et fichiers touchés. Les captures d'écran
@@ -9,7 +10,7 @@ import { WorkspaceStore } from './workspace.store';
  */
 @Component({
   selector: 'cap-tool-card',
-  imports: [Icon],
+  imports: [Icon, CodeBlock],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="my-1.5 min-w-0 overflow-hidden rounded-lg border border-stone-200 bg-stone-50 text-sm dark:border-stone-800 dark:bg-stone-900/70">
@@ -74,20 +75,22 @@ import { WorkspaceStore } from './workspace.store';
         </div>
       }
       @if (open()) {
-        <div class="border-t border-stone-200 dark:border-stone-800">
-          @if (argsText()) {
-            <pre class="max-h-48 overflow-auto bg-white px-3 py-2 font-mono text-xs whitespace-pre-wrap [overflow-wrap:anywhere] text-stone-700 dark:bg-stone-950 dark:text-stone-300">{{ argsText() }}</pre>
+        <div class="space-y-2 border-t border-stone-200 p-3 dark:border-stone-800 [&_.code-block]:my-0">
+          @if (command()) {
+            <cap-code-block [code]="command()" language="bash" label="bash" prompt="$" [wrap]="true" />
+          } @else if (argsText()) {
+            <cap-code-block [code]="argsText()" language="json" label="paramètres" />
           }
           @if (call().output) {
-            <div class="relative">
-              <pre class="max-h-96 overflow-auto bg-stone-900 px-3 py-2 font-mono text-xs whitespace-pre-wrap [overflow-wrap:anywhere] text-stone-100" [class.text-red-300]="call().isError">{{ call().output }}</pre>
-              <button class="btn-ghost absolute top-1 right-1 !p-1 !text-stone-300" (click)="copy()" aria-label="Copier la sortie"><cap-icon [name]="copied() ? 'check' : 'copy'" [size]="13" /></button>
-            </div>
+            <cap-code-block [code]="call().output" [label]="call().isError ? 'erreur' : 'sortie'" [tone]="call().isError ? 'error' : 'default'" maxHeight="24rem" />
           }
           @if (call().filesTouched.length) {
-            <div class="flex flex-wrap gap-1 px-3 py-2">
-              @for (f of call().filesTouched; track f) {
+            <div class="flex flex-wrap gap-1">
+              @for (f of shownFiles(); track f) {
                 <button class="badge bg-stone-200 font-mono text-stone-700 hover:bg-stone-300 dark:bg-stone-800 dark:text-stone-300" (click)="openFile.emit(f)">{{ f }}</button>
+              }
+              @if (call().filesTouched.length > shownFiles().length) {
+                <button class="badge bg-transparent text-stone-500 hover:text-stone-800 dark:hover:text-stone-200" (click)="allFiles.set(true)">+ {{ call().filesTouched.length - shownFiles().length }} autres</button>
               }
             </div>
           }
@@ -100,8 +103,15 @@ export class ToolCard {
   readonly call = input.required<ToolCallDto>();
   readonly openFile = output<string>();
   protected readonly open = signal(false);
-  protected readonly copied = signal(false);
   protected readonly viewer = signal<number | null>(null);
+  protected readonly allFiles = signal(false);
+  /** Fichiers touchés : les premiers seulement (un `git init` en touche des dizaines). */
+  protected readonly shownFiles = computed(() => {
+    const files = this.call().filesTouched;
+    if (this.allFiles() || files.length <= 12) return files;
+    // Les fichiers du projet d'abord, l'intérieur de .git ensuite.
+    return [...files].sort((a, b) => Number(a.includes('/.git/') || a.startsWith('.git/')) - Number(b.includes('/.git/') || b.startsWith('.git/'))).slice(0, 12);
+  });
   private readonly store = inject(WorkspaceStore);
   private readonly overlay = viewChild<ElementRef<HTMLElement>>('overlay');
   protected readonly images = computed(() => this.call().images ?? []);
@@ -137,9 +147,13 @@ export class ToolCard {
     const a = (this.call().args ?? {}) as Record<string, unknown>;
     return String(a['command'] ?? a['path'] ?? a['file_path'] ?? a['url'] ?? a['local_branch'] ?? a['title'] ?? '').split('\n')[0].slice(0, 120);
   });
+  /** Commande shell (outil bash), affichée avec coloration et invite `$`. */
+  protected readonly command = computed(() => {
+    if (this.call().toolName !== 'bash') return '';
+    return String(((this.call().args ?? {}) as Record<string, unknown>)['command'] ?? '');
+  });
   protected readonly argsText = computed(() => {
     const a = (this.call().args ?? {}) as Record<string, unknown>;
-    if (this.call().toolName === 'bash') return `$ ${a['command'] ?? ''}`;
     const { content: _c, ...rest } = a;
     const s = JSON.stringify(rest, null, 2);
     return s === '{}' ? '' : s;
@@ -149,9 +163,4 @@ export class ToolCard {
     return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
   });
 
-  protected async copy() {
-    await navigator.clipboard.writeText(this.call().output);
-    this.copied.set(true);
-    setTimeout(() => this.copied.set(false), 1500);
-  }
 }
