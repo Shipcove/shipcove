@@ -10,7 +10,7 @@ import type {
   UsageSummaryDto,
   WorkspaceDto,
 } from '@cap/contracts';
-import { Api, idempotencyKey } from '../../core/api.service';
+import { Api, ApiError, idempotencyKey } from '../../core/api.service';
 import { SseService, type SseHandle } from '../../core/sse.service';
 import { ToastService } from '../../core/toast.service';
 
@@ -122,9 +122,26 @@ export class WorkspaceStore {
     this.bumpFiles();
   }
 
+  /**
+   * Arrêt : le bouton passe aussitôt à « Arrêt en cours » (la fin effective arrive par SSE).
+   * Si le serveur ne connaît plus de run actif (déjà terminé, événement manqué), l'état local
+   * est resynchronisé au lieu d'afficher une erreur.
+   */
   async interrupt(): Promise<void> {
     const run = this.activeRun();
-    if (run) await this.api.post(`/workspaces/${this.workspace()!.id}/runs/${run.id}/interrupt`);
+    if (!run || run.status === 'interrupting') return;
+    const setStatus = (status: RunDto['status']) => this.runs.update((l) => l.map((r) => (r.id === run.id ? { ...r, status } : r)));
+    setStatus('interrupting');
+    try {
+      await this.api.post(`/workspaces/${this.workspace()!.id}/runs/${run.id}/interrupt`);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        await this.loadConversation();
+        return;
+      }
+      setStatus(run.status);
+      throw err;
+    }
   }
 
   async resume(): Promise<void> {

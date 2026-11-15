@@ -110,7 +110,11 @@ const TOP_MODELS = 4;
             [placeholder]="running() ? 'Message mis en file d’attente jusqu’à la fin de la tâche en cours…' : 'Tapez / pour les commandes.'" [(ngModel)]="text" name="text"
             (ngModelChange)="onTextChange()" (keydown)="onKey($event)" (paste)="onPaste($event)" [disabled]="!store.isOwner()" aria-label="Message"></textarea>
           @if (running()) {
-            <button class="btn-ghost !rounded-lg !p-1.5" (click)="interrupt()" [disabled]="store.activeRun()?.status === 'interrupting'" aria-label="Interrompre" title="Interrompre"><span class="block h-3.5 w-3.5 rounded-sm bg-current"></span></button>
+            @if (store.activeRun()?.status === 'interrupting') {
+              <button class="btn-ghost !rounded-lg !p-1.5" disabled aria-label="Arrêt en cours" title="Arrêt en cours…"><span class="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"></span></button>
+            } @else {
+              <button class="btn-ghost !rounded-lg !p-1.5" (click)="interrupt()" aria-label="Interrompre" title="Interrompre"><span class="block h-3.5 w-3.5 rounded-sm bg-current"></span></button>
+            }
           }
           <button class="btn-ghost !rounded-lg !p-1.5" (click)="submit()" [disabled]="!canSend() || !text.trim()"
             [attr.aria-label]="running() ? 'Mettre en file d’attente' : 'Envoyer'" [title]="running() ? 'Mettre en file d’attente (Entrée)' : 'Envoyer (Entrée)'"><cap-icon name="enter" [size]="18" /></button>

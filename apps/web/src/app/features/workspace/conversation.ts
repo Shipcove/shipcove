@@ -62,10 +62,10 @@ import { WorkspaceStore } from './workspace.store';
             </div>
           }
         }
-        @if (store.activeRun()?.status === 'running' || store.activeRun()?.status === 'queued') {
+        @if (store.activeRun()?.status === 'running' || store.activeRun()?.status === 'queued' || store.activeRun()?.status === 'interrupting') {
           <div class="my-3 flex items-center gap-2 text-sm text-stone-500">
             <span class="h-2 w-2 animate-pulse rounded-full bg-accent-500"></span>
-            {{ store.activeRun()?.status === 'queued' ? 'Démarrage de la sandbox et de Pi…' : 'Pi travaille…' }}
+            {{ store.activeRun()?.status === 'queued' ? 'Démarrage de la sandbox et de Pi…' : store.activeRun()?.status === 'interrupting' ? 'Arrêt en cours…' : 'Pi travaille…' }}
           </div>
         }
       </div>
