@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input, model, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, model, output, signal } from '@angular/core';
 import { Icon } from '../../shared/icon';
 import { Explorer } from './explorer';
 import { FilePanel } from './file-panel';
@@ -25,12 +25,19 @@ import { FilePanel } from './file-panel';
             <span class="px-1 text-sm text-stone-600 dark:text-stone-300">Fichiers</span>
           }
         </div>
+        @if (compact()) {
+          <button class="btn-ghost !p-1.5" [class.bg-stone-200]="browsing()" [class.dark:bg-stone-700]="browsing()" (click)="browse.set(!browse())"
+            [attr.aria-pressed]="browsing()" aria-label="Arborescence des fichiers" title="Arborescence"><cap-icon name="folder" [size]="15" /></button>
+        }
+        @if (expandable()) {
         <button class="btn-ghost !p-1.5" (click)="toggleExpand.emit()" [attr.aria-label]="expanded() ? 'Réduire' : 'Agrandir'" [title]="expanded() ? 'Réduire' : 'Agrandir'"><cap-icon [name]="expanded() ? 'minimize' : 'maximize'" [size]="14" /></button>
+        }
         <button class="btn-ghost !p-1.5" (click)="closed.emit()" aria-label="Fermer l’explorateur" title="Fermer"><cap-icon name="x" [size]="15" /></button>
       </div>
+      <!-- Écran étroit : arborescence ou fichier, l'un après l'autre. -->
       <div class="flex min-h-0 flex-1">
-        <div class="min-w-0 flex-1"><cap-file-panel [path]="active()" /></div>
-        <div class="w-60 shrink-0 border-l border-stone-200 dark:border-stone-800">
+        <div class="min-w-0 flex-1" [class.hidden]="compact() && browsing()"><cap-file-panel [path]="active()" /></div>
+        <div class="shrink-0 border-stone-200 dark:border-stone-800" [class]="compact() ? (browsing() ? 'w-full' : 'hidden') : 'w-60 border-l'">
           <cap-explorer [selected]="active()" (openFile)="open($event)" />
         </div>
       </div>
@@ -43,6 +50,12 @@ export class FilesPane {
   readonly openFiles = model<string[]>([]);
   readonly active = model<string | null>(null);
   readonly expanded = input(false);
+  /** Écran étroit : arborescence et fichier affichés l'un après l'autre. */
+  readonly compact = input(false);
+  readonly expandable = input(true);
+  protected readonly browse = signal(false);
+  /** Sans fichier ouvert, l'arborescence s'affiche d'office. */
+  protected readonly browsing = computed(() => this.browse() || !this.active());
   readonly toggleExpand = output<void>();
   readonly closed = output<void>();
 
@@ -53,6 +66,7 @@ export class FilesPane {
   open(path: string): void {
     if (!this.openFiles().includes(path)) this.openFiles.set([...this.openFiles(), path]);
     this.active.set(path);
+    this.browse.set(false);
   }
 
   protected closeFile(path: string): void {

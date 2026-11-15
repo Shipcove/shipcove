@@ -12,7 +12,7 @@ import { WorkspaceStore } from './workspace.store';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div #scroller class="h-full overflow-x-hidden overflow-y-auto" (scroll)="onScroll()">
-      <div class="mx-auto max-w-3xl px-6 py-6">
+      <div class="mx-auto max-w-3xl px-3 py-4 sm:px-6 sm:py-6">
         @if (store.messages().length === 0) {
           <div class="mt-20 text-center text-stone-500">
             <div class="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-accent-100 font-mono text-xl font-bold text-accent-700 dark:bg-accent-700/20">π</div>
@@ -24,7 +24,7 @@ import { WorkspaceStore } from './workspace.store';
           @if (m.role === 'user') {
             <div class="group my-4 flex items-start justify-end gap-1">
               @if (canRewind(m)) {
-                <button class="btn-ghost mt-1.5 !p-1 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100" (click)="rewind(m)" [disabled]="busy()" title="Revenir à l’état des fichiers d’avant ce message" aria-label="Revenir avant ce message"><cap-icon name="undo" [size]="14" /></button>
+                <button class="btn-ghost mt-1.5 !p-1 opacity-0 transition-opacity group-hover:opacity-100 touch:opacity-100 focus:opacity-100" (click)="rewind(m)" [disabled]="busy()" title="Revenir à l’état des fichiers d’avant ce message" aria-label="Revenir avant ce message"><cap-icon name="undo" [size]="14" /></button>
               }
               <div class="max-w-[85%] min-w-0 rounded-2xl bg-stone-200/80 px-4 py-2.5 text-[0.925rem] [overflow-wrap:anywhere] dark:bg-stone-800">@let parts = skillParts(m.text);
                 @for (sk of parts.skills; track sk) { <span class="mr-1.5 font-medium text-sky-700 dark:text-sky-400" [title]="'/skill:' + sk"><span class="opacity-60">/</span>{{ sk }}</span> }

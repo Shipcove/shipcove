@@ -22,7 +22,7 @@ const LABELS: Record<string, string> = {
   imports: [FormsModule, RouterLink, AgoPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="h-full overflow-y-auto"><div class="mx-auto max-w-3xl px-6 py-8">
+    <div class="h-full overflow-y-auto"><div class="mx-auto max-w-3xl px-4 py-5 sm:px-6 sm:py-8">
       <div class="flex items-center"><h1 class="text-2xl font-semibold">Notifications</h1><button class="btn-secondary ml-auto" (click)="markAll()">Tout marquer comme lu</button></div>
       <div class="card mt-4 divide-y divide-stone-100 dark:divide-stone-800">
         @for (n of items(); track n.id) {

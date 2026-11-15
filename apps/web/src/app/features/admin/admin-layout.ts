@@ -6,15 +6,16 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
   imports: [RouterOutlet, RouterLink, RouterLinkActive],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="flex h-full">
-      <nav class="w-52 shrink-0 space-y-0.5 overflow-y-auto border-r border-stone-200 p-3 dark:border-stone-800" aria-label="Administration">
-        <div class="mb-2 px-2 text-xs font-semibold tracking-wide text-stone-500 uppercase">Administration</div>
+    <div class="flex h-full flex-col md:flex-row">
+      <!-- Mobile : onglets défilants en haut ; à partir de 768 px : menu latéral. -->
+      <nav class="flex shrink-0 gap-1 overflow-x-auto border-b border-stone-200 px-2 py-2 md:w-52 md:flex-col md:gap-0 md:space-y-0.5 md:overflow-y-auto md:border-r md:border-b-0 md:p-3 dark:border-stone-800" aria-label="Administration">
+        <div class="mb-2 hidden px-2 text-xs font-semibold tracking-wide text-stone-500 uppercase md:block">Administration</div>
         @for (l of links; track l.path) {
           <a [routerLink]="l.path" routerLinkActive="bg-stone-200 dark:bg-stone-800 font-medium" [routerLinkActiveOptions]="{ exact: l.path === '/admin' }"
-            class="block rounded-md px-2.5 py-1.5 text-sm hover:bg-stone-200/70 dark:hover:bg-stone-800">{{ l.label }}</a>
+            class="block shrink-0 rounded-md px-2.5 py-1.5 text-sm whitespace-nowrap hover:bg-stone-200/70 dark:hover:bg-stone-800">{{ l.label }}</a>
         }
       </nav>
-      <div class="min-w-0 flex-1 overflow-y-auto"><div class="mx-auto max-w-6xl px-6 py-6"><router-outlet /></div></div>
+      <div class="min-h-0 min-w-0 flex-1 overflow-y-auto"><div class="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-6"><router-outlet /></div></div>
     </div>
   `,
   host: { class: 'block h-full' },

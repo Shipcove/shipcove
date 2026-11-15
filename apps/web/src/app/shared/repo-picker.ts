@@ -19,9 +19,9 @@ export interface RepoChoice {
   selector: 'cap-repo-picker',
   imports: [FormsModule, RouterLink, Icon],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'relative inline-block', '(document:keydown.escape)': 'open.set(false)' },
+  host: { class: 'relative inline-block max-w-full', '(document:keydown.escape)': 'open.set(false)' },
   template: `
-    <button type="button" class="flex max-w-80 items-center gap-1.5 rounded-md px-2 py-1 text-[13px] hover:bg-stone-200/70 dark:hover:bg-stone-800"
+    <button type="button" class="flex max-w-full items-center sm:max-w-80 gap-1.5 rounded-md px-2 py-1 text-[13px] hover:bg-stone-200/70 dark:hover:bg-stone-800"
       [class.bg-stone-200]="open()" [class.dark:bg-stone-800]="open()" (click)="toggle()" aria-haspopup="listbox" [attr.aria-expanded]="open()"
       [title]="value() ? value()!.host + '/' + value()!.fullName : 'Associer un dépôt Git (facultatif)'">
       <cap-icon name="git" [size]="14" class="shrink-0 text-stone-500" />

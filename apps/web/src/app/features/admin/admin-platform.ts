@@ -229,7 +229,7 @@ export class AdminNotifications implements OnInit {
     <h1 class="text-xl font-semibold">Audit & rétention</h1>
     <form class="mt-4 flex flex-wrap gap-2" (ngSubmit)="search()">
       <input class="input !w-56" name="a" placeholder="action (préfixe), ex. auth." [(ngModel)]="q.action" />
-      <input class="input !w-72" name="t" placeholder="identifiant de cible" [(ngModel)]="q.targetId" />
+      <input class="input sm:!w-72" name="t" placeholder="identifiant de cible" [(ngModel)]="q.targetId" />
       <button class="btn-secondary">Rechercher</button>
       <a class="btn-secondary" [href]="exportUrl()">Exporter (CSV)</a>
     </form>

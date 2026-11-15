@@ -39,7 +39,7 @@ const TOP_MODELS = 4;
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '(document:click)': 'onDocumentClick($event)', '(document:keydown)': 'onGlobalKey($event)' },
   template: `
-    <div class="mx-auto max-w-3xl px-6 pb-3">
+    <div class="mx-auto max-w-3xl px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
       @if (store.quotaPaused(); as q) {
         <div class="mb-2 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200" role="status">
           <cap-icon name="alert" /> {{ pausedLabel(q.window) }}. L’agent est suspendu.
@@ -64,14 +64,14 @@ const TOP_MODELS = 4;
                     <div><div class="line-clamp-2 font-medium break-all">{{ a.fileName }}</div><div class="text-stone-400">{{ a.size | bytes }}</div></div>
                   </div>
                 }
-                <button class="absolute top-1 right-1 rounded-full bg-black/60 p-0.5 text-white opacity-0 group-hover:opacity-100 focus:opacity-100" (click)="remove(a)" [attr.aria-label]="'Retirer ' + a.fileName"><cap-icon name="x" [size]="12" /></button>
+                <button class="absolute top-1 right-1 rounded-full bg-black/60 p-0.5 text-white opacity-0 group-hover:opacity-100 touch:opacity-100 focus:opacity-100" (click)="remove(a)" [attr.aria-label]="'Retirer ' + a.fileName"><cap-icon name="x" [size]="12" /></button>
               </div>
             }
           </div>
         }
 
         @if (menu() === 'slash') {
-          <div class="absolute bottom-full left-2 z-30 mb-2 max-h-72 w-96 overflow-y-auto rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="listbox" aria-label="Commandes slash">
+          <div class="absolute bottom-full left-2 z-30 mb-2 max-h-72 w-96 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="listbox" aria-label="Commandes slash">
             @for (c of slashFiltered(); track c.command) {
               <button class="flex w-full flex-col items-start rounded-lg px-3 py-1.5 text-left hover:bg-stone-100 dark:hover:bg-stone-800" (click)="useSlash(c.command)" role="option">
                 <span class="font-mono text-sm">{{ c.command }}</span><span class="line-clamp-1 text-xs text-stone-500">{{ c.description }}</span>
@@ -98,7 +98,7 @@ const TOP_MODELS = 4;
           <div class="relative">
             <button class="btn-ghost !rounded-lg !p-1.5" [class.bg-stone-200]="menu() === 'plus'" [class.dark:bg-stone-700]="menu() === 'plus'" (click)="toggle('plus', $event)" aria-label="Ajouter" [disabled]="!store.isOwner()"><cap-icon name="plus" [size]="18" /></button>
             @if (menu() === 'plus') {
-              <div class="absolute bottom-full left-0 z-30 mb-2 w-80 rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="menu">
+              <div class="absolute bottom-full left-0 z-30 mb-2 w-80 max-w-[calc(100vw-1.5rem)] rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="menu">
                 <button class="menu-item" role="menuitem" (click)="pickFiles()"><cap-icon name="paperclip" /> <span class="flex-1 truncate">Ajouter des fichiers ou des photos</span><kbd class="text-xs text-stone-400">Ctrl+U</kbd></button>
                 <button class="menu-item" role="menuitem" (click)="openSlash()"><span class="flex h-4 w-4 items-center justify-center rounded border border-current text-[10px] font-bold">/</span> <span class="flex-1">Commandes slash</span></button>
                 <button class="menu-item" role="menuitem" (click)="connectors()"><cap-icon name="puzzle" /> <span class="flex-1">Ajouter des connecteurs</span></button>
@@ -111,14 +111,14 @@ const TOP_MODELS = 4;
               <span class="group/skill relative ml-2 inline-block shrink-0 cursor-default py-1.5 text-[0.95rem] leading-6 font-medium text-sky-600 dark:text-sky-400"
                 tabindex="0" [attr.aria-label]="'Skill ' + s.name + (s.description ? ' : ' + s.description : '')" data-skill-chip>
                 <span class="opacity-60">/</span>{{ s.name }}
-                <span role="tooltip" class="pointer-events-auto invisible absolute bottom-full left-0 z-40 mb-2 w-80 rounded-2xl border border-stone-200 bg-white p-4 font-normal opacity-0 shadow-[0_8px_30px_rgb(0_0_0/0.12)] transition-opacity delay-150 group-hover/skill:visible group-hover/skill:opacity-100 group-focus-visible/skill:visible group-focus-visible/skill:opacity-100 dark:border-stone-700 dark:bg-stone-900">
+                <span role="tooltip" class="pointer-events-auto invisible absolute bottom-full left-0 z-40 mb-2 w-80 max-w-[calc(100vw-1.5rem)] rounded-2xl border border-stone-200 bg-white p-4 font-normal opacity-0 shadow-[0_8px_30px_rgb(0_0_0/0.12)] transition-opacity delay-150 group-hover/skill:visible group-hover/skill:opacity-100 group-focus-visible/skill:visible group-focus-visible/skill:opacity-100 dark:border-stone-700 dark:bg-stone-900">
                   <span class="block font-mono text-sm text-stone-500">{{ s.command }}</span>
                   <span class="mt-1.5 block max-h-60 overflow-y-auto text-sm leading-relaxed whitespace-pre-line text-stone-800 dark:text-stone-200">{{ s.description || 'Aucune description.' }}</span>
                 </span>
               </span>
             }
             <textarea #textarea class="block h-9 max-h-60 min-w-40 flex-1 resize-none overflow-y-auto bg-transparent px-2 py-1.5 text-[0.95rem] leading-6 placeholder:text-stone-400 focus:outline-none" rows="1"
-              [placeholder]="selectedSkills().length ? 'Ajoutez vos instructions (facultatif)' : store.draft ? 'Décrivez ce que Pi doit faire… (/ pour les commandes)' : running() ? 'Message mis en file d’attente jusqu’à la fin de la tâche en cours…' : 'Tapez / pour les commandes.'" [(ngModel)]="text" name="text"
+              [placeholder]="selectedSkills().length ? 'Ajoutez vos instructions (facultatif)' : store.draft ? 'Décrivez ce que Pi doit faire…' : running() ? 'Message mis en file d’attente jusqu’à la fin de la tâche en cours…' : 'Tapez / pour les commandes.'" [(ngModel)]="text" name="text"
               (ngModelChange)="onTextChange()" (keydown)="onKey($event)" (paste)="onPaste($event)" [disabled]="!store.isOwner()" aria-label="Message"></textarea>
           </div>
           @if (running()) {
@@ -134,14 +134,14 @@ const TOP_MODELS = 4;
       </div>
 
       <div class="mt-1.5 flex items-center justify-end gap-1 text-[13px]">
-        <div class="mr-auto"><ng-content select="[composerStart]" /></div>
+        <div class="mr-auto min-w-0 shrink"><ng-content select="[composerStart]" /></div>
         <div class="relative">
-          <button class="rounded-md px-2 py-1 hover:bg-stone-200/70 dark:hover:bg-stone-800" [class.bg-stone-200]="isModelMenu()" [class.dark:bg-stone-800]="isModelMenu()" (click)="toggle('model', $event)" [disabled]="!store.isOwner()" aria-haspopup="menu">
-            <span class="text-stone-800 dark:text-stone-200">{{ store.currentModel()?.displayName ?? 'Modèle' }}</span>
+          <button class="flex min-w-0 items-center rounded-md px-2 py-1 hover:bg-stone-200/70 dark:hover:bg-stone-800" [class.bg-stone-200]="isModelMenu()" [class.dark:bg-stone-800]="isModelMenu()" (click)="toggle('model', $event)" [disabled]="!store.isOwner()" aria-haspopup="menu">
+            <span class="max-w-[9rem] truncate text-stone-800 sm:max-w-none dark:text-stone-200">{{ store.currentModel()?.displayName ?? 'Modèle' }}</span>
             @if (store.currentModel()?.supportsReasoning) { <span class="ml-1 text-stone-500">{{ effortLabel() }}</span> }
           </button>
           @if (isModelMenu()) {
-            <div class="absolute right-0 bottom-full z-30 mb-2 w-72 rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="menu">
+            <div class="absolute right-0 bottom-full z-30 mb-2 max-sm:fixed max-sm:inset-x-3 max-sm:right-3 max-sm:bottom-[calc(env(safe-area-inset-bottom)+7.5rem)] max-sm:w-auto max-sm:max-w-none w-72 max-w-[calc(100vw-1.5rem)] rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="menu">
               @for (m of topModels(); track m.id; let i = $index) {
                 <button class="menu-item" role="menuitemradio" [attr.aria-checked]="m.id === store.currentModel()?.id" (click)="setModel(m)">
                   <span class="flex-1">{{ m.displayName }}</span>
@@ -154,7 +154,7 @@ const TOP_MODELS = 4;
                   <span class="flex-1">Effort</span><span class="text-stone-500">{{ effortLabel() }}</span><cap-icon name="chevronRight" [size]="14" />
                 </button>
                 @if (menu() === 'effort') {
-                  <div class="absolute bottom-0 left-full z-40 ml-2 w-48 rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="menu">
+                  <div class="absolute bottom-0 left-full z-40 ml-2 max-sm:bottom-full max-sm:left-auto max-sm:right-0 max-sm:mb-1 max-sm:ml-0 w-48 max-w-[calc(100vw-1.5rem)] rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="menu">
                     @for (e of efforts; track e.id) {
                       <button class="menu-item" role="menuitemradio" [attr.aria-checked]="e.id === store.workspace()?.thinkingLevel" (click)="setEffort(e.id)">
                         <span class="flex-1">{{ e.label }}</span>@if (e.id === store.workspace()?.thinkingLevel) { <cap-icon name="check" class="text-sky-600" /> }
@@ -169,7 +169,7 @@ const TOP_MODELS = 4;
                     <span class="flex-1">Plus de modèles</span><cap-icon name="chevronRight" [size]="14" />
                   </button>
                   @if (menu() === 'more') {
-                    <div class="absolute bottom-0 left-full z-40 ml-2 max-h-80 w-64 overflow-y-auto rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="menu">
+                    <div class="absolute bottom-0 left-full z-40 ml-2 max-sm:bottom-full max-sm:left-auto max-sm:right-0 max-sm:mb-1 max-sm:ml-0 max-h-80 w-64 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="menu">
                       @for (m of moreModels(); track m.id) {
                         <button class="menu-item" role="menuitemradio" [attr.aria-checked]="m.id === store.currentModel()?.id" (click)="setModel(m)">
                           <span class="flex-1">{{ m.displayName }}</span>@if (m.id === store.currentModel()?.id) { <cap-icon name="check" class="text-sky-600" /> }
@@ -186,7 +186,7 @@ const TOP_MODELS = 4;
         <div class="relative">
           <button class="rounded-md px-2 py-1 text-stone-800 hover:bg-stone-200/70 dark:text-stone-200 dark:hover:bg-stone-800" [class.bg-stone-200]="menu() === 'mode'" [class.dark:bg-stone-800]="menu() === 'mode'" (click)="toggle('mode', $event)" [disabled]="!store.isOwner()" aria-haspopup="menu">{{ modeLabel() }}</button>
           @if (menu() === 'mode') {
-            <div class="absolute right-0 bottom-full z-30 mb-2 w-80 rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="menu">
+            <div class="absolute right-0 bottom-full z-30 mb-2 max-sm:fixed max-sm:inset-x-3 max-sm:right-3 max-sm:bottom-[calc(env(safe-area-inset-bottom)+7.5rem)] max-sm:w-auto max-sm:max-w-none w-80 max-w-[calc(100vw-1.5rem)] rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="menu">
               @for (m of modes; track m.id; let i = $index) {
                 <button class="flex w-full items-start gap-2 rounded-lg px-3 py-2 text-left hover:bg-stone-100 dark:hover:bg-stone-800" role="menuitemradio" [attr.aria-checked]="m.id === store.workspace()?.agentMode" (click)="setMode(m.id)">
                   <span class="flex-1"><span class="block text-sm">{{ m.label }}</span><span class="block text-xs text-stone-500">{{ m.description }}</span></span>
@@ -207,7 +207,7 @@ const TOP_MODELS = 4;
             </svg>
           </button>
           @if (menu() === 'usage') {
-            <div class="absolute right-0 bottom-full z-30 mb-2 w-[22rem] rounded-xl border border-stone-200 bg-white p-4 shadow-lg dark:border-stone-700 dark:bg-stone-900">
+            <div class="absolute right-0 bottom-full z-30 mb-2 max-sm:fixed max-sm:inset-x-3 max-sm:right-3 max-sm:bottom-[calc(env(safe-area-inset-bottom)+7.5rem)] max-sm:w-auto max-sm:max-w-none w-[22rem] max-w-[calc(100vw-1.5rem)] rounded-xl border border-stone-200 bg-white p-4 shadow-lg dark:border-stone-700 dark:bg-stone-900">
               <div class="mb-3 flex items-center text-sm"><span class="text-stone-500">Utilisation des quotas</span><a routerLink="/usage" class="ml-auto font-medium hover:underline" (click)="menu.set(null)">Tout voir →</a></div>
               @if (!store.usage()?.quotasEnabled) { <p class="mb-2 text-xs text-stone-500">Les quotas sont désactivés.</p> }
               @for (w of usageRows(); track w.label) {

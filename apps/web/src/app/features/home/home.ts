@@ -18,9 +18,9 @@ import { DraftWorkspaceStore } from './draft.store';
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'block h-full' },
   template: `
-    <div class="flex h-full flex-col items-center justify-center overflow-y-auto pb-24">
+    <div class="flex h-full flex-col items-center justify-center overflow-y-auto pb-[20vh] sm:pb-24">
       <div class="w-full max-w-3xl">
-        <h1 class="mb-6 px-6 text-center text-3xl font-semibold tracking-tight text-stone-800 dark:text-stone-100">{{ greeting() }}</h1>
+        <h1 class="mb-5 px-6 text-center text-2xl font-semibold tracking-tight sm:mb-6 sm:text-3xl text-stone-800 dark:text-stone-100">{{ greeting() }}</h1>
         <cap-composer>
           <cap-repo-picker composerStart #picker [value]="draft.repository()" (valueChange)="setRepository($event)" />
         </cap-composer>

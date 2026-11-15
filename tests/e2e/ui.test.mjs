@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { chromium } from 'playwright';
+import { chromium, devices } from 'playwright';
 import { BASE, Client, adminClient, uid } from './client.mjs';
 
 const STATE_FILE = new URL('./.e2e-state.json', import.meta.url);
@@ -286,5 +286,80 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     assert.deepEqual(issues, [], `erreurs/violations CSP :\n${issues.join('\n')}`);
   } finally {
     await browser.close();
+  }
+});
+
+test('responsive : téléphone et tablette — tiroir de navigation, volets en plein écran, menus dans l’écran, aucun débordement', async () => {
+  const admin = await adminClient(state);
+  const username = `rwd${uid()}`;
+  const password = 'Rwd-Password-123456';
+  const user = await admin.post('/admin/users', { email: `${username}@example.test`, username, displayName: `Mobile ${username}`, platformRole: 'user', password });
+  assert.equal(user.status, 201, JSON.stringify(user.body));
+  const c = new Client();
+  await c.post('/auth/login', { login: username, password });
+  const ws = (await c.post('/workspaces', {})).body;
+  const conv = await c.get(`/workspaces/${ws.id}/conversation`);
+  const sent = await c.post(`/workspaces/${ws.id}/messages`, { text: 'Fichier. [[tool:bash {"command":"echo ok > notes.md"}]]' }, { 'Idempotency-Key': `rwd-${uid()}-${Date.now()}` });
+  await c.events(ws.id, conv.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === sent.body.runId, 300_000);
+
+  const browser = await chromium.launch({ executablePath, args: ['--no-sandbox'] });
+  try {
+    for (const [label, device] of [['telephone', devices['iPhone 13']], ['tablette', devices['iPad (gen 7)']]]) {
+      const ctx = await browser.newContext({ ...device });
+      const page = await ctx.newPage();
+      const issues = watch(page);
+      const noOverflow = async (where) => {
+        const o = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        assert.ok(o <= 0, `${label} / ${where} : débordement horizontal de ${o}px`);
+      };
+      const inViewport = async (locator, what) => {
+        const box = await locator.boundingBox();
+        const vw = page.viewportSize().width;
+        assert.ok(box && box.x >= -1 && box.x + box.width <= vw + 1, `${label} : ${what} hors de l’écran (${JSON.stringify(box)})`);
+      };
+      await page.goto(`${BASE}/auth/login`, { waitUntil: 'networkidle' });
+      await page.fill('#login', username);
+      await page.fill('#password', password);
+      await page.tap('button:has-text("Se connecter")');
+      await page.waitForURL(`${BASE}/`);
+      await noOverflow('accueil');
+      // Pas de barre latérale fixe : tiroir ouvert par le bouton de navigation, refermé après navigation.
+      assert.equal(await page.locator('aside[aria-label="Navigation principale"]').count(), 0, 'barre latérale masquée');
+      await page.tap('button[aria-label="Ouvrir la navigation"]');
+      const drawer = page.locator('aside[aria-label="Navigation principale"]');
+      await drawer.waitFor();
+      await drawer.locator(`a[href="/workspaces/${ws.id}"]`).tap();
+      await page.waitForURL(new RegExp(`/workspaces/${ws.id}$`));
+      await drawer.waitFor({ state: 'detached' });
+      await page.waitForSelector('text=Terminé : 1 action(s) exécutée(s).');
+      await noOverflow('conversation');
+      // Volet de droite fermé par défaut, ouvert par-dessus la conversation, refermé par ✕.
+      assert.equal(await page.locator('aside[aria-label="Panneau latéral"]').count(), 0, 'volet fermé par défaut');
+      await page.tap('button[aria-label="Panneau latéral"]');
+      const panel = page.locator('aside[aria-label="Panneau latéral"]');
+      await panel.waitFor();
+      await page.waitForTimeout(300); // fin de l'animation d'entrée
+      await inViewport(panel, 'volet');
+      await page.waitForSelector('cap-changes-panel button:has-text("notes.md")');
+      await page.screenshot({ path: new URL(`rwd-${label}-volet.png`, OUT).pathname });
+      await panel.locator('button[aria-label="Fermer le panneau"]').tap();
+      await panel.waitFor({ state: 'detached' });
+      // Menus de la zone de saisie dans l'écran.
+      await page.tap('cap-composer button[aria-haspopup="menu"]:has-text("Mock")');
+      const menu = page.locator('cap-composer [role="menu"]').first();
+      await menu.waitFor();
+      await inViewport(menu, 'menu des modèles');
+      await page.screenshot({ path: new URL(`rwd-${label}-menu.png`, OUT).pathname });
+      // Administration refusée, pages secondaires sans débordement.
+      for (const path of ['/usage', '/extensions', '/settings', '/notifications']) {
+        await page.goto(`${BASE}${path}`, { waitUntil: 'networkidle' });
+        await noOverflow(path);
+      }
+      assert.deepEqual(issues, [], `${label} : erreurs console / CSP :\n${issues.join('\n')}`);
+      await ctx.close();
+    }
+  } finally {
+    await browser.close();
+    await c.post(`/workspaces/${ws.id}/stop`).catch(() => undefined);
   }
 });

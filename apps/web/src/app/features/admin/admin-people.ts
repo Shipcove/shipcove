@@ -11,7 +11,7 @@ import { AgoPipe } from '../../shared/pipes';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h1 class="text-xl font-semibold">Utilisateurs</h1>
-    <div class="mt-3 flex gap-2"><input class="input !w-72" placeholder="Rechercher…" [(ngModel)]="q" (ngModelChange)="load()" name="q" /></div>
+    <div class="mt-3 flex gap-2"><input class="input sm:!w-72" placeholder="Rechercher…" [(ngModel)]="q" (ngModelChange)="load()" name="q" /></div>
     <div class="card mt-3 overflow-x-auto"><table class="table">
       <thead><tr><th>Utilisateur</th><th>Rôle</th><th>Statut</th><th>MFA</th><th>Dernière connexion</th><th>Identités</th><th></th></tr></thead>
       <tbody>@for (u of users(); track u.id) {
@@ -86,7 +86,7 @@ export class AdminUsers implements OnInit {
     <h1 class="text-xl font-semibold">Invitations</h1>
     <p class="text-sm text-stone-500">La personne invitée reçoit un lien d’inscription valable 7 jours, même si l’inscription libre est désactivée.</p>
     <form class="mt-3 flex gap-2" (ngSubmit)="invite()">
-      <input class="input !w-80" type="email" name="email" placeholder="adresse@exemple.com" [(ngModel)]="email" required aria-label="Email à inviter" />
+      <input class="input min-w-0 sm:!w-80" type="email" name="email" placeholder="adresse@exemple.com" [(ngModel)]="email" required aria-label="Email à inviter" />
       <button class="btn-primary" [disabled]="!email.trim()">Inviter</button>
     </form>
     <div class="card mt-3 overflow-x-auto"><table class="table">

@@ -14,7 +14,7 @@ import { QUOTA_DANGER, QUOTA_WARN, formatReset, quotaBarClass, quotaPct, quotaTe
   imports: [AgoPipe, NgTemplateOutlet],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="h-full overflow-y-auto"><div class="mx-auto max-w-5xl px-6 py-8">
+    <div class="h-full overflow-y-auto"><div class="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-8">
       <h1 class="text-2xl font-semibold">Consommation</h1>
       <p class="mt-1 text-sm text-stone-500">Part de vos quotas utilisée sur des fenêtres glissantes de 5 heures et de 7 jours. À 100 %, l’agent est suspendu jusqu’à la réinitialisation.</p>
       @if (summary(); as s) {

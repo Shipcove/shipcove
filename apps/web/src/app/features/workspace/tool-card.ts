@@ -44,7 +44,7 @@ import { AskForm } from './ask-form';
               [attr.aria-label]="'Agrandir la capture ' + img.fileName"
             >
               <img [src]="src(img.attachmentId)" [alt]="img.fileName" loading="lazy" class="h-28 w-auto max-w-56 object-cover object-top" [attr.width]="thumbWidth(img)" height="112" />
-              <span class="absolute right-1 bottom-1 rounded bg-black/55 p-0.5 text-white opacity-0 transition group-hover:opacity-100"><cap-icon name="maximize" [size]="12" /></span>
+              <span class="absolute right-1 bottom-1 rounded bg-black/55 p-0.5 text-white opacity-0 transition group-hover:opacity-100 touch:opacity-100"><cap-icon name="maximize" [size]="12" /></span>
             </button>
           }
         </div>

@@ -12,7 +12,7 @@ import { Icon } from '../../shared/icon';
   imports: [FormsModule, Icon],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="h-full overflow-y-auto"><div class="mx-auto max-w-5xl px-6 py-8">
+    <div class="h-full overflow-y-auto"><div class="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-8">
       <h1 class="text-2xl font-semibold">Skills & MCP</h1>
       <p class="mt-1 text-sm text-stone-500">Les skills sont des instructions chargées par Pi ; ils ne confèrent aucun privilège. Les outils MCP sont filtrés par les politiques globales et personnelles.</p>
 
