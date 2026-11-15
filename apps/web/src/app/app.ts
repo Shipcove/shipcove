@@ -2,14 +2,16 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { ThemeService } from './core/theme.service';
 import { ToastService } from './core/toast.service';
+import { ConfirmDialog } from './shared/confirm-dialog';
 import { Icon } from './shared/icon';
 
 @Component({
   selector: 'cap-root',
-  imports: [RouterOutlet, Icon],
+  imports: [RouterOutlet, Icon, ConfirmDialog],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <router-outlet />
+    <cap-confirm-dialog />
     <div class="pointer-events-none fixed right-4 bottom-4 z-50 flex w-96 max-w-[90vw] flex-col gap-2" aria-live="polite">
       @for (t of toast.toasts(); track t.id) {
         <div class="card pointer-events-auto flex items-start gap-2 px-3 py-2 text-sm shadow-lg"

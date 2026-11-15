@@ -58,11 +58,28 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     await page.waitForSelector('text=Aucune connexion Git.');
     await page.keyboard.press('Escape');
     await page.waitForSelector('text=Aucune connexion Git.', { state: 'detached' });
+    // Même zone de saisie que dans une conversation : modèle + effort, mode, fichiers.
+    await page.click('cap-composer button[aria-haspopup="menu"]:has-text("Mock")');
+    await page.waitForSelector('cap-composer [role="menuitemradio"]:has-text("Mock (tests)")');
+    await page.click('cap-composer button:has-text("Effort")');
+    await page.click('cap-composer [role="menuitemradio"]:has-text("Élevé")');
+    await page.waitForSelector('cap-composer button[aria-haspopup="menu"]:has-text("Élevé")');
+    await page.locator('cap-composer input[type="file"]').setInputFiles({ name: 'note.txt', mimeType: 'text/plain', buffer: Buffer.from('contenu joint depuis l’accueil\n') });
+    await page.waitForSelector('cap-composer :text("note.txt")');
+    await page.screenshot({ path: new URL('home-composer.png', OUT).pathname });
     // Message à Pi (fournisseur factice piloté par directives).
     await page.fill('textarea[aria-label="Message"]', 'Crée un fichier. [[tool:bash {"command":"mkdir -p app && printf \'console.log(1)\\n\' > app/main.js"}]]');
     await page.keyboard.press('Enter');
     await page.waitForURL(/\/workspaces\/[0-9a-f-]+$/);
     await page.waitForSelector('text=Terminé : 1 action(s) exécutée(s).', { timeout: 240_000 });
+    // Réglages et pièce jointe du brouillon transmis à la conversation créée.
+    {
+      const id = new URL(page.url()).pathname.split('/').pop();
+      const ws = await page.evaluate(async (wid) => (await fetch(`/api/v1/workspaces/${wid}`, { credentials: 'include' })).json(), id);
+      assert.equal(ws.thinkingLevel, 'high');
+      const conv = await page.evaluate(async (wid) => (await fetch(`/api/v1/workspaces/${wid}/conversation`, { credentials: 'include' })).json(), id);
+      assert.deepEqual(conv.messages.find((m) => m.role === 'user').attachments.map((x) => x.fileName), ['note.txt']);
+    }
     // Titre automatique, affiché dans l'en-tête et dans la barre latérale (section sans dépôt, « Aujourd’hui »).
     await page.waitForSelector('header h1:has-text("Crée un fichier.")', { timeout: 30_000 });
     const sidebar = page.locator('nav[aria-label="Conversations"]');
@@ -214,8 +231,19 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     await item.hover();
     await trash.waitFor({ state: 'visible' });
     await page.screenshot({ path: new URL('sidebar-delete.png', OUT).pathname, clip: { x: 0, y: 0, width: 300, height: 260 } });
-    page.once('dialog', (d) => d.accept());
+    // Modale de l'application : Échap annule, « Supprimer » confirme.
     await trash.click();
+    const modal = page.locator('[role="alertdialog"]');
+    await modal.waitFor();
+    assert.match(await modal.innerText(), /Conversation UI/);
+    await page.waitForTimeout(300); // fin de l'animation d'ouverture
+    await page.screenshot({ path: new URL('delete-dialog.png', OUT).pathname });
+    await page.keyboard.press('Escape');
+    await modal.waitFor({ state: 'detached' });
+    assert.equal(await page.locator('nav[aria-label="Conversations"] a:has-text("Conversation UI")').count(), 1, 'annulation : rien supprimé');
+    await item.hover();
+    await trash.click();
+    await modal.locator('button:has-text("Supprimer")').click();
     await page.waitForURL(`${BASE}/`);
     await page.waitForSelector('text=Conversation supprimée');
     assert.equal(await page.locator('nav[aria-label="Conversations"] a:has-text("Conversation UI")').count(), 0);

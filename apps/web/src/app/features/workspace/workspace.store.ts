@@ -1,6 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import type {
   ApprovalDto,
+  AttachmentDto,
   ConversationDto,
   EventEnvelope,
   MessageDto,
@@ -29,11 +30,13 @@ export interface PlatformConfig {
  */
 @Injectable()
 export class WorkspaceStore {
-  private readonly api = inject(Api);
+  protected readonly api = inject(Api);
   private readonly sse = inject(SseService);
-  private readonly toast = inject(ToastService);
-  private readonly conversations = inject(ConversationsService);
+  protected readonly toast = inject(ToastService);
+  protected readonly conversations = inject(ConversationsService);
 
+  /** Brouillon (page d'accueil) : la conversation n'existe pas encore. */
+  readonly draft: boolean = false;
   readonly workspace = signal<WorkspaceDto | null>(null);
   readonly messages = signal<MessageDto[]>([]);
   readonly runs = signal<RunDto[]>([]);
@@ -149,6 +152,17 @@ export class WorkspaceStore {
   async resume(): Promise<void> {
     const run = this.runs().find((r) => r.status === 'paused_quota');
     if (run) await this.api.post(`/workspaces/${this.workspace()!.id}/runs/${run.id}/resume`);
+  }
+
+  /** Pièces jointes du prochain message (inspectées par le serveur). */
+  async uploadAttachments(files: File[]): Promise<AttachmentDto[]> {
+    const form = new FormData();
+    for (const f of files) form.append('files', f, f.name);
+    return this.api.upload<AttachmentDto[]>(`/workspaces/${this.workspace()!.id}/attachments`, form);
+  }
+
+  async removeAttachment(id: string): Promise<void> {
+    await this.api.delete(`/workspaces/${this.workspace()!.id}/attachments/${id}`).catch(() => undefined);
   }
 
   async setModel(modelId: string): Promise<void> {

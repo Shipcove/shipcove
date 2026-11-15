@@ -56,6 +56,10 @@
   .badge {
     @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
   }
+  /* Éléments des menus déroulants (modèle, effort, mode, « + »…). */
+  .menu-item {
+    @apply flex w-full items-center gap-[0.6rem] rounded-lg px-3 py-[0.4rem] text-left text-sm hover:bg-[color-mix(in_oklab,currentColor_8%,transparent)] disabled:opacity-45 disabled:hover:bg-transparent;
+  }
   .table {
     @apply w-full text-left text-sm;
   }

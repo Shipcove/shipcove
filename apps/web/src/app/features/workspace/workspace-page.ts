@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Api } from '../../core/api.service';
 import { ConversationsService } from '../../core/conversations.service';
+import { ConfirmService, deleteConversationDialog } from '../../core/confirm.service';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
 import { ApprovalsPanel } from './approvals-panel';
@@ -137,6 +138,7 @@ export class WorkspacePage implements OnDestroy {
   private readonly api = inject(Api);
   private readonly router = inject(Router);
   private readonly conversations = inject(ConversationsService);
+  private readonly confirm = inject(ConfirmService);
   private readonly titleInput = viewChild<ElementRef<HTMLInputElement>>('title');
 
   protected readonly tabs = computed(() => {
@@ -228,7 +230,7 @@ export class WorkspacePage implements OnDestroy {
 
   protected async remove(): Promise<void> {
     const ws = this.store.workspace();
-    if (!ws || !confirm(`Supprimer définitivement « ${ws.name} » ?\n\nLa sandbox, ses sauvegardes, les fichiers, pièces jointes et tout l’historique seront effacés.${this.store.activeRun() ? '\nPi est en train de travailler : sa tâche sera interrompue.' : ''}`)) return;
+    if (!ws || !(await this.confirm.ask(deleteConversationDialog(ws.name, !!this.store.activeRun())))) return;
     try {
       await this.api.delete(`/workspaces/${ws.id}`);
       this.conversations.remove(ws.id);

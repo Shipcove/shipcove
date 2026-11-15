@@ -8,6 +8,7 @@ import { AuthStore } from '../core/auth.store';
 import { ConversationsService } from '../core/conversations.service';
 import { ThemeService } from '../core/theme.service';
 import { ToastService } from '../core/toast.service';
+import { ConfirmService, deleteConversationDialog } from '../core/confirm.service';
 import { Icon } from '../shared/icon';
 
 interface NavItem {
@@ -128,6 +129,7 @@ export class Shell implements OnInit, OnDestroy {
   protected readonly unread = signal(0);
   protected readonly deleting = signal<string | null>(null);
   private readonly toast = inject(ToastService);
+  private readonly confirm = inject(ConfirmService);
   private readonly collapsedRepos = signal<Set<string>>(readCollapsed());
   private timer: ReturnType<typeof setInterval> | null = null;
 
@@ -176,7 +178,9 @@ export class Shell implements OnInit, OnDestroy {
 
   /** Suppression définitive : sandbox, sauvegardes, fichiers et historique. */
   protected async remove(w: WorkspaceDto): Promise<void> {
-    if (!confirm(`Supprimer définitivement « ${w.name} » ?\n\nLa sandbox, ses sauvegardes, les fichiers, pièces jointes et tout l’historique seront effacés.${w.activeRunStatus ? '\nPi est en train de travailler : sa tâche sera interrompue.' : ''}`)) return;
+    // État à jour (la liste n'est rafraîchie que périodiquement) : Pi travaille-t-il ?
+    const fresh = await this.api.get<WorkspaceDto>(`/workspaces/${w.id}`).catch(() => w);
+    if (!(await this.confirm.ask(deleteConversationDialog(fresh.name, !!fresh.activeRunStatus)))) return;
     this.deleting.set(w.id);
     try {
       await this.api.delete(`/workspaces/${w.id}`);

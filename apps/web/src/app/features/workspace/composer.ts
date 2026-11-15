@@ -107,7 +107,7 @@ const TOP_MODELS = 4;
           </div>
           <input #fileInput type="file" multiple class="hidden" (change)="onFiles($event)" />
           <textarea #textarea class="block h-9 max-h-60 flex-1 resize-none overflow-y-auto bg-transparent px-2 py-1.5 text-[0.95rem] leading-6 placeholder:text-stone-400 focus:outline-none" rows="1"
-            [placeholder]="running() ? 'Message mis en file d’attente jusqu’à la fin de la tâche en cours…' : 'Tapez / pour les commandes.'" [(ngModel)]="text" name="text"
+            [placeholder]="store.draft ? 'Décrivez ce que Pi doit faire… (/ pour les commandes)' : running() ? 'Message mis en file d’attente jusqu’à la fin de la tâche en cours…' : 'Tapez / pour les commandes.'" [(ngModel)]="text" name="text"
             (ngModelChange)="onTextChange()" (keydown)="onKey($event)" (paste)="onPaste($event)" [disabled]="!store.isOwner()" aria-label="Message"></textarea>
           @if (running()) {
             @if (store.activeRun()?.status === 'interrupting') {
@@ -122,6 +122,7 @@ const TOP_MODELS = 4;
       </div>
 
       <div class="mt-1.5 flex items-center justify-end gap-1 text-[13px]">
+        <div class="mr-auto"><ng-content select="[composerStart]" /></div>
         <div class="relative">
           <button class="rounded-md px-2 py-1 hover:bg-stone-200/70 dark:hover:bg-stone-800" [class.bg-stone-200]="isModelMenu()" [class.dark:bg-stone-800]="isModelMenu()" (click)="toggle('model', $event)" [disabled]="!store.isOwner()" aria-haspopup="menu">
             <span class="text-stone-800 dark:text-stone-200">{{ store.currentModel()?.displayName ?? 'Modèle' }}</span>
@@ -218,22 +219,6 @@ const TOP_MODELS = 4;
   styles: `
     :host {
       display: block;
-    }
-    .menu-item {
-      display: flex;
-      width: 100%;
-      align-items: center;
-      gap: 0.6rem;
-      border-radius: 0.5rem;
-      padding: 0.4rem 0.75rem;
-      text-align: left;
-      font-size: 0.875rem;
-    }
-    .menu-item:hover:not(:disabled) {
-      background: color-mix(in oklab, currentColor 8%, transparent);
-    }
-    .menu-item:disabled {
-      opacity: 0.45;
     }
   `,
 })
@@ -481,17 +466,21 @@ export class Composer {
 
   private async upload(files: File[]): Promise<void> {
     const cfg = this.store.config()?.attachments;
-    const form = new FormData();
+    const accepted: File[] = [];
     for (const f of files) {
       if (cfg && f.size > cfg.maxFileMb * 1024 * 1024) {
         this.toast.show(`${f.name} dépasse ${cfg.maxFileMb} Mo`, 'error');
         continue;
       }
-      form.append('files', f, f.name);
+      accepted.push(f);
     }
-    if (!form.has('files')) return;
+    if (cfg && this.attachments().length + accepted.length > cfg.maxFilesPerMessage) {
+      this.toast.show(`${cfg.maxFilesPerMessage} fichiers au maximum par message`, 'error');
+      accepted.splice(Math.max(0, cfg.maxFilesPerMessage - this.attachments().length));
+    }
+    if (!accepted.length) return;
     try {
-      const res = await this.api.upload<AttachmentDto[]>(`/workspaces/${this.store.workspace()!.id}/attachments`, form);
+      const res = await this.store.uploadAttachments(accepted);
       this.attachments.update((l) => [...l, ...res]);
       for (const a of res) {
         if (a.status === 'rejected') this.toast.show(`${a.fileName} refusé : ${a.rejectionReason}`, 'error');
@@ -504,7 +493,7 @@ export class Composer {
   }
 
   protected async remove(a: AttachmentDto): Promise<void> {
-    await this.api.delete(`/workspaces/${this.store.workspace()!.id}/attachments/${a.id}`).catch(() => undefined);
+    await this.store.removeAttachment(a.id);
     this.attachments.update((l) => l.filter((x) => x.id !== a.id));
   }
 }
