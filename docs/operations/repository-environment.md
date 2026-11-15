@@ -38,6 +38,10 @@ API : `GET /admin/repositories`, `GET|PUT /admin/repositories/:id/environment`,
   `pip install -r requirements.txt`, etc.
 - **Ce qui est conservé** : ce qu'il produit dans `/workspace` est conservé par un checkpoint. Le
   reste (outils globaux, `~/.local`) vit avec la sandbox et sera réinstallé à la suivante.
+- **Outils globaux** : `npm install -g` (Angular CLI, pnpm…) installe dans `~/.local` de l'agent
+  (`NPM_CONFIG_PREFIX`, déjà dans le `PATH`), sans droits root. Comme tout ce qui est hors de
+  `/workspace`, ils disparaissent avec la sandbox : pour les avoir d'office, mettez-les dans le
+  script de préparation (ex. `npm install -g @angular/cli`).
 - **Affichage** : sa sortie (secrets masqués) apparaît dans la conversation.
 - **En cas d'échec** : le run continue et l'agent est informé, avec la fin de la sortie.
 

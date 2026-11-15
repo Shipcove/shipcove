@@ -18,6 +18,9 @@
       </ul>
       <div class="callout warn"><p>Comme pour les secrets de CI, l’agent de toute conversation sur le dépôt peut <em>utiliser</em> un secret (et donc l’écrire dans un fichier ou l’envoyer vers un hôte autorisé). Réservez-y des identifiants de développement à droits minimaux.</p></div>
 
+      <h2>Outils globaux</h2>
+      <p>L’agent tourne sans droits root : <code>npm install -g</code> (Angular CLI, pnpm…) installe dans son répertoire (<code>~/.local</code>, déjà dans le <code>PATH</code>). Ces outils vivent avec la sandbox ; pour les retrouver dans chaque nouvelle sandbox, ajoutez-les au script de préparation.</p>
+
       <h2>Script de préparation</h2>
       <p>Script bash exécuté dans <code>/workspace</code> avec les variables du dépôt, <strong>dans chaque nouvelle sandbox</strong> et à chaque modification du script ou de l’image. Il doit être idempotent, comme une étape de CI :</p>
       <pre><code>npm ci

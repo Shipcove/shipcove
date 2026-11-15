@@ -21,8 +21,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     UV_CACHE_DIR=/home/agent/.cache/uv \
     PLAYWRIGHT_BROWSERS_PATH=/opt/cap/browsers \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
-    NODE_PATH=/usr/local/lib/node_modules \
-    npm_config_cache=/home/agent/.npm
+    NODE_PATH=/home/agent/.local/lib/node_modules:/usr/local/lib/node_modules \
+    npm_config_cache=/home/agent/.npm \
+    PATH=/home/agent/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
@@ -57,7 +58,7 @@ RUN npm install -g --omit=dev "@mariozechner/pi-coding-agent@${PI_VERSION}" && n
 # (le cache npm de l'installation globale, créé en root dans /home/agent, est supprimé)
 RUN rm -rf /home/agent/.npm \
  && groupadd -g 10001 agent && useradd -u 10001 -g 10001 -m -d /home/agent -s /bin/bash agent \
- && mkdir -p /workspace /workspace-state /opt/cap /home/agent/.pi/agent \
+ && mkdir -p /workspace /workspace-state /opt/cap /home/agent/.pi/agent /home/agent/.local/bin \
  && chown -R agent:agent /workspace /workspace-state /home/agent
 
 # Composants plateforme (lecture seule pour l'agent : rootfs read-only à l'exécution).
@@ -66,6 +67,9 @@ COPY --chown=root:root pi-extension/ /opt/cap/pi-extension/
 COPY --chown=root:root config/gitconfig /etc/gitconfig
 RUN chmod 0755 /opt/cap/bin/* && chmod -R a+rX /opt/cap
 
+# Installations globales de l'agent (npm i -g @angular/cli, pnpm…) dans son répertoire :
+# l'utilisateur agent n'a pas accès en écriture à /usr/local (outils de l'image, en root).
+ENV NPM_CONFIG_PREFIX=/home/agent/.local
 USER 10001:10001
 WORKDIR /workspace
 ENTRYPOINT ["/usr/bin/tini", "--"]

@@ -1060,3 +1060,20 @@ test('miroir de registre : images des services réécrites vers le miroir, ident
     }
   }
 });
+
+test('outils Node dans la sandbox : npm install -g utilisable par l’agent, npm install d’un projet via le proxy', async () => {
+  const user = await newUser();
+  const ws = await workspace(user, 'Node');
+  const out = await bashViaPi(
+    user,
+    ws.id,
+    'npm config get prefix && npm install -g cowsay@1.6.0 2>&1 | grep -E "added|ERR" ; cowsay -T U global-ok | grep -c global-ok ; ' +
+      'mkdir -p /workspace/p && cd /workspace/p && npm init -y >/dev/null && npm install is-number@7.0.0 2>&1 | grep -E "added|ERR" ; node -e "console.log(require(\'is-number\')(5) ? \'projet-ok\' : \'ko\')" ; ' +
+      'node -e "require(\'playwright\'); console.log(\'playwright-ok\')"',
+  );
+  assert.match(out, /\/home\/agent\/\.local/, out);
+  assert.doesNotMatch(out, /ERR/, out);
+  assert.match(out, /^1$/m, 'commande globale disponible dans le PATH');
+  assert.match(out, /projet-ok/);
+  assert.match(out, /playwright-ok/, 'outils de l’image toujours résolus');
+});
