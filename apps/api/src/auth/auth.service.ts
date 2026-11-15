@@ -75,17 +75,6 @@ export class AuthService implements OnApplicationBootstrap {
     });
   }
 
-  /**
-   * Administrateur initial (BOOTSTRAP_ADMIN_EMAIL) : exempté du TOTP imposé par la politique, pour
-   * que le premier accès reste possible. Il peut toujours activer le TOTP de lui-même.
-   */
-  private async isBootstrapAdmin(userId: string): Promise<boolean> {
-    const email = this.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
-    if (!email) return false;
-    const [u] = await this.db.select({ email: users.email }).from(users).where(eq(users.id, userId));
-    return u?.email.toLowerCase() === email;
-  }
-
   /* ------------------------------ Connexion ------------------------------ */
 
   async login(login: string, password: string, ctx: RequestContext): Promise<{ result: LoginResult; tokens: SessionTokens }> {
@@ -158,8 +147,7 @@ export class AuthService implements OnApplicationBootstrap {
     const auth = await this.settings.section('auth');
     const hasTotp = await this.mfa.hasConfirmedTotp(userId);
     const mfaRequired =
-      (auth.mfaPolicy === 'required_all' || (auth.mfaPolicy === 'required_admins' && platformRole === 'platform_admin')) &&
-      !(await this.isBootstrapAdmin(userId));
+      auth.mfaPolicy === 'required_all' || (auth.mfaPolicy === 'required_admins' && platformRole === 'platform_admin');
     let state: SessionState = 'active';
     let result: LoginResult;
     if (hasTotp && !opts.externalMfa) {
@@ -380,8 +368,7 @@ export class AuthService implements OnApplicationBootstrap {
       .leftJoin(localCredentials, eq(localCredentials.userId, users.id))
       .where(eq(users.id, userId));
     if (!(await this.passwords.verify(row?.hash ?? null, password))) throw new AppError('invalid_credentials', 'Mot de passe incorrect');
-    const imposed = auth.mfaPolicy === 'required_all' || (auth.mfaPolicy === 'required_admins' && row.role === 'platform_admin');
-    if (imposed && !(await this.isBootstrapAdmin(userId))) {
+    if (auth.mfaPolicy === 'required_all' || (auth.mfaPolicy === 'required_admins' && row.role === 'platform_admin')) {
       throw new AppError('forbidden', 'La politique impose la double authentification');
     }
     await this.mfa.disable(userId);
