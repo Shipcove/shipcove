@@ -375,6 +375,9 @@ importers:
 
   apps/preview:
     dependencies:
+      '@cap/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@cap/database':
         specifier: workspace:*
         version: link:../../packages/database

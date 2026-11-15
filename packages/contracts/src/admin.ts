@@ -7,6 +7,24 @@ import { NotificationTypes } from './extensions.js';
  * Paramètres plateforme (table `platform_settings`, versionnée).
  * Les valeurs par défaut ci-dessous sont celles du cahier des charges.
  */
+/** Plage de ports de preview : « 8080 » ou « 3000-9999 » (1024 à 65535). */
+export const PortRangeSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{4,5}(-\d{4,5})?$/, 'Port ou plage attendus : 8080 ou 3000-9999')
+  .refine((v) => {
+    const [lo, hi = lo] = v.split('-').map(Number);
+    return lo >= 1024 && hi <= 65535 && lo <= hi;
+  }, 'Ports entre 1024 et 65535, plage croissante');
+
+/** Port couvert par la liste blanche des previews. */
+export function previewPortAllowed(port: number, ranges: readonly string[]): boolean {
+  return ranges.some((r) => {
+    const [lo, hi = lo] = r.split('-').map(Number);
+    return port >= lo && port <= hi;
+  });
+}
+
 export const PlatformSettingsSchema = z.object({
   auth: z
     .object({
@@ -62,6 +80,8 @@ export const PlatformSettingsSchema = z.object({
     .object({
       maxPortsPerWorkspace: z.number().int().min(0).max(50).default(3),
       enabled: z.boolean().default(true),
+      /** Ports autorisés (liste blanche) : « 3000 » ou « 3000-9999 ». Les ports des services d'appui restent toujours refusés. */
+      allowedPorts: z.array(PortRangeSchema).max(100).default(['3000-9999']),
     })
     .prefault({}),
   quotas: z

@@ -85,13 +85,34 @@ export class ServicesService {
     await provider.startServices(sb.handle, [{ name, key: c.key, image: pull.image, pullAuth: pull.auth, fallbackImage: pull.fallback, env: resolved, memoryMb, cpu: Math.max(0.25, Math.min(2, cpu / 2)), pidsLimit: 512, specHash }]);
     const deadline = Date.now() + HEALTH_TIMEOUT_MS;
     while (Date.now() < deadline) {
-      if (await this.healthy(sb, name, c.healthCommand)) return `${await this.describeOne(sb, name, c)}\nDémarré et prêt.`;
+      if (await this.healthy(sb, name, c.healthCommand)) {
+        const hint = await this.writeClientCredentials(sb, c, resolved);
+        return `${await this.describeOne(sb, name, c)}\nDémarré et prêt.${hint ? `\n${hint}` : ''}`;
+      }
       const state = (await provider.listServices(sb.handle)).find((s) => s.name === name);
       if (!state?.running) break;
       await new Promise((r) => setTimeout(r, 1000));
     }
     const logs = await this.logs(sb, env, name, 40).catch(() => '');
     throw new Error(`Le service ${name} n’est pas prêt (sonde de santé en échec). Dernières lignes du journal :\n${logs}`);
+  }
+
+  /**
+   * PostgreSQL : identifiants écrits dans le fichier de mots de passe de libpq (PGPASSFILE,
+   * /run/cap/pgpass, lisible par l'agent seul). psql, pg_dump et les pilotes qui suivent libpq
+   * s'y connectent sans que le mot de passe apparaisse dans les commandes affichées.
+   */
+  private async writeClientCredentials(sb: ActiveSandbox, c: typeof serviceCatalog.$inferSelect, env: Record<string, string>): Promise<string | null> {
+    const password = env['POSTGRES_PASSWORD'];
+    if (password === undefined) return null;
+    const user = env['POSTGRES_USER'] || 'postgres';
+    const db = env['POSTGRES_DB'] || user;
+    const esc = (v: string) => v.replace(/\\/g, '\\\\').replace(/:/g, '\\:');
+    await this.sandboxes.writeFiles(sb.handle, [{ path: 'run/cap/pgpass', content: `*:*:*:${esc(user)}:${esc(password)}\n`, mode: 0o600 }]);
+    return (
+      `Connexion : psql -h 127.0.0.1${c.port && c.port !== 5432 ? ` -p ${c.port}` : ''} -U ${user} -d ${db} — le mot de passe est fourni ` +
+      'automatiquement (PGPASSFILE) : ne l’écris jamais dans une commande (ni PGPASSWORD=…, ni dans une URL passée à psql).'
+    );
   }
 
   async stop(sb: ActiveSandbox, name: string): Promise<string> {

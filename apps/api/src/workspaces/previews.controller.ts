@@ -2,9 +2,9 @@ import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post } from '@n
 import { ApiTags } from '@nestjs/swagger';
 import { and, count, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { OpenPreviewSchema, type PreviewPortDto } from '@cap/contracts';
+import { OpenPreviewSchema, previewPortAllowed, type PreviewPortDto } from '@cap/contracts';
 import type { SecretProvider } from '@cap/secrets';
-import { previewPorts, type Database } from '@cap/database';
+import { previewPorts, serviceCatalog, type Database } from '@cap/database';
 import { AppError, AuditService, DB, ENV, SECRETS, SettingsService, previewHost, signPreviewToken, type BaseEnv } from '@cap/server-core';
 import { CurrentUser } from '../common/decorators.js';
 import type { AuthUser } from '../common/request.js';
@@ -45,6 +45,12 @@ export class PreviewsController {
     await this.access.requireWorkspaceOwner(user, id);
     const cfg = await this.settings.section('previews');
     if (!cfg.enabled) throw new AppError('forbidden', 'Les previews sont désactivées');
+    if (!previewPortAllowed(body.port, cfg.allowedPorts)) {
+      throw new AppError('validation_failed', `Le port ${body.port} n’est pas autorisé pour les previews (ports autorisés : ${cfg.allowedPorts.join(', ') || 'aucun'})`);
+    }
+    // Les ports des services d'appui (PostgreSQL, Redis…) ne sont jamais exposés hors de la sandbox.
+    const [svc] = await this.db.select({ name: serviceCatalog.name }).from(serviceCatalog).where(eq(serviceCatalog.port, body.port)).limit(1);
+    if (svc) throw new AppError('validation_failed', `Le port ${body.port} est réservé au service ${svc.name} : il n’est pas exposé hors de la sandbox`);
     const row = await this.db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`preview:${id}`}))`);
       const [existing] = await tx.select().from(previewPorts).where(and(eq(previewPorts.workspaceId, id), eq(previewPorts.port, body.port), isNull(previewPorts.closedAt)));

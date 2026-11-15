@@ -27,6 +27,7 @@ const LABELS: Record<string, string> = {
   egressAllowlist: 'Domaines autorisés en sortie (un par ligne)',
   checkpointExcludes: 'Exclusions des checkpoints (motifs, un par ligne)',
   maxPortsPerWorkspace: 'Ports de preview simultanés par workspace',
+  allowedPorts: 'Ports autorisés pour les previews (un port ou une plage par ligne, ex. 3000-9999)',
   enabled: 'Activé',
   defaultOutputReservation: 'Réservation de sortie par défaut (tokens)',
   unknownUsagePolicy: 'Usage inconnu après réconciliation',

@@ -4,7 +4,8 @@ import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } f
 import { and, eq, isNull } from 'drizzle-orm';
 import type { SecretProvider } from '@cap/secrets';
 import { previewPorts, sandboxInstances, users, workspaces, type Database } from '@cap/database';
-import { DB, ENV, SECRETS, parsePreviewHost, signPreviewToken, verifyPreviewToken, type BaseEnv } from '@cap/server-core';
+import { previewPortAllowed } from '@cap/contracts';
+import { DB, ENV, SECRETS, SettingsService, parsePreviewHost, signPreviewToken, verifyPreviewToken, type BaseEnv } from '@cap/server-core';
 
 const COOKIE = 'cap_preview';
 
@@ -30,6 +31,7 @@ export class PreviewProxyService implements OnModuleInit, OnModuleDestroy {
     @Inject(DB) private readonly db: Database,
     @Inject(ENV) private readonly env: BaseEnv & { PORT: number },
     @Inject(SECRETS) private readonly secrets: SecretProvider,
+    private readonly settings: SettingsService,
   ) {}
 
   private async signingKey(): Promise<string> {
@@ -86,6 +88,9 @@ export class PreviewProxyService implements OnModuleInit, OnModuleDestroy {
       .where(and(eq(previewPorts.workspaceId, parsed.workspaceId), eq(previewPorts.port, parsed.port), isNull(previewPorts.closedAt), isNull(workspaces.deletedAt)));
     if (!row || row.ownerId !== claims.uid || row.status !== 'active') return { status: 403, message: 'Preview fermée ou accès révoqué' };
     if (!row.host) return { status: 503, message: 'Sandbox arrêtée : démarrez le workspace' };
+    // Liste blanche relue à chaque vérification : un port retiré par l'administrateur est coupé aussitôt.
+    const { enabled, allowedPorts } = await this.settings.section('previews');
+    if (!enabled || !previewPortAllowed(parsed.port, allowedPorts)) return { status: 403, message: 'Port non autorisé pour les previews' };
     const target = { host: row.host, port: parsed.port, at: Date.now() };
     this.cache.set(cacheKey, target);
     return { target, ws: parsed.workspaceId, port: parsed.port };
@@ -150,22 +155,18 @@ export class PreviewProxyService implements OnModuleInit, OnModuleDestroy {
     res.end();
   }
 
+  /**
+   * WebSocket : la requête d'upgrade est rejouée en HTTP et le tunnel n'est ouvert que si
+   * l'application répond « 101 Switching Protocols ». Un service qui ne parle pas HTTP
+   * (PostgreSQL, Redis…) ne répond jamais 101 : impossible d'en faire un tunnel TCP brut.
+   */
   private async upgrade(req: http.IncomingMessage, socket: net.Socket, head: Buffer): Promise<void> {
     const auth = await this.authorize(req).catch(() => ({ status: 500, message: 'erreur' }));
     if ('status' in auth) {
       socket.end(`HTTP/1.1 ${auth.status} Forbidden\r\n\r\n`);
       return;
     }
-    const up = net.connect(auth.target.port, auth.target.host, () => {
-      const headers = { ...req.headers, cookie: stripCookie(req.headers.cookie) };
-      const lines = [`${req.method} ${req.url} HTTP/1.1`, ...Object.entries(headers).filter(([, v]) => v !== undefined).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`), '', ''];
-      up.write(lines.join('\r\n'));
-      if (head.length) up.write(head);
-      up.pipe(socket);
-      socket.pipe(up);
-    });
-    up.on('error', () => socket.destroy());
-    socket.on('error', () => up.destroy());
+    proxyUpgrade(req, socket, head, auth.target);
   }
 }
 
@@ -176,4 +177,43 @@ function stripCookie(cookie: string | undefined): string | undefined {
     .map((c) => c.trim())
     .filter((c) => !c.startsWith(`${COOKIE}=`));
   return rest.length ? rest.join('; ') : undefined;
+}
+
+/**
+ * Relais d'une requête d'upgrade (WebSocket) vers `target`. Le tunnel n'est ouvert qu'après une
+ * réponse « 101 » de l'application ; sinon la connexion est refusée sans rien relayer.
+ */
+export function proxyUpgrade(req: http.IncomingMessage, socket: net.Socket, head: Buffer, target: { host: string; port: number }): void {
+  const headers = { ...req.headers };
+  const cookie = stripCookie(req.headers.cookie);
+  if (cookie) headers.cookie = cookie;
+  else delete headers.cookie;
+  delete headers['x-forwarded-for'];
+  const up = http.request({ host: target.host, port: target.port, method: req.method, path: req.url, headers, timeout: 30_000 });
+  up.on('upgrade', (r, upSocket, upHead) => {
+    if (r.statusCode !== 101) {
+      upSocket.destroy();
+      socket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n');
+      return;
+    }
+    const lines = [`HTTP/1.1 101 ${r.statusMessage ?? 'Switching Protocols'}`];
+    for (let i = 0; i < r.rawHeaders.length; i += 2) lines.push(`${r.rawHeaders[i]}: ${r.rawHeaders[i + 1]}`);
+    socket.write(lines.join('\r\n') + '\r\n\r\n');
+    if (upHead.length) socket.write(upHead);
+    if (head.length) upSocket.write(head);
+    upSocket.setTimeout(0);
+    upSocket.on('error', () => socket.destroy());
+    socket.on('close', () => upSocket.destroy());
+    upSocket.pipe(socket);
+    socket.pipe(upSocket);
+  });
+  // Réponse HTTP ordinaire (pas d'upgrade) : refus, sans relayer le contenu.
+  up.on('response', (r) => {
+    r.resume();
+    socket.end(`HTTP/1.1 ${r.statusCode ?? 502} Upgrade Refused\r\n\r\n`);
+  });
+  up.on('timeout', () => up.destroy());
+  up.on('error', () => socket.destroy());
+  socket.on('error', () => up.destroy());
+  up.end();
 }

@@ -13,6 +13,7 @@
     "lint": "oxlint src"
   },
   "dependencies": {
+    "@cap/contracts": "workspace:*",
     "@cap/database": "workspace:*",
     "@cap/secrets": "workspace:*",
     "@cap/server-core": "workspace:*",

@@ -23,13 +23,23 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     NODE_PATH=/home/agent/.local/lib/node_modules:/usr/local/lib/node_modules \
     npm_config_cache=/home/agent/.npm \
-    PATH=/home/agent/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    PATH=/home/agent/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    PGPASSFILE=/run/cap/pgpass
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       bash ca-certificates curl git git-lfs jq less make g++ openssh-client procps \
       python3 python3-pip python3-venv ripgrep fd-find unzip xz-utils zip file tini \
  && ln -s /usr/bin/fdfind /usr/local/bin/fd \
+ && rm -rf /var/lib/apt/lists/*
+
+# Clients des services d'appui (platform_services) : psql / pg_dump du dépôt officiel PostgreSQL
+# (version récente : compatible avec les serveurs plus anciens) et redis-cli.
+RUN install -d /usr/share/postgresql-common/pgdg \
+ && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+ && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-client-18 redis-tools \
  && rm -rf /var/lib/apt/lists/*
 
 # gh (GitHub CLI) et glab (GitLab CLI) — binaires officiels, versions épinglées.

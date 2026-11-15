@@ -174,6 +174,7 @@ export default function platformBridge(pi: ExtensionAPI) {
       promptGuidelines: [
         'When the code or its tests need a database, cache or message broker, start it with platform_services instead of installing or running it yourself; Docker is not available in the sandbox.',
         'Only start the services you actually need, and reuse a running one (action « status »).',
+        'Use the clients installed in the sandbox (psql, pg_dump, redis-cli) to create tables, run migrations or inspect data. Never put a password on a command line (no PGPASSWORD=…, no password in a psql URL): psql reads it from PGPASSFILE, written when the service starts.',
       ],
       parameters: Type.Object({
         action: Type.Union([Type.Literal('start'), Type.Literal('stop'), Type.Literal('status'), Type.Literal('logs'), Type.Literal('catalog')]),
