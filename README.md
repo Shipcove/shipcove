@@ -70,7 +70,8 @@ supprimer exige une **approbation humaine**.
   - antivirus ClamAV (si configuré), en échec fermé.
 - **Partage** nominatif en lecture seule, révocable.
 - **Notifications** dans l'application et par email.
-- **Skills** (dossiers et sous-dossiers, import et export .zip, éditeur avec versions) et serveurs
+- **Skills** en markdown (dossiers, catégories gérées par les administrateurs, import et export .zip,
+  éditeur avec aperçu) et serveurs
   **MCP**, sur deux portées : globale et personnelle.
 
 **Pour les administrateurs**
@@ -119,19 +120,22 @@ cahier des charges dans [`SPEC.md`](SPEC.md).
 - `git` et `openssl` ;
 - 4 cœurs, 8 Go de RAM et 30 Go de disque au minimum.
 
-Les images sont publiées sur `ghcr.io/shadow-p99` (`shipcove-web`, `shipcove-api`, `shipcove-worker`,
+Les images sont publiées sur `ghcr.io/shipcove` (`shipcove-web`, `shipcove-api`, `shipcove-worker`,
 `shipcove-gateway`, `shipcove-preview`, `shipcove-docker-guard`, `shipcove-sandbox`).
+Elles sont construites par la CI GitHub Actions (`.github/workflows/ci.yml`) après les tests
+unitaires : branche `develop` → étiquettes `develop` et `sha-<commit>` ; tag `vX.Y.Z` → `X.Y.Z` et
+`X.Y`. Les pull requests construisent les images sans les publier.
 
 ```bash
 # 1. Récupération de la pile Compose
-git clone https://github.com/Shadow-p99/coding-platform.git
-cd coding-platform/infrastructure/docker
+git clone https://github.com/Shipcove/shipcove.git
+cd shipcove/infrastructure/docker
 
 # 2. Configuration (aucun secret dans ce fichier)
 cp .env.example .env
-#    → CAP_REGISTRY=ghcr.io/shadow-p99/
+#    → CAP_REGISTRY=ghcr.io/shipcove/
 #    → CAP_VERSION=0.1.0
-#    → CAP_SANDBOX_IMAGE=ghcr.io/shadow-p99/shipcove-sandbox:0.1.0
+#    → CAP_SANDBOX_IMAGE=ghcr.io/shipcove/shipcove-sandbox:0.1.0
 #    → CAP_ADMIN_PASSWORD : mot de passe de l'administrateur initial
 #    → CAP_DOCKER_GID     : groupe du socket Docker (stat -c %g /var/run/docker.sock)
 
@@ -140,7 +144,7 @@ cp .env.example .env
 
 # 4. Images de la plateforme et de la sandbox
 docker compose pull
-docker pull ghcr.io/shadow-p99/shipcove-sandbox:0.1.0
+docker pull ghcr.io/shipcove/shipcove-sandbox:0.1.0
 
 # 5. Démarrage (le profil « dev » ajoute Mailpit et un fournisseur LLM factice)
 docker compose --profile dev up -d

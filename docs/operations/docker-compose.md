@@ -9,7 +9,7 @@ sauvegardes) : site de documentation, pages *Installation* et *Exploitation* (`p
 cd infrastructure/docker
 cp .env.example .env              # CAP_REGISTRY, CAP_VERSION, CAP_SANDBOX_IMAGE, admin, CAP_DOCKER_GID…
 ./scripts/init-secrets.sh         # secrets d'amorçage dans .secrets/ (jamais versionnés, à sauvegarder)
-docker compose pull               # images ghcr.io/shadow-p99/cap-* (ou `pnpm images:build` depuis les sources)
+docker compose pull               # images ghcr.io/shipcove/shipcove-* (ou `pnpm images:build` depuis les sources)
 docker pull "$CAP_SANDBOX_IMAGE"
 docker compose up -d              # --profile dev : Mailpit + LLM factice
 ```

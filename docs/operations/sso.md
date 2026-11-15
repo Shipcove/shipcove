@@ -42,7 +42,7 @@ Côté Keycloak, créez un client *OpenID Connect* confidentiel :
 ```json
 {
   "issuer": "https://sso.exemple.com/realms/entreprise",
-  "clientId": "coding-platform",
+  "clientId": "shipcove",
   "scopes": ["openid", "profile", "email"],
   "usernameClaim": "preferred_username",
   "emailClaim": "email",
@@ -66,7 +66,7 @@ Pour que `mfa: auto` reconnaisse la MFA Keycloak, exposez `amr`/`acr` dans le je
 ```json
 {
   "entryPoint": "https://sso.exemple.com/realms/entreprise/protocol/saml",
-  "issuer": "coding-platform",
+  "issuer": "shipcove",
   "idpCert": "MIIC…(certificat de signature du fournisseur, base64 ou PEM)",
   "emailAttribute": "email",
   "nameAttribute": "displayName",

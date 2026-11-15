@@ -22,17 +22,17 @@
         <li>
           <h3>Récupérer les fichiers de déploiement</h3>
           <p>Le dépôt contient le fichier Compose, les scripts d’amorçage et la configuration de LiteLLM ; les applications elles-mêmes sont téléchargées sous forme d’images.</p>
-          <pre><code>git clone https://github.com/Shadow-p99/coding-platform.git
-cd coding-platform/infrastructure/docker</code></pre>
+          <pre><code>git clone https://github.com/Shipcove/shipcove.git
+cd shipcove/infrastructure/docker</code></pre>
         </li>
         <li>
           <h3>Configurer</h3>
           <pre><code>cp .env.example .env</code></pre>
           <p>Dans <code>.env</code>, renseignez au minimum :</p>
           <pre><code># Images publiées sur ghcr.io
-CAP_REGISTRY=ghcr.io/shadow-p99/
+CAP_REGISTRY=ghcr.io/shipcove/
 CAP_VERSION=0.1.0
-CAP_SANDBOX_IMAGE=ghcr.io/shadow-p99/shipcove-sandbox:0.1.0
+CAP_SANDBOX_IMAGE=ghcr.io/shipcove/shipcove-sandbox:0.1.0
 
 # Administrateur initial (créé au premier démarrage s'il n'en existe aucun)
 CAP_ADMIN_EMAIL=admin@exemple.com
@@ -50,7 +50,7 @@ CAP_DOCKER_GID=989</code></pre>
         <li>
           <h3>Télécharger les images et démarrer</h3>
           <pre><code>docker compose pull
-docker pull ghcr.io/shadow-p99/shipcove-sandbox:0.1.0
+docker pull ghcr.io/shipcove/shipcove-sandbox:0.1.0
 docker compose up -d</code></pre>
           <p>Au premier démarrage, Vault est initialisé et déverrouillé, le stockage S3 (Garage) est configuré et les migrations de base de données sont appliquées. Vérifiez l’état :</p>
           <pre><code>docker compose ps
@@ -88,7 +88,7 @@ curl -s http://localhost:8080/api/v1/health/ready</code></pre>
       <pre><code># dans .env : CAP_VERSION et CAP_SANDBOX_IMAGE vers la nouvelle version
 git pull
 docker compose pull
-docker pull ghcr.io/shadow-p99/shipcove-sandbox:&lt;version&gt;
+docker pull ghcr.io/shipcove/shipcove-sandbox:&lt;version&gt;
 docker compose up -d</code></pre>
       <p>Les migrations sont appliquées automatiquement par le service <code>migrate</code> avant le démarrage des API. Les sandboxes en cours conservent leur image jusqu’à leur prochain redémarrage.</p>
 
