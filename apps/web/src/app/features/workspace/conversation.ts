@@ -2,13 +2,13 @@ import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, output,
 import type { MessageDto } from '@cap/contracts';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
-import { MarkdownPipe } from '../../shared/pipes';
+import { CodeBlocksDirective, MarkdownPipe } from '../../shared/pipes';
 import { ToolCard } from './tool-card';
 import { WorkspaceStore } from './workspace.store';
 
 @Component({
   selector: 'cap-conversation',
-  imports: [ToolCard, MarkdownPipe, Icon],
+  imports: [ToolCard, MarkdownPipe, CodeBlocksDirective, Icon],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div #scroller class="h-full overflow-x-hidden overflow-y-auto" (scroll)="onScroll()">
@@ -56,7 +56,7 @@ import { WorkspaceStore } from './workspace.store';
                   <div class="mt-1 border-l-2 border-stone-200 pl-3 whitespace-pre-wrap [overflow-wrap:anywhere] dark:border-stone-700">{{ m.thinking }}</div>
                 </details>
               }
-              @if (m.text) { <div class="prose-chat" [innerHTML]="m.text | markdown"></div> }
+              @if (m.text) { <div class="prose-chat" capCodeBlocks [innerHTML]="m.text | markdown"></div> }
               @for (t of m.toolCalls; track t.id) { <cap-tool-card [call]="t" (openFile)="openFile.emit($event)" /> }
               @if (m.stopReason === 'error') { <div class="mt-1 text-sm text-red-600">La réponse du modèle s’est terminée en erreur.</div> }
             </div>
