@@ -108,7 +108,10 @@ export class PreviewProxyService implements OnModuleInit, OnModuleDestroy {
         return;
       }
       const headers = { ...req.headers };
-      headers.cookie = stripCookie(req.headers.cookie);
+      // Cookie de la passerelle retiré ; s'il était seul, plus d'en-tête du tout (Node refuse `undefined`).
+      const cookie = stripCookie(req.headers.cookie);
+      if (cookie) headers.cookie = cookie;
+      else delete headers.cookie;
       delete headers['x-forwarded-for'];
       const up = http.request({ host: auth.target.host, port: auth.target.port, method: req.method, path: req.url, headers, timeout: 300_000 }, (r) => {
         res.writeHead(r.statusCode ?? 502, r.headers);

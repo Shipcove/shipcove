@@ -250,4 +250,20 @@ test('previews : 3 ports par défaut, le 4e refusé ; jeton requis sur l’origi
   });
   assert.equal(res.statusCode, 302);
   assert.match(res.headers['set-cookie'][0], /^cap_preview=.*HttpOnly/);
+  // Avec ce seul cookie (cas d'un navigateur neuf), la page servie par la sandbox est relayée.
+  const conv = await ctx.dev.get(`/workspaces/${ctx.ws.id}/conversation`);
+  const start = 'mkdir -p /tmp/pv && echo "<h1>preview ok</h1>" > /tmp/pv/index.html && (cd /tmp/pv && nohup python3 -m http.server 3001 > /tmp/pv.log 2>&1 &) && for i in $(seq 20); do curl -sf -o /dev/null http://127.0.0.1:3001/ && break; sleep 0.3; done';
+  const sent = await ctx.dev.post(`/workspaces/${ctx.ws.id}/messages`, { text: `Serveur. [[tool:bash ${JSON.stringify({ command: start })}]]` });
+  await ctx.dev.events(ctx.ws.id, conv.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === sent.body.runId, 300_000);
+  const page = await new Promise((resolve, reject) => {
+    http
+      .get({ host: '127.0.0.1', port: 8090, path: '/', headers: { Host: u.host, Cookie: res.headers['set-cookie'][0].split(';')[0] } }, (r) => {
+        let body = '';
+        r.on('data', (c) => (body += c));
+        r.on('end', () => resolve({ status: r.statusCode, body }));
+      })
+      .on('error', reject);
+  });
+  assert.equal(page.status, 200, page.body);
+  assert.match(page.body, /preview ok/);
 });

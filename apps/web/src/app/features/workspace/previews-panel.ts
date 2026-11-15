@@ -26,6 +26,12 @@ import { WorkspaceStore } from './workspace.store';
           <button class="btn-secondary ml-auto !py-1" (click)="visit(p)">Ouvrir</button>
           <button class="btn-ghost !p-1" (click)="close(p)" aria-label="Fermer la preview"><cap-icon name="x" [size]="14" /></button>
         </div>
+        @if (fallback()?.id === p.id) {
+          <p class="-mt-1 px-1 text-xs text-stone-500">
+            Le navigateur a bloqué l’ouverture de l’onglet :
+            <a class="text-accent-700 underline dark:text-accent-500" [href]="fallback()!.url" target="_blank" rel="noopener noreferrer" (click)="fallback.set(null)">ouvrir la preview</a>
+          </p>
+        }
       } @empty {
         <p class="text-stone-500">Aucune preview ouverte. Demandez à Pi de démarrer un serveur (ex. <code>npm run dev -- --host 0.0.0.0 --port 5173</code>).</p>
       }
@@ -62,12 +68,22 @@ export class PreviewsPanel implements OnInit {
     }
   }
 
+  /** Lien de secours quand le navigateur bloque l'ouverture de l'onglet. */
+  protected readonly fallback = signal<{ id: string; url: string } | null>(null);
+
+  /**
+   * L'onglet est ouvert pendant le clic (sinon le bloqueur de fenêtres le refuse après l'appel
+   * réseau), coupé de l'application (`opener = null`), puis dirigé vers le lien signé de la preview.
+   * `noopener` n'est pas utilisable ici : `window.open` renverrait toujours `null`.
+   */
   protected async visit(p: PreviewPortDto) {
-    const w = window.open('about:blank', '_blank', 'noopener');
+    this.fallback.set(null);
+    const w = window.open('', '_blank');
+    if (w) w.opener = null;
     try {
       const { url } = await this.api.post<{ url: string }>(`${this.base()}/${p.id}/link`);
-      if (w) w.location.href = url;
-      else window.open(url, '_blank', 'noopener');
+      if (w && !w.closed) w.location.replace(url);
+      else this.fallback.set({ id: p.id, url });
     } catch (err) {
       w?.close();
       this.toast.error(err);
