@@ -991,3 +991,72 @@ test('suppression d’une conversation pendant un run : tout est effacé (sandbo
   // La consommation reste comptée (quota personnel), sans référence à un contenu.
   assert.ok(Number(sql(`select count(*) from llm_requests where workspace_id = '${ws.id}'`)) > 0);
 });
+
+test('miroir de registre : images des services réécrites vers le miroir, identifiants (Vault) requis, repli sur l’origine', async () => {
+  // Miroir authentifié de Docker Hub (cache « pull-through »), joignable par le moteur Docker de l'hôte.
+  const MIRROR = 'localhost:5055';
+  const htpasswd = new URL('./registry/htpasswd', import.meta.url).pathname;
+  execFileSync('docker', ['rm', '-f', 'cap-e2e-registry'], { stdio: 'ignore' });
+  execFileSync('docker', [
+    'run', '-d', '--name', 'cap-e2e-registry', '-p', '127.0.0.1:5055:5000',
+    '-v', `${htpasswd}:/auth/htpasswd:ro`,
+    '-e', 'REGISTRY_AUTH=htpasswd', '-e', 'REGISTRY_AUTH_HTPASSWD_REALM=e2e', '-e', 'REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd',
+    '-e', 'REGISTRY_PROXY_REMOTEURL=https://registry-1.docker.io',
+    'registry:2.8.3',
+  ]);
+  const redis = (await ctx.admin.get('/admin/service-catalog')).body.find((c) => c.key === 'redis');
+  const mirrored = `${MIRROR}/library/${redis.image.includes('/') ? redis.image.split('/').pop() : redis.image}`;
+  const user = await newUser();
+  const ws = await workspace(user, 'Miroir');
+  const svc = async (args) => {
+    const conv = await user.get(`/workspaces/${ws.id}/conversation`);
+    const sent = await user.post(`/workspaces/${ws.id}/messages`, { text: `Service. [[tool:platform_services ${JSON.stringify(args)}]]` }, { 'Idempotency-Key': `f-${uid()}` });
+    const evs = await user.events(ws.id, conv.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === sent.body.runId, 600_000);
+    return evs.find((e) => e.type === 'tool.completed').data;
+  };
+  const serviceImage = (name) => {
+    const sbx = sql(`select external_id from sandbox_instances where workspace_id = '${ws.id}' and status = 'running'`);
+    return execFileSync('docker', ['inspect', '-f', '{{.Config.Image}}', `cap-svc-${sbx.slice(0, 12)}-${name}`], { encoding: 'utf8' }).trim();
+  };
+  const mirrors = (body) => ctx.admin.put('/admin/registry-mirrors', body);
+  try {
+    // Réservé à l'administrateur ; préfixe invalide refusé.
+    assert.equal((await user.put('/admin/registry-mirrors', { mirrors: [], fallbackToUpstream: false })).status, 403);
+    assert.equal((await mirrors({ mirrors: [{ registry: 'docker.io', prefix: 'pas un préfixe' }], fallbackToUpstream: false })).status, 400);
+
+    // Miroir sans identifiants : refusé par le registre, pas de repli → échec explicite.
+    assert.equal((await mirrors({ mirrors: [{ registry: 'docker.io', prefix: MIRROR }], fallbackToUpstream: false })).status, 200);
+    const preview = (await ctx.admin.post('/admin/registry-mirrors/preview', { images: [redis.image, 'ghcr.io/x/y:1'] })).body;
+    assert.deepEqual(preview.map((p) => p.pulled), [mirrored, 'ghcr.io/x/y:1']);
+    let out = await svc({ action: 'start', service: 'redis', name: 'cache-a' });
+    assert.equal(out.isError, true, out.output);
+    assert.match(out.output, new RegExp(MIRROR));
+
+    // Identifiants enregistrés (jamais renvoyés) : téléchargement via le miroir.
+    const saved = await mirrors({ mirrors: [{ registry: 'docker.io', prefix: MIRROR, username: 'e2e', password: 'Miroir-E2e-2026' }], fallbackToUpstream: false });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    assert.equal(saved.body.mirrors[0].passwordSet, true);
+    assert.ok(!JSON.stringify((await ctx.admin.get('/admin/registry-mirrors')).body).includes('Miroir-E2e-2026'), 'mot de passe jamais renvoyé');
+    // Réenregistrement sans mot de passe : le mot de passe est conservé.
+    await mirrors({ mirrors: [{ registry: 'docker.io', prefix: MIRROR, username: 'e2e' }], fallbackToUpstream: false });
+    out = await svc({ action: 'start', service: 'redis', name: 'cache-b' });
+    assert.equal(out.isError, false, out.output);
+    assert.equal(serviceImage('cache-b'), mirrored, 'image du miroir utilisée');
+    assert.ok(!JSON.stringify(out).includes('Miroir-E2e-2026'));
+    await svc({ action: 'stop', name: 'cache-b' });
+
+    // Miroir injoignable avec repli autorisé : image d'origine.
+    await mirrors({ mirrors: [{ registry: 'docker.io', prefix: 'localhost:5999/hub' }], fallbackToUpstream: true });
+    out = await svc({ action: 'start', service: 'redis', name: 'cache-c' });
+    assert.equal(out.isError, false, out.output);
+    assert.equal(serviceImage('cache-c'), redis.image, 'repli sur le registre d’origine');
+  } finally {
+    await mirrors({ mirrors: [], fallbackToUpstream: false });
+    execFileSync('docker', ['rm', '-f', 'cap-e2e-registry'], { stdio: 'ignore' });
+    try {
+      execFileSync('docker', ['rmi', '-f', mirrored], { stdio: 'ignore' });
+    } catch {
+      /* image jamais téléchargée */
+    }
+  }
+});

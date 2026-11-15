@@ -31,6 +31,7 @@ import { ApprovalsController, GitConnectionsController, WorkspaceGitController }
 import { ModelsController, NotificationsController, UsageController } from './usage/usage.controller.js';
 import { AdminController } from './admin/admin.controller.js';
 import { AdminLiteLlmController, AdminModelsController } from './admin/admin-models.controller.js';
+import { AdminRegistryController } from './admin/admin-registry.controller.js';
 import { LiteLlmAdminService } from './admin/litellm.service.js';
 import { IdempotencyService } from './common/idempotency.service.js';
 import { SkillsController } from './extensions/skills.controller.js';
@@ -68,6 +69,7 @@ export class AppModule {
         AdminController,
         AdminModelsController,
         AdminLiteLlmController,
+        AdminRegistryController,
         SsoController,
         AdminGitForgesController,
         GitOAuthController,

@@ -46,6 +46,8 @@ pip install -r requirements.txt</code></pre>
         <li>Chaque service partage le réseau de <strong>sa</strong> sandbox : joignable sur <code>localhost</code> depuis celle-ci uniquement, sans plus d’accès sortant qu’elle. Conteneurs durcis et limités (mémoire, CPU, processus), 4 services au plus par sandbox par défaut.</li>
         <li>Les services durent autant que la sandbox et disparaissent avec elle : données éphémères, l’agent refait migrations et données de test après un redémarrage.</li>
       </ul>
+      <h3>Miroir de registre</h3>
+      <p>Sans accès direct aux registres publics, <em>Administration → Sandboxes &amp; previews → Miroir de registre</em> fait télécharger les images des services depuis votre miroir (Harbor, Nexus, Artifactory…) : chaque registre d’origine est associé à un préfixe du miroir (<code>docker.io</code> → <code>harbor.corp/dockerhub</code> donne <code>harbor.corp/dockerhub/library/redis:7.4-alpine</code>), avec des identifiants facultatifs stockés dans Vault et un repli possible sur le registre d’origine. Le téléchargement est fait par le moteur Docker de l’hôte : un miroir en HTTP ou à certificat interne doit y être déclaré.</p>
       <div class="callout"><p>Les services d’appui sont disponibles avec le provider Docker ; ils le seront sur Kubernetes (conteneurs annexes du Pod) avec la validation du chart Helm.</p></div>
     </main>
   </body>

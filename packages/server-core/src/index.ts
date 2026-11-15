@@ -21,3 +21,4 @@ export * from './common/preview-token.js';
 export * from './runs/run-queue.service.js';
 export * from './environment/environment.service.js';
 export * from './llm/litellm.client.js';
+export * from './registry/registry-mirror.js';

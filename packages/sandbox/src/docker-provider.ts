@@ -273,12 +273,20 @@ export class DockerSandboxProvider implements SandboxProvider {
    */
   async startServices(handle: SandboxHandle, services: ServiceSpec[]): Promise<void> {
     for (const svc of services) {
-      await this.ensureImage(svc.image);
+      let image = svc.image;
+      try {
+        await this.ensureImage(image, svc.pullAuth);
+      } catch (err) {
+        if (!svc.fallbackImage) throw err;
+        // Miroir indisponible et repli autorisé : registre d'origine.
+        image = svc.fallbackImage;
+        await this.ensureImage(image);
+      }
       const memory = svc.memoryMb * 1024 * 1024;
       try {
         const c = await this.docker.createContainer({
           name: `cap-svc-${handle.externalId.slice(0, 12)}-${svc.name}`,
-          Image: svc.image,
+          Image: image,
           Env: Object.entries(svc.env).map(([k, v]) => `${k}=${v}`),
           Labels: { 'cap.service': 'true', 'cap.sandbox': handle.externalId, 'cap.service.name': svc.name, 'cap.service.key': svc.key, 'cap.service.hash': svc.specHash },
           HostConfig: {
@@ -304,7 +312,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
   }
 
-  private async ensureImage(image: string): Promise<void> {
+  private async ensureImage(image: string, auth?: { username: string; password: string; serveraddress: string }): Promise<void> {
     try {
       await this.docker.getImage(image).inspect();
       return;
@@ -312,10 +320,12 @@ export class DockerSandboxProvider implements SandboxProvider {
       /* absente : téléchargement */
     }
     await new Promise<void>((resolve, reject) => {
-      this.docker.pull(image, (err: Error | null, stream: NodeJS.ReadableStream) => {
-        if (err) return reject(new SandboxError(`Image ${image} introuvable : ${err.message}`));
+      const done = (err: Error | null, stream?: NodeJS.ReadableStream) => {
+        if (err || !stream) return reject(new SandboxError(`Image ${image} introuvable : ${err?.message ?? 'flux absent'}`));
         this.docker.modem.followProgress(stream, (e: Error | null) => (e ? reject(new SandboxError(`Téléchargement de ${image} : ${e.message}`)) : resolve()));
-      });
+      };
+      if (auth) void this.docker.pull(image, { authconfig: auth }, done as never);
+      else void this.docker.pull(image, done as never);
     });
   }
 

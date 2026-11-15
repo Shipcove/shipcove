@@ -76,6 +76,10 @@ export interface ServiceSpec {
   /** Clé du catalogue d'origine (ex. `postgres`). */
   key: string;
   image: string;
+  /** Identifiants du registre de `image` (miroir authentifié), jamais journalisés. */
+  pullAuth?: { username: string; password: string; serveraddress: string };
+  /** Référence de repli si `image` (miroir) ne peut pas être téléchargée. */
+  fallbackImage?: string;
   env: Record<string, string>;
   memoryMb: number;
   cpu: number;

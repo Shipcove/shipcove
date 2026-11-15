@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, inject, signal, computed } from '@angular/core';
+import { AdminRegistry } from './admin-registry';
 import { FormsModule } from '@angular/forms';
 import type { ServiceCatalogDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
@@ -13,7 +14,7 @@ const EMPTY = { key: '', name: '', image: '', port: '' as number | '', health: '
  */
 @Component({
   selector: 'cap-admin-services',
-  imports: [FormsModule],
+  imports: [FormsModule, AdminRegistry],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h2 class="mt-6 mb-1 text-sm font-semibold text-stone-500 uppercase">Services lancés par l’agent</h2>
@@ -45,6 +46,7 @@ const EMPTY = { key: '', name: '', image: '', port: '' as number | '', health: '
       <label class="flex items-center gap-2 self-end text-sm"><input type="checkbox" name="enabled" [(ngModel)]="form.enabled" /> Proposé à l’agent</label>
       <div class="flex gap-2 md:col-span-3"><button class="btn-primary">Enregistrer</button>@if (editing()) { <button type="button" class="btn-secondary" (click)="reset()">Annuler</button> }</div>
     </form>
+    <cap-admin-registry [images]="images()" />
   `,
 })
 export class AdminServices implements OnInit {
@@ -52,6 +54,7 @@ export class AdminServices implements OnInit {
   private readonly toast = inject(ToastService);
   protected readonly items = signal<ServiceCatalogDto[]>([]);
   protected readonly editing = signal<string | null>(null);
+  protected readonly images = computed(() => this.items().map((i) => i.image));
   protected form = { ...EMPTY };
 
   async ngOnInit() {

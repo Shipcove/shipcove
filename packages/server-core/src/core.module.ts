@@ -15,6 +15,7 @@ import { GitProviderClient } from './git/git-provider.client.js';
 import { RunQueueService } from './runs/run-queue.service.js';
 import { EnvironmentService } from './environment/environment.service.js';
 import { LiteLlmClient } from './llm/litellm.client.js';
+import { RegistryMirrorService } from './registry/registry-mirror.js';
 
 
 export interface CoreModuleOptions {
@@ -90,6 +91,7 @@ export class CoreModule {
         RunQueueService,
         EnvironmentService,
         LiteLlmClient,
+        RegistryMirrorService,
       ],
       exports: [
         ENV,
@@ -108,6 +110,7 @@ export class CoreModule {
         RunQueueService,
         EnvironmentService,
         LiteLlmClient,
+        RegistryMirrorService,
       ],
     };
   }

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { serviceCatalog, type Database } from '@cap/database';
-import { DB, SettingsService, scrubSecrets, type ResolvedEnvironment } from '@cap/server-core';
+import { DB, RegistryMirrorService, SettingsService, scrubSecrets, type ResolvedEnvironment } from '@cap/server-core';
 import { SandboxManager, type ActiveSandbox } from './sandbox-manager.service.js';
 
 const HEALTH_TIMEOUT_MS = 180_000;
@@ -31,6 +31,7 @@ export class ServicesService {
     @Inject(DB) private readonly db: Database,
     private readonly sandboxes: SandboxManager,
     private readonly settings: SettingsService,
+    private readonly mirrors: RegistryMirrorService,
   ) {}
 
   private async enabledCatalog() {
@@ -75,11 +76,13 @@ export class ServicesService {
     }
     if (missing.length) throw new Error(`Variables du dépôt non définies : ${missing.join(', ')}`);
     const memoryMb = Math.min(Math.max(64, Math.round(req.memoryMb ?? c.defaultMemoryMb)), c.maxMemoryMb);
-    const specHash = createHash('sha256').update(JSON.stringify([c.image, resolved, memoryMb])).digest('hex');
+    // Miroir de registre éventuel (réécriture de la référence, identifiants, repli).
+    const pull = await this.mirrors.plan(c.image);
+    const specHash = createHash('sha256').update(JSON.stringify([pull.image, resolved, memoryMb])).digest('hex');
     // Même configuration déjà lancée : rien à faire (idempotent).
     if (existing?.running && existing.specHash === specHash) return this.describeOne(sb, name, c);
     if (existing) await provider.removeService(sb.handle, name);
-    await provider.startServices(sb.handle, [{ name, key: c.key, image: c.image, env: resolved, memoryMb, cpu: Math.max(0.25, Math.min(2, cpu / 2)), pidsLimit: 512, specHash }]);
+    await provider.startServices(sb.handle, [{ name, key: c.key, image: pull.image, pullAuth: pull.auth, fallbackImage: pull.fallback, env: resolved, memoryMb, cpu: Math.max(0.25, Math.min(2, cpu / 2)), pidsLimit: 512, specHash }]);
     const deadline = Date.now() + HEALTH_TIMEOUT_MS;
     while (Date.now() < deadline) {
       if (await this.healthy(sb, name, c.healthCommand)) return `${await this.describeOne(sb, name, c)}\nDémarré et prêt.`;

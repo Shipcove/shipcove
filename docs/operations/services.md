@@ -21,6 +21,30 @@ est limité (`sandbox.maxServicesPerWorkspace`, 4 par défaut).
 Désactiver ou supprimer un service ne coupe pas les instances déjà lancées : elles s'arrêtent avec
 leur sandbox. Le service n'est simplement plus proposé.
 
+## Miroir de registre
+
+Pour un déploiement sans accès direct aux registres publics, **Administration → Sandboxes &
+previews → Miroir de registre** fait télécharger les images des services depuis votre miroir
+(Harbor, Nexus, Artifactory, `registry:2` en cache…).
+
+- **Correspondance** : chaque registre d'origine est servi sous un préfixe du miroir. Avec
+  `docker.io` → `harbor.corp/dockerhub`, `redis:7.4-alpine` devient
+  `harbor.corp/dockerhub/library/redis:7.4-alpine` (règles de Docker : registre implicite
+  `docker.io`, préfixe `library/`). Tags et digests sont conservés. Une image d'un registre sans
+  correspondance est téléchargée depuis son origine ; une référence déjà écrite sur le miroir est
+  utilisée telle quelle.
+- **Identifiants** facultatifs (compte robot en lecture), stockés dans Vault (`infra/registry`) et
+  jamais renvoyés. Ils ne sont présentés qu'à l'hôte du miroir.
+- **Repli** facultatif : si le miroir échoue, téléchargement depuis le registre d'origine.
+- **Prise en compte** immédiate, au prochain démarrage d'un service ; un service déjà lancé avec
+  l'ancienne image est recréé à sa prochaine demande. Une image déjà présente sur l'hôte n'est pas
+  retéléchargée.
+- **Moteur Docker** : c'est lui qui télécharge, pas la sandbox (le proxy de sortie n'intervient
+  pas). Un miroir en HTTP ou à certificat interne doit y être déclaré (`insecure-registries`,
+  `/etc/docker/certs.d/<hôte>/ca.crt`).
+- **Mise à jour** d'une installation existante : la politique Vault (API en écriture, worker en
+  lecture sur `infra/registry`) est appliquée par l'amorçage, avec `VAULT_TOKEN` en production.
+
 ## Côté agent : l'outil `platform_services`
 
 L'outil n'est proposé à Pi que si le catalogue n'est pas vide. Sa description liste les services

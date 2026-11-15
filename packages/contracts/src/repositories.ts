@@ -117,3 +117,38 @@ export const UpsertServiceCatalogSchema = z.object({
 export type UpsertServiceCatalog = z.infer<typeof UpsertServiceCatalogSchema>;
 
 
+
+/* ---------- Miroir de registre d'images (services d'appui) ---------- */
+
+const RegistryHostSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(255)
+  .regex(/^(https?:\/\/)?[a-z0-9.-]+(:\d+)?\/?$/i, 'Registre attendu, ex. docker.io ou ghcr.io');
+
+export const RegistryMirrorSchema = z.object({
+  /** Registre d'origine : docker.io, ghcr.io, quay.io… */
+  registry: RegistryHostSchema,
+  /** Préfixe sur le miroir : harbor.corp/dockerhub (hôte[:port][/chemin]). */
+  prefix: z
+    .string()
+    .trim()
+    .min(3)
+    .max(300)
+    .regex(/^[a-z0-9.-]+(:\d+)?(\/[a-z0-9._-]+)*\/?$/i, 'Préfixe attendu, ex. harbor.corp/dockerhub'),
+  username: z.string().max(255).optional(),
+  /** Absent : mot de passe actuel conservé (pour ce registre d'origine). */
+  password: z.string().max(4000).optional(),
+});
+
+export const RegistryMirrorConfigSchema = z.object({
+  mirrors: z.array(RegistryMirrorSchema).max(20),
+  fallbackToUpstream: z.boolean().default(false),
+});
+export type RegistryMirrorConfigInput = z.infer<typeof RegistryMirrorConfigSchema>;
+
+export interface RegistryMirrorConfigDto {
+  mirrors: Array<{ registry: string; prefix: string; username: string | null; passwordSet: boolean }>;
+  fallbackToUpstream: boolean;
+}
