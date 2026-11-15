@@ -1101,3 +1101,137 @@ test('plusieurs skills choisis en tête du message : tous développés pour Pi (
   const saved = (await user.get(`/workspaces/${ws.id}/conversation`)).body.messages.find((m) => m.role === 'user');
   assert.equal(saved.text, `/skill:ska-${id} /skill:skb-${id} Fais-le`);
 });
+
+/** Archive ZIP « stored » avec CRC, droits Unix et noms quelconques (y compris piégés). */
+async function skillZip(entries) {
+  const { crc32 } = await import('node:zlib');
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  for (const e of entries) {
+    const name = Buffer.from(e.name);
+    const data = Buffer.isBuffer(e.data) ? e.data : Buffer.from(e.data);
+    const crc = crc32(data) >>> 0;
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0x800, 6);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE((3 << 8) | 20, 4);
+    central.writeUInt16LE(0x800, 8);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(name.length, 28);
+    central.writeUInt32LE(((e.mode ?? 0o100644) << 16) >>> 0, 38);
+    central.writeUInt32LE(offset, 42);
+    locals.push(local, name, data);
+    centrals.push(central, name);
+    offset += 30 + name.length + data.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(cd.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, cd, end]);
+}
+
+async function importSkill(client, zipBuf, fields = {}) {
+  const form = new FormData();
+  form.append('file', new Blob([zipBuf], { type: 'application/zip' }), 'skill.zip');
+  for (const [k, v] of Object.entries(fields)) form.append(k, v);
+  const res = await fetch(`${BASE}/api/v1/skills/import`, {
+    method: 'POST',
+    headers: { 'X-CSRF-Token': client.csrf, Cookie: [...client.cookies].map(([k, v]) => `${k}=${v}`).join('; ') },
+    body: form,
+  });
+  return { status: res.status, body: await res.json().catch(() => null) };
+}
+
+test('skills avec dossiers : import .zip (sous-dossiers, binaire, script exécutable), arborescence dans la sandbox, édition, export, archives piégées refusées', async () => {
+  const user = await newUser();
+  const id = uid().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const name = `arbo-${id}`;
+  const png = Buffer.from(PNG_1PX);
+  const zipBuf = await skillZip([
+    { name: `${name}/SKILL.md`, data: `---\nname: ${name}\ndescription: >\n  Skill de test avec dossiers\n  et sous-dossiers.\n---\n\nVoir references/.\n` },
+    { name: `${name}/references/api/guide.md`, data: '# Guide\n' },
+    { name: `${name}/scripts/run.sh`, data: '#!/bin/sh\necho script-ok\n', mode: 0o100755 },
+    { name: `${name}/assets/img/logo.png`, data: png },
+    { name: '__MACOSX/._SKILL.md', data: 'x' },
+  ]);
+  const imp = await importSkill(user, zipBuf, { scope: 'personal' });
+  assert.equal(imp.status, 201, JSON.stringify(imp.body));
+  const skillId = imp.body.id;
+  let detail = (await user.get(`/skills/${skillId}`)).body;
+  assert.equal(detail.skill.name, name, 'nom lu dans le frontmatter');
+  assert.equal(detail.skill.description, 'Skill de test avec dossiers et sous-dossiers.', 'description lue dans le frontmatter (bloc replié)');
+  assert.deepEqual(detail.files.map((f) => f.path), ['SKILL.md', 'assets/img/logo.png', 'references/api/guide.md', 'scripts/run.sh'], 'dossier racine retiré, métadonnées ignorées');
+  const logo = detail.files.find((f) => f.path === 'assets/img/logo.png');
+  assert.equal(logo.encoding, 'base64');
+  assert.equal(logo.size, png.length);
+  assert.equal(detail.files.find((f) => f.path === 'scripts/run.sh').executable, true);
+  assert.equal((await user.get('/skills')).body.find((s) => s.id === skillId).fileCount, 4);
+
+  // Arborescence fidèle dans la sandbox : dossiers, binaire intact, script exécutable.
+  const ws = await workspace(user, 'Skills arborescence');
+  const dir = `/home/agent/.pi/agent/skills/${name}`;
+  let out = await bashViaPi(user, ws.id, `cd ${dir} && find . -type f | sort && sha256sum assets/img/logo.png && ./scripts/run.sh`);
+  for (const p of ['./SKILL.md', './assets/img/logo.png', './references/api/guide.md', './scripts/run.sh']) assert.ok(out.includes(p), `${p} absent :\n${out}`);
+  const { createHash } = await import('node:crypto');
+  assert.ok(out.includes(createHash('sha256').update(png).digest('hex')), 'binaire intact');
+  assert.match(out, /script-ok/, 'script exécutable');
+
+  // Édition : binaire repris sans être renvoyé (et déplacé), nouveau fichier en sous-dossier, fichier supprimé.
+  const v2 = await user.post(`/skills/${skillId}/versions`, {
+    files: [
+      { path: 'SKILL.md', content: detail.files[0].content.replace('Voir references/.', 'Voir references/ et docs/.'), encoding: 'utf8' },
+      { path: 'images/logo.png', sourcePath: 'assets/img/logo.png' },
+      { path: 'references/api/guide.md', sourcePath: 'references/api/guide.md' },
+      { path: 'docs/fr/notes.md', content: 'Notes', encoding: 'utf8' },
+    ],
+  });
+  assert.equal(v2.status, 201, JSON.stringify(v2.body));
+  detail = (await user.get(`/skills/${skillId}`)).body;
+  assert.equal(detail.version, 2);
+  assert.deepEqual(detail.files.map((f) => f.path), ['SKILL.md', 'docs/fr/notes.md', 'images/logo.png', 'references/api/guide.md']);
+  assert.equal(detail.files.find((f) => f.path === 'images/logo.png').content, logo.content);
+  assert.equal((await user.get(`/skills/${skillId}?version=1`)).body.files.length, 4, 'version précédente consultable');
+  out = await bashViaPi(user, ws.id, `cd ${dir} && find . -type f | sort`);
+  assert.match(out, /\.\/docs\/fr\/notes\.md/);
+  assert.match(out, /\.\/images\/logo\.png/);
+  assert.doesNotMatch(out, /scripts\/run\.sh|assets\/img/, 'fichiers retirés absents au run suivant');
+
+  // Export : archive relue à l'identique (aller-retour par un nouvel import en version 3).
+  const exp = await fetch(`${BASE}/api/v1/skills/${skillId}/export`, { headers: { Cookie: [...user.cookies].map(([k, v]) => `${k}=${v}`).join('; ') } });
+  assert.equal(exp.status, 200);
+  assert.equal(exp.headers.get('content-type'), 'application/zip');
+  const back = await importSkill(user, Buffer.from(await exp.arrayBuffer()), { skillId });
+  assert.equal(back.status, 201, JSON.stringify(back.body));
+  const v3 = (await user.get(`/skills/${skillId}`)).body;
+  assert.equal(v3.version, 3);
+  assert.deepEqual(v3.files.map((f) => [f.path, f.content]), detail.files.map((f) => [f.path, f.content]));
+
+  // Archives et chemins piégés refusés ; autorité respectée.
+  for (const [label, entries] of [
+    ['remontée de dossier', [{ name: 'SKILL.md', data: '---\nname: x\ndescription: x\n---' }, { name: '../../evil.sh', data: 'x' }]],
+    ['lien symbolique', [{ name: 'SKILL.md', data: '---\nname: x\ndescription: x\n---' }, { name: 'lien', data: '/etc/passwd', mode: 0o120777 }]],
+    ['SKILL.md absent', [{ name: 'docs/a.md', data: 'x' }]],
+  ]) {
+    const r = await importSkill(user, await skillZip(entries), { scope: 'personal', name: `piege-${id}` });
+    assert.equal(r.status, 400, `${label} : ${JSON.stringify(r.body)}`);
+  }
+  assert.equal((await importSkill(user, Buffer.from('pas une archive'), { scope: 'personal' })).status, 400);
+  assert.equal((await user.post(`/skills/${skillId}/versions`, { files: [{ path: 'SKILL.md', content: 'x', encoding: 'utf8' }, { path: '../x', content: 'x', encoding: 'utf8' }] })).status, 400);
+  const other = await newUser();
+  assert.equal((await importSkill(other, zipBuf, { skillId })).status, 404, 'skill d’un autre utilisateur');
+  assert.equal((await other.get(`/skills/${skillId}/export`)).status, 404);
+});

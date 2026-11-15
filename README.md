@@ -70,7 +70,8 @@ supprimer exige une **approbation humaine**.
   - antivirus ClamAV (si configuré), en échec fermé.
 - **Partage** nominatif en lecture seule, révocable.
 - **Notifications** dans l'application et par email.
-- **Skills** et serveurs **MCP**, sur deux portées : globale et personnelle.
+- **Skills** (dossiers et sous-dossiers, import et export .zip, éditeur avec versions) et serveurs
+  **MCP**, sur deux portées : globale et personnelle.
 
 **Pour les administrateurs**
 

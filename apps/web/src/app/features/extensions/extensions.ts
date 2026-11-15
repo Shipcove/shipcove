@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import type { McpServerDto, SkillDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
@@ -9,40 +10,77 @@ import { Icon } from '../../shared/icon';
 /** Skills et serveurs MCP visibles par l'utilisateur (global, personnel). */
 @Component({
   selector: 'cap-extensions',
-  imports: [FormsModule, Icon],
+  imports: [FormsModule, RouterLink, Icon],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="h-full overflow-y-auto"><div class="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-8">
       <h1 class="text-2xl font-semibold">Skills & MCP</h1>
       <p class="mt-1 text-sm text-stone-500">Les skills sont des instructions chargées par Pi ; ils ne confèrent aucun privilège. Les outils MCP sont filtrés par les politiques globales et personnelles.</p>
 
-      <h2 class="mt-6 mb-2 text-sm font-semibold text-stone-500 uppercase">Skills</h2>
-      <div class="card divide-y divide-stone-100 dark:divide-stone-800">
-        @for (s of skills(); track s.id) {
-          <div class="flex items-start gap-3 px-4 py-3 text-sm">
-            <cap-icon name="puzzle" class="mt-0.5" />
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2"><span class="font-mono font-medium">{{ s.name }}</span><span class="badge bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300">{{ s.scope }}</span><span class="badge" [class]="s.status === 'published' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'">{{ s.status }}</span><span class="text-xs text-stone-400">v{{ s.latestVersion }} · {{ s.digest.slice(0, 12) }}</span></div>
-              <div class="text-stone-600 dark:text-stone-400">{{ s.description }}</div>
-              @if (s.findings.length) { <ul class="mt-1 list-disc pl-5 text-xs text-amber-700">@for (f of s.findings; track f) { <li>{{ f }}</li> }</ul> }
-            </div>
-            @if (s.status === 'published') {
-              <label class="flex items-center gap-1 text-xs"><input type="checkbox" [checked]="s.enabledForMe" (change)="toggleSkill(s, $event)" /> actif pour moi</label>
-            }
-            @if (s.scope === 'personal' && s.status === 'draft') { <button class="btn-secondary !py-1 text-xs" (click)="publish(s)">Publier</button> }
+      <section class="mt-6" aria-labelledby="skills-title">
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h2 id="skills-title" class="text-lg font-semibold">Skills</h2>
+          <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-sm font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>{{ enabledCount() }} activé(s) sur {{ publishedCount() }}
+          </span>
+          <div class="ml-auto flex gap-2">
+            <button class="btn-secondary !py-1.5 text-sm" (click)="zipInput.click()" [disabled]="importing()" title="Importer un skill depuis une archive .zip (SKILL.md, dossiers et fichiers)">
+              <cap-icon name="paperclip" [size]="14" /> {{ importing() ? 'Import…' : 'Importer .zip' }}</button>
+            <a routerLink="/extensions/skills/new" class="btn-primary !py-1.5 text-sm"><cap-icon name="plus" [size]="14" /> Nouveau skill</a>
+            <input #zipInput type="file" accept=".zip,application/zip" class="hidden" (change)="importZip($event)" />
           </div>
-        } @empty { <p class="px-4 py-3 text-sm text-stone-500">Aucun skill.</p> }
-      </div>
-      <form class="card mt-3 space-y-2 p-4" (ngSubmit)="createSkill()">
-        <div class="font-medium">Nouveau skill</div>
-        <div class="grid gap-2 md:grid-cols-3">
-          <input class="input" name="sn" placeholder="nom-du-skill" [(ngModel)]="skillName" pattern="[a-z0-9-]+" required />
-          <input class="input md:col-span-2" name="sd" placeholder="Description (quand l’utiliser)" [(ngModel)]="skillDesc" required />
-          <select class="input" name="ss" [(ngModel)]="skillScope"><option value="personal">Personnel</option>@if (auth.isAdmin()) { <option value="global">Global</option> }</select>
         </div>
-        <textarea class="input font-mono text-xs" rows="8" name="sb" [(ngModel)]="skillBody" placeholder="Contenu de SKILL.md (instructions)"></textarea>
-        <button class="btn-primary">Créer</button>
-      </form>
+        <p class="mt-1 text-sm text-stone-500">Pi voit la description des skills activés et charge leur contenu quand la tâche s’y prête. Un skill peut contenir des dossiers (références, scripts, modèles…).</p>
+
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <div class="flex gap-1 rounded-lg bg-stone-100 p-1 dark:bg-stone-800/70" role="tablist" aria-label="Filtrer les skills">
+            @for (f of filters(); track f.id) {
+              <button role="tab" class="rounded-md px-3 py-1 text-sm" [attr.aria-selected]="filter() === f.id"
+                [class]="filter() === f.id ? 'bg-white font-medium shadow-sm dark:bg-stone-900' : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'" (click)="filter.set(f.id)">
+                {{ f.label }} <span class="text-stone-400 tabular-nums">{{ f.count }}</span></button>
+            }
+          </div>
+          <input class="input !w-full !py-1.5 sm:!w-64" placeholder="Rechercher un skill…" [ngModel]="query()" (ngModelChange)="query.set($event)" aria-label="Rechercher un skill" />
+        </div>
+
+        <div class="mt-3 grid gap-3 md:grid-cols-2">
+          @for (s of visibleSkills(); track s.id) {
+            <article class="flex flex-col rounded-xl border p-4 transition-colors"
+              [class]="s.enabledForMe ? 'border-emerald-300 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-950/20' : 'border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900'"
+              [attr.aria-label]="s.name + (s.enabledForMe ? ', activé' : ', désactivé')" data-skill-card>
+              <div class="flex items-start gap-3">
+                <div class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" [class]="s.enabledForMe ? 'bg-emerald-600 text-white' : 'bg-stone-200 text-stone-500 dark:bg-stone-800'">
+                  <cap-icon [name]="s.enabledForMe ? 'check' : 'puzzle'" [size]="16" />
+                </div>
+                <div class="min-w-0 flex-1">
+                  <a [routerLink]="['/extensions/skills', s.id]" class="block truncate font-mono font-medium hover:underline">{{ s.name }}</a>
+                  <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-stone-500">
+                    <span class="badge bg-stone-200/70 text-stone-700 dark:bg-stone-800 dark:text-stone-300">{{ s.scope === 'global' ? 'Global' : 'Personnel' }}</span>
+                    @if (s.status !== 'published') { <span class="badge bg-amber-100 text-amber-800">{{ statusLabel(s.status) }}</span> }
+                    <span>v{{ s.latestVersion }} · {{ s.fileCount }} fichier(s)</span>
+                    @if (s.findings.length) { <span class="inline-flex items-center gap-0.5 text-amber-700" [title]="s.findings.join('\n')"><cap-icon name="alert" [size]="12" /> {{ s.findings.length }}</span> }
+                  </div>
+                </div>
+                @if (s.status === 'published') {
+                  <label class="flex shrink-0 cursor-pointer items-center gap-2 text-xs font-medium" [class]="s.enabledForMe ? 'text-emerald-700 dark:text-emerald-400' : 'text-stone-500'">
+                    <span class="hidden sm:inline">{{ s.enabledForMe ? 'Activé' : 'Désactivé' }}</span>
+                    <input type="checkbox" class="peer sr-only" [checked]="s.enabledForMe" (change)="toggleSkill(s)" [attr.aria-label]="(s.enabledForMe ? 'Désactiver ' : 'Activer ') + s.name" />
+                    <span class="relative h-6 w-11 rounded-full bg-stone-300 transition-colors peer-checked:bg-emerald-600 peer-focus-visible:ring-2 peer-focus-visible:ring-accent-500 after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5 dark:bg-stone-700"></span>
+                  </label>
+                } @else if (s.canManage && s.status === 'draft') {
+                  <button class="btn-secondary shrink-0 !py-1 text-xs" (click)="publish(s)">Publier</button>
+                }
+              </div>
+              <p class="mt-2 line-clamp-2 text-sm text-stone-600 dark:text-stone-400" [title]="s.description">{{ s.description }}</p>
+              <div class="mt-auto flex justify-end gap-1 pt-2">
+                <a [routerLink]="['/extensions/skills', s.id]" class="btn-ghost !py-1 text-xs"><cap-icon [name]="s.canManage ? 'edit' : 'eye'" [size]="13" /> {{ s.canManage ? 'Modifier' : 'Voir' }}</a>
+              </div>
+            </article>
+          } @empty {
+            <p class="text-sm text-stone-500 md:col-span-2">{{ skills().length ? 'Aucun skill ne correspond.' : 'Aucun skill pour l’instant : créez-en un ou importez une archive .zip.' }}</p>
+          }
+        </div>
+      </section>
 
       <h2 class="mt-8 mb-2 text-sm font-semibold text-stone-500 uppercase">Serveurs MCP</h2>
       <div class="space-y-3">
@@ -89,10 +127,31 @@ export class ExtensionsPage implements OnInit {
   private readonly toast = inject(ToastService);
   protected readonly skills = signal<SkillDto[]>([]);
   protected readonly servers = signal<McpServerDto[]>([]);
-  protected skillName = '';
-  protected skillDesc = '';
-  protected skillScope: 'personal' | 'global' = 'personal';
-  protected skillBody = '';
+  protected readonly filter = signal<'all' | 'enabled' | 'disabled' | 'pending'>('all');
+  protected readonly query = signal('');
+  protected readonly importing = signal(false);
+  private readonly router = inject(Router);
+  protected readonly publishedCount = computed(() => this.skills().filter((s) => s.status === 'published').length);
+  protected readonly enabledCount = computed(() => this.skills().filter((s) => s.enabledForMe).length);
+  protected readonly filters = computed(() => {
+    const l = this.skills();
+    const pending = l.filter((s) => s.status !== 'published').length;
+    return [
+      { id: 'all' as const, label: 'Tous', count: l.length },
+      { id: 'enabled' as const, label: 'Activés', count: l.filter((s) => s.enabledForMe).length },
+      { id: 'disabled' as const, label: 'Désactivés', count: l.filter((s) => s.status === 'published' && !s.enabledForMe).length },
+      ...(pending ? [{ id: 'pending' as const, label: 'Non publiés', count: pending }] : []),
+    ];
+  });
+  /** Activés d'abord, puis par nom ; filtre et recherche. */
+  protected readonly visibleSkills = computed(() => {
+    const q = this.query().trim().toLowerCase();
+    const f = this.filter();
+    return this.skills()
+      .filter((s) => (f === 'enabled' ? s.enabledForMe : f === 'disabled' ? s.status === 'published' && !s.enabledForMe : f === 'pending' ? s.status !== 'published' : true))
+      .filter((s) => !q || s.name.includes(q) || s.description.toLowerCase().includes(q))
+      .sort((a, b) => Number(b.enabledForMe) - Number(a.enabledForMe) || a.name.localeCompare(b.name));
+  });
   protected mcp = { name: '', transport: 'streamable_http', scope: 'personal', url: '', auth: '', command: '', args: '' };
 
   async ngOnInit() {
@@ -115,18 +174,44 @@ export class ExtensionsPage implements OnInit {
     return (m.scope === 'personal' && m.ownerId === this.auth.me()?.id) || (m.scope === 'global' && this.auth.isAdmin());
   }
 
-  protected toggleSkill(s: SkillDto, e: Event) {
-    return this.act(() => this.api.put(`/skills/${s.id}/installation`, { scope: 'personal', enabled: (e.target as HTMLInputElement).checked }));
+  /** Bascule immédiate dans la liste, rétablie en cas d'erreur. */
+  protected async toggleSkill(s: SkillDto) {
+    const enabled = !s.enabledForMe;
+    this.skills.update((l) => l.map((x) => (x.id === s.id ? { ...x, enabledForMe: enabled } : x)));
+    try {
+      await this.api.put(`/skills/${s.id}/installation`, { scope: 'personal', enabled });
+    } catch (e) {
+      this.skills.update((l) => l.map((x) => (x.id === s.id ? { ...x, enabledForMe: !enabled } : x)));
+      this.toast.error(e);
+    }
+  }
+
+  protected statusLabel(st: SkillDto['status']): string {
+    return { draft: 'Brouillon', pending_review: 'En attente de revue', published: 'Publié', disabled: 'Suspendu', revoked: 'Révoqué' }[st];
+  }
+
+  /** Import d'une archive .zip : skill personnel, ouvert ensuite dans l'éditeur. */
+  protected async importZip(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    const form = new FormData();
+    form.append('file', file, file.name);
+    form.append('scope', 'personal');
+    this.importing.set(true);
+    try {
+      const r = await this.api.upload<{ id: string; findings: string[] }>('/skills/import', form);
+      this.toast.show('Skill importé', 'success');
+      await this.router.navigate(['/extensions/skills', r.id]);
+    } catch (err) {
+      this.toast.error(err);
+    } finally {
+      this.importing.set(false);
+    }
   }
   protected publish(s: SkillDto) {
     return this.act(() => this.api.post(`/skills/${s.id}/status`, { status: 'published' }));
-  }
-  protected createSkill() {
-    const md = `---\nname: ${this.skillName}\ndescription: ${this.skillDesc.replace(/\n/g, ' ')}\n---\n\n${this.skillBody}`;
-    return this.act(
-      () => this.api.post('/skills', { name: this.skillName, description: this.skillDesc, scope: this.skillScope, files: [{ path: 'SKILL.md', content: md }] }),
-      'Skill créé',
-    );
   }
   protected createServer() {
     const m = this.mcp;

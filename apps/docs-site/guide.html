@@ -46,6 +46,15 @@
       <h3>Revenir en arrière</h3>
       <p>Au survol d’un de vos messages, <strong>Revenir avant ce message</strong> restaure les fichiers de la conversation dans leur état d’avant ce run. La conversation est conservée, Pi en est informé au message suivant, et le message « Fichiers restaurés… » propose <strong>Annuler</strong>. Indisponible pendant que Pi travaille.</p>
 
+      <h2>Skills</h2>
+      <p>Un skill est un dossier d’instructions pour Pi : un fichier <code>SKILL.md</code> (avec un en-tête <code>name</code> et <code>description</code>) et, au besoin, des sous-dossiers — références, scripts, modèles, images. Pi voit la description des skills <strong>activés</strong> et charge leur contenu quand la tâche s’y prête ; tapez <code>/</code> dans la zone de saisie pour en imposer un ou plusieurs.</p>
+      <ul>
+        <li><strong>Skills &amp; MCP</strong> : les skills activés sont mis en avant (coche verte, interrupteur), avec leur nombre et des filtres <em>Activés</em> / <em>Désactivés</em>.</li>
+        <li><strong>Importer .zip</strong> : archive contenant <code>SKILL.md</code> à la racine (ou dans un unique dossier racine), dossiers et fichiers binaires compris ; le nom et la description sont lus dans l’en-tête. Les scripts gardent leur droit d’exécution.</li>
+        <li><strong>Éditeur</strong> : arborescence (nouveau fichier ou dossier, téléversement dans le dossier sélectionné, renommer ou déplacer, supprimer), édition des fichiers texte, aperçu des images. Chaque enregistrement crée une version ; les précédentes restent consultables et peuvent être restaurées. <strong>Exporter</strong> télécharge le skill en .zip.</li>
+        <li>Limites : 300 fichiers, 5 Mo par fichier, 10 Mo au total. Les archives contenant des chemins dangereux (<code>..</code>, chemins absolus) ou des liens symboliques sont refusées.</li>
+      </ul>
+
       <h2>Pièces jointes</h2>
       <p>Glissez-déposez, collez ou ajoutez des fichiers (20 Mo et 10 fichiers par message par défaut). Les images sont transmises au modèle s’il les accepte ; les autres fichiers sont déposés dans la sandbox (<code>/workspace/.cap/attachments/…</code>, hors Git). Les exécutables, les archives dangereuses ou trop volumineuses une fois décompressées et les types incohérents sont refusés.</p>
 

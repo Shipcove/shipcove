@@ -35,7 +35,7 @@ export const skillVersions = pgTable(
       .references(() => skills.id, { onDelete: 'cascade' }),
     version: integer().notNull(),
     /** Fichiers (texte) du skill ; immuables par version. */
-    files: jsonb().$type<Array<{ path: string; content: string }>>().notNull(),
+    files: jsonb().$type<Array<{ path: string; content: string; encoding?: 'base64'; executable?: boolean }>>().notNull(),
     digest: text().notNull(),
     analysis: jsonb().$type<{ findings: string[]; scannedAt: string }>().notNull(),
     createdBy: uuid().references(() => users.id, { onDelete: 'set null' }),

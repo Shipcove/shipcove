@@ -395,7 +395,7 @@ export class SandboxManager {
       '',
     ].join('\n');
     const caPem = await this.forgeCaPem();
-    const files: Array<{ path: string; content: string; mode?: number }> = [
+    const files: Array<{ path: string; content: string | Buffer; mode?: number }> = [
       { path: 'home/agent/.pi/agent/models.json', content: buildModelsJson(`${gw}/llm/v1`, piModels) },
       { path: 'home/agent/.pi/agent/settings.json', content: buildSettingsJson(def?.litellmModel ?? '') },
       { path: 'home/agent/.gitconfig', content: gitconfig, mode: 0o600 },

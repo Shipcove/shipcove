@@ -10,6 +10,7 @@ import {
   workspaces,
   type Database,
 } from '@cap/database';
+import { isSafeSkillPath } from '@cap/contracts';
 import { DB, effectiveToolPermission, scopeVisible, type PermissionRule } from '@cap/server-core';
 import type { ActiveSandbox, SandboxManager } from '../sandbox/sandbox-manager.service.js';
 
@@ -54,13 +55,18 @@ export class SkillsMaterializer {
     return out;
   }
 
-  async files(ws: Ws): Promise<Array<{ path: string; content: string }>> {
+  /** Fichiers des skills actifs, arborescence comprise : binaires décodés, scripts exécutables. */
+  async files(ws: Ws): Promise<Array<{ path: string; content: string | Buffer; mode?: number }>> {
     const active = await this.activeSkills(ws);
     return active.flatMap(({ skill, version }) =>
-      version.files.map((f) => ({
-        path: `home/agent/.pi/agent/skills/${skill.name}/${f.path.replace(/^\/+/, '').replace(/\.\.\//g, '')}`,
-        content: f.content,
-      })),
+      version.files
+        // Chemins validés à l'enregistrement ; vérifiés de nouveau (défense en profondeur).
+        .filter((f) => isSafeSkillPath(f.path))
+        .map((f) => ({
+          path: `home/agent/.pi/agent/skills/${skill.name}/${f.path}`,
+          content: f.encoding === 'base64' ? Buffer.from(f.content, 'base64') : f.content,
+          ...(f.executable ? { mode: 0o755 } : {}),
+        })),
     );
   }
 

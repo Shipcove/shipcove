@@ -43,7 +43,7 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
   {
     const c = new Client();
     await c.post('/auth/login', { login: username, password });
-    const r = await c.post('/skills', { name: skillName, description: 'Rédige une note de version claire à partir des commits récents.', scope: 'personal', files: [{ path: 'SKILL.md', content: `---\nname: ${skillName}\ndescription: Note de version\n---\n\nRédige la note.\n` }] });
+    const r = await c.post('/skills', { name: skillName, description: 'Rédige une note de version claire à partir des commits récents.', scope: 'personal', files: [{ path: 'SKILL.md', content: `---\nname: ${skillName}\ndescription: Rédige une note de version claire à partir des commits récents.\n---\n\nRédige la note.\n` }] });
     assert.equal(r.status, 201, JSON.stringify(r.body));
   }
 
@@ -361,5 +361,140 @@ test('responsive : téléphone et tablette — tiroir de navigation, volets en p
   } finally {
     await browser.close();
     await c.post(`/workspaces/${ws.id}/stop`).catch(() => undefined);
+  }
+});
+
+test('skills : état activé visible d’un coup d’œil, import .zip, éditeur avec dossiers et sous-dossiers', async () => {
+  const { deflateRawSync, crc32 } = await import('node:zlib');
+  const admin = await adminClient(state);
+  const username = `sk${uid()}`;
+  const password = 'Skills-Password-123456';
+  assert.equal((await admin.post('/admin/users', { email: `${username}@example.test`, username, displayName: `Skills ${username}`, platformRole: 'user', password })).status, 201);
+  const c = new Client();
+  await c.post('/auth/login', { login: username, password });
+  const id = uid().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const md = (n, d) => [{ path: 'SKILL.md', content: `---\nname: ${n}\ndescription: ${d}\n---\n\nCorps.\n` }];
+  const on = await c.post('/skills', { name: `actif-${id}`, scope: 'personal', files: md(`actif-${id}`, 'Skill activé') });
+  const off = await c.post('/skills', { name: `inactif-${id}`, scope: 'personal', files: md(`inactif-${id}`, 'Skill désactivé') });
+  await c.put(`/skills/${off.body.id}/installation`, { scope: 'personal', enabled: false });
+  // Archive à importer par l'interface (deflate, dossier racine).
+  const entries = [
+    [`zip-${id}/SKILL.md`, `---\nname: zip-${id}\ndescription: Importé depuis un zip\n---\n\nVoir references/guide.md\n`],
+    [`zip-${id}/references/guide.md`, '# Guide\n'],
+    [`zip-${id}/references/api/endpoints.md`, '# Endpoints\n'],
+  ];
+  const locals = [];
+  const centrals = [];
+  let off2 = 0;
+  for (const [n, txt] of entries) {
+    const name = Buffer.from(n);
+    const data = Buffer.from(txt);
+    const body = deflateRawSync(data);
+    const h = Buffer.alloc(30);
+    h.writeUInt32LE(0x04034b50, 0);
+    h.writeUInt16LE(20, 4);
+    h.writeUInt16LE(8, 8);
+    h.writeUInt32LE(crc32(data) >>> 0, 14);
+    h.writeUInt32LE(body.length, 18);
+    h.writeUInt32LE(data.length, 22);
+    h.writeUInt16LE(name.length, 26);
+    const ce = Buffer.alloc(46);
+    ce.writeUInt32LE(0x02014b50, 0);
+    ce.writeUInt16LE(20, 4);
+    ce.writeUInt16LE(8, 10);
+    ce.writeUInt32LE(crc32(data) >>> 0, 16);
+    ce.writeUInt32LE(body.length, 20);
+    ce.writeUInt32LE(data.length, 24);
+    ce.writeUInt16LE(name.length, 28);
+    ce.writeUInt32LE(off2, 42);
+    locals.push(h, name, body);
+    centrals.push(ce, name);
+    off2 += 30 + name.length + body.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(cd.length, 12);
+  eocd.writeUInt32LE(off2, 16);
+  const zipBuf = Buffer.concat([...locals, cd, eocd]);
+
+  const browser = await chromium.launch({ executablePath, args: ['--no-sandbox'] });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
+    const issues = watch(page);
+    await page.goto(`${BASE}/auth/login`, { waitUntil: 'networkidle' });
+    await page.fill('#login', username);
+    await page.fill('#password', password);
+    await page.click('button:has-text("Se connecter")');
+    await page.waitForURL(`${BASE}/`);
+    await page.goto(`${BASE}/extensions`, { waitUntil: 'networkidle' });
+    // Activé / désactivé visibles : carte mise en avant, interrupteur, compteur, filtres.
+    const cardOn = page.locator(`[data-skill-card][aria-label="actif-${id}, activé"]`);
+    const cardOff = page.locator(`[data-skill-card][aria-label="inactif-${id}, désactivé"]`);
+    await cardOn.waitFor();
+    await cardOff.waitFor();
+    const list = (await c.get('/skills')).body;
+    const enabled = list.filter((s) => s.enabledForMe).length;
+    const published = list.filter((s) => s.status === 'published').length;
+    await page.locator(`text=${enabled} activé(s) sur ${published}`).waitFor();
+    assert.equal(await cardOn.locator('input[type="checkbox"]').isChecked(), true);
+    assert.equal(await cardOff.locator('input[type="checkbox"]').isChecked(), false);
+    assert.ok((await page.locator('[data-skill-card]').first().getAttribute('aria-label')).endsWith('activé'), 'activés en premier');
+    await page.screenshot({ path: new URL('skills-liste.png', OUT).pathname });
+    await page.click('[role="tab"]:has-text("Désactivés")');
+    assert.equal(await page.locator('[data-skill-card]').count(), published - enabled);
+    assert.equal(await page.locator('[data-skill-card][aria-label$=", activé"]').count(), 0, 'filtre « Désactivés »');
+    await page.click('[role="tab"]:has-text("Tous")');
+    await cardOff.locator('label:has(input[type="checkbox"])').click();
+    await page.waitForSelector(`[data-skill-card][aria-label="inactif-${id}, activé"]`);
+    assert.equal((await c.get('/skills')).body.find((s) => s.id === off.body.id).enabledForMe, true, 'activation enregistrée');
+
+    // Import .zip : skill créé puis ouvert dans l'éditeur, dossiers et sous-dossiers affichés.
+    await page.locator('input[type="file"][accept*=".zip"]').first().setInputFiles({ name: `zip-${id}.zip`, mimeType: 'application/zip', buffer: zipBuf });
+    await page.waitForURL(/\/extensions\/skills\/[0-9a-f-]+$/);
+    const tree = page.locator('aside[aria-label="Fichiers du skill"]');
+    await tree.locator('button[title="references"]').waitFor();
+    await tree.locator('button[title="references/api"]').waitFor();
+    await tree.locator('button[title="references/api/endpoints.md"]').click();
+    await page.waitForSelector('cap-code-editor .monaco-editor');
+    // Nouveau fichier dans le sous-dossier sélectionné, puis enregistrement (v2).
+    await tree.locator('button[title="references/api"]').click();
+    await page.click('button[aria-label="Nouveau fichier"]');
+    const pathInput = page.locator('input[aria-label="Chemin"]');
+    assert.equal(await pathInput.inputValue(), 'references/api/');
+    await pathInput.fill('references/api/auth.md');
+    await page.keyboard.press('Enter');
+    await tree.locator('button[title="references/api/auth.md"]').waitFor();
+    await page.waitForTimeout(500); // modèle du nouveau fichier chargé dans l'éditeur
+    await page.locator('cap-code-editor .monaco-editor .view-lines').click();
+    await page.keyboard.type('# Authentification');
+    await tree.locator('button[title="references/api/auth.md"] [title="Modifié"]').waitFor();
+    await page.screenshot({ path: new URL('skills-editeur.png', OUT).pathname });
+    await page.click('button:has-text("Enregistrer (v2)")');
+    await page.waitForSelector('text=Version 2 enregistrée');
+    const skillId = new URL(page.url()).pathname.split('/').pop();
+    const saved = (await c.get(`/skills/${skillId}`)).body;
+    assert.equal(saved.version, 2);
+    assert.deepEqual(saved.files.map((f) => f.path), ['SKILL.md', 'references/api/auth.md', 'references/api/endpoints.md', 'references/guide.md']);
+    assert.match(saved.files.find((f) => f.path === 'references/api/auth.md').content, /Authentification/);
+
+    // Mobile : liste puis éditeur (onglets Fichiers / fichier).
+    const mobile = await browser.newContext({ ...devices['iPhone 13'] });
+    await mobile.addCookies((await page.context().cookies()).map((k) => ({ ...k })));
+    const mp = await mobile.newPage();
+    await mp.goto(`${BASE}/extensions`, { waitUntil: 'networkidle' });
+    await mp.locator('[data-skill-card]').first().waitFor();
+    assert.ok((await mp.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)) <= 0, 'pas de débordement (liste)');
+    await mp.screenshot({ path: new URL('skills-liste-mobile.png', OUT).pathname });
+    await mp.goto(`${BASE}/extensions/skills/${skillId}`, { waitUntil: 'networkidle' });
+    await mp.locator('aside[aria-label="Fichiers du skill"] button[title="references"]').waitFor();
+    assert.ok((await mp.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)) <= 0, 'pas de débordement (éditeur)');
+    await mp.screenshot({ path: new URL('skills-editeur-mobile.png', OUT).pathname });
+    await mobile.close();
+    assert.deepEqual(issues, [], `erreurs console / CSP :\n${issues.join('\n')}`);
+  } finally {
+    await browser.close();
   }
 });
