@@ -34,6 +34,11 @@ import { WorkspacesService } from '../workspaces/workspaces.service.js';
 
 const uuid = { schema: z.uuid() };
 
+/** Message de réponse à un formulaire de questions de Pi (`ask_user`). */
+function answersMeta(body: { answersTo?: string }): Record<string, unknown> | null {
+  return body.answersTo ? { kind: 'answers', toolCallId: body.answersTo } : null;
+}
+
 @ApiTags('conversation')
 @Controller('workspaces/:id')
 export class ConversationController {
@@ -162,7 +167,7 @@ export class ConversationController {
       if (body.delivery === 'follow_up') {
         // File d'attente durable : le message sera traité par un nouveau run à la fin du run courant.
         const queued = await this.db.transaction(async (tx) => {
-          const [m] = await tx.insert(messages).values({ conversationId: conv.id, role: 'user', authorId: user.id, text: body.text, pendingDelivery: true }).returning();
+          const [m] = await tx.insert(messages).values({ conversationId: conv.id, role: 'user', authorId: user.id, text: body.text, pendingDelivery: true, meta: answersMeta(body) }).returning();
           if (body.attachmentIds.length) await tx.update(attachments).set({ messageId: m.id }).where(inArray(attachments.id, body.attachmentIds));
           await this.events.emit(id, 'queue.updated', { messages: await this.runQueue.list(conv.id, tx) }, null, tx);
           return m;
@@ -177,8 +182,8 @@ export class ConversationController {
           .from(agentRuns)
           .where(and(eq(agentRuns.workspaceId, id), eq(agentRuns.status, 'running')));
         if (!active) throw new AppError('conflict', 'Aucun run actif pour recevoir ce message');
-        const [m] = await this.db.insert(messages).values({ conversationId: conv.id, runId: active.id, role: 'user', authorId: user.id, text: body.text }).returning();
-        await this.events.emit(id, 'message.created', { messageId: m.id, role: 'user', text: body.text, attachmentIds: [] }, active.id);
+        const [m] = await this.db.insert(messages).values({ conversationId: conv.id, runId: active.id, role: 'user', authorId: user.id, text: body.text, meta: answersMeta(body) }).returning();
+        await this.events.emit(id, 'message.created', { messageId: m.id, role: 'user', text: body.text, attachmentIds: [], meta: answersMeta(body) }, active.id);
         await this.db.execute(sql`select pg_notify('cap_run_control', ${JSON.stringify({ runId: active.id, action: body.delivery, messageId: m.id })})`);
         return { messageId: m.id, runId: active.id };
       }
@@ -186,7 +191,7 @@ export class ConversationController {
       const quota = await this.quotas.canProceed(user.id, w.teamId);
       if (!quota.ok) throw new AppError('quota_exceeded', 'Quota atteint', { window: quota.window, resetsAt: quota.resetsAt });
       return this.db.transaction(async (tx) => {
-        const [m] = await tx.insert(messages).values({ conversationId: conv.id, role: 'user', authorId: user.id, text: body.text }).returning();
+        const [m] = await tx.insert(messages).values({ conversationId: conv.id, role: 'user', authorId: user.id, text: body.text, meta: answersMeta(body) }).returning();
         if (body.attachmentIds.length) await tx.update(attachments).set({ messageId: m.id }).where(inArray(attachments.id, body.attachmentIds));
         const [run] = await tx
           .insert(agentRuns)
@@ -209,7 +214,7 @@ export class ConversationController {
         await this.events.append(
           id,
           [
-            { type: 'message.created', runId: run.id, data: { messageId: m.id, role: 'user', text: body.text, attachmentIds: body.attachmentIds } },
+            { type: 'message.created', runId: run.id, data: { messageId: m.id, role: 'user', text: body.text, attachmentIds: body.attachmentIds, meta: answersMeta(body) } },
             { type: 'run.queued', runId: run.id, data: { runId: run.id } },
           ],
           tx,

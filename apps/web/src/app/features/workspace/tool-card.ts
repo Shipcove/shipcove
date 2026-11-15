@@ -3,6 +3,7 @@ import type { ToolCallDto } from '@cap/contracts';
 import { Icon } from '../../shared/icon';
 import { WorkspaceStore } from './workspace.store';
 import { CodeBlock } from '../../shared/code-block';
+import { AskForm } from './ask-form';
 
 /**
  * Appel d'outil repliable : statut, commande, sortie, durée et fichiers touchés. Les captures d'écran
@@ -10,9 +11,12 @@ import { CodeBlock } from '../../shared/code-block';
  */
 @Component({
   selector: 'cap-tool-card',
-  imports: [Icon, CodeBlock],
+  imports: [Icon, CodeBlock, AskForm],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    @if (call().toolName === 'ask_user') {
+      <cap-ask-form [call]="call()" />
+    } @else {
     <div class="my-1.5 min-w-0 overflow-hidden rounded-lg border border-stone-200 bg-stone-50 text-sm dark:border-stone-800 dark:bg-stone-900/70">
       <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-stone-100 dark:hover:bg-stone-800/70" (click)="open.set(!open())" [attr.aria-expanded]="open()">
         <cap-icon [name]="open() ? 'chevronDown' : 'chevronRight'" [size]="14" class="text-stone-400" />
@@ -97,6 +101,7 @@ import { CodeBlock } from '../../shared/code-block';
         </div>
       }
     </div>
+    }
   `,
 })
 export class ToolCard {

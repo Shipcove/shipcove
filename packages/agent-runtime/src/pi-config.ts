@@ -60,17 +60,18 @@ export function buildSettingsJson(defaultModel: string): string {
   );
 }
 
-/** Outils autorisés en mode Plan : lecture seule (aucune écriture, aucun shell, aucun outil plateforme/MCP). */
-export const PLAN_MODE_TOOLS = ['read', 'grep', 'find', 'ls'] as const;
+/** Outils autorisés en mode Plan : lecture seule (aucune écriture, aucun shell, aucun outil plateforme/MCP), et questions à l'utilisateur. */
+export const PLAN_MODE_TOOLS = ['read', 'grep', 'find', 'ls', 'ask_user'] as const;
 
 export const PLAN_MODE_PROMPT =
   'MODE PLAN : tu ne peux ni modifier de fichier ni exécuter de commande. Explore le code avec les outils de lecture, ' +
   'puis rédige un plan d’implémentation précis et ordonné (fichiers concernés, changements, tests, risques). ' +
+  'Si une décision revient à l’utilisateur, pose-lui la question avec l’outil ask_user avant de finaliser le plan. ' +
   'L’utilisateur repassera en mode autonome pour exécuter le plan.';
 
 /** Ligne de commande de Pi en mode RPC dans la sandbox. */
 /** Plugins Pi livrés dans l'image de sandbox, chargés s'ils sont présents (images plus anciennes). */
-export const PI_PLUGINS = ['/opt/cap/pi-extension/browser.ts'] as const;
+export const PI_PLUGINS = ['/opt/cap/pi-extension/browser.ts', '/opt/cap/pi-extension/ask.ts'] as const;
 
 export function piCommand(opts: { sessionFile: string | null; skillDirs: string[]; tools?: readonly string[]; appendSystemPrompt?: string; plugins?: readonly string[] }): string[] {
   return [

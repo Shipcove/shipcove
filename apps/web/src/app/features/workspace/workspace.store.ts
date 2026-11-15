@@ -111,9 +111,9 @@ export class WorkspaceStore {
 
   /* ------------------------------ Commandes ------------------------------ */
 
-  async send(text: string, attachmentIds: string[], delivery: 'new_run' | 'steer' | 'follow_up' = 'new_run'): Promise<void> {
+  async send(text: string, attachmentIds: string[], delivery: 'new_run' | 'steer' | 'follow_up' = 'new_run', answersTo?: string): Promise<void> {
     const ws = this.workspace()!;
-    await this.api.post(`/workspaces/${ws.id}/messages`, { text, attachmentIds, delivery, modelId: ws.modelId ?? undefined }, { 'Idempotency-Key': idempotencyKey() });
+    await this.api.post(`/workspaces/${ws.id}/messages`, { text, attachmentIds, delivery, modelId: ws.modelId ?? undefined, answersTo }, { 'Idempotency-Key': idempotencyKey() });
   }
 
   /** Retour en arrière des fichiers : état d'avant un run, ou génération explicite (annulation). */

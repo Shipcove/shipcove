@@ -16,6 +16,8 @@ const PATHS: Record<string, string> = {
   play: 'M6 4l14 8-14 8z',
   x: 'M18 6 6 18M6 6l12 12',
   check: 'M20 6 9 17l-5-5',
+  help: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01',
+  arrowRight: 'M5 12h14M12 5l7 7-7 7',
   chevronRight: 'm9 18 6-6-6-6',
   chevronLeft: 'm15 18-6-6 6-6',
   chevronDown: 'm6 9 6 6 6-6',

@@ -86,6 +86,8 @@ export const SendMessageSchema = z.object({
   modelId: z.uuid().optional(),
   /** Pendant un run actif : `steer` (avant le prochain appel LLM) ou `follow_up` (file d'attente durable : nouveau run à la fin du run courant). */
   delivery: z.enum(['new_run', 'steer', 'follow_up']).default('new_run'),
+  /** Réponse au formulaire d'un appel `ask_user` (identifiant de l'appel d'outil). */
+  answersTo: z.string().min(1).max(200).optional(),
 });
 export type SendMessage = z.infer<typeof SendMessageSchema>;
 

@@ -55,6 +55,8 @@ supprimer exige une **approbation humaine**.
     `glab`.
   - Branche par défaut, branches protégées, fusion et suppression : uniquement après **approbation
     de l'opération exacte** (commit figé).
+- **Questions de Pi** : quand une décision vous revient, Pi pose ses questions dans un formulaire
+  (choix unique ou multiple, réponse libre), y compris en mode Plan (plugin Pi `ask`).
 - **Captures d'écran** : Pi lance le projet et le photographie avec le Chromium de la sandbox
   (plugin Pi `browser`). Les captures s'affichent en miniatures dans la conversation et s'agrandissent
   au clic.

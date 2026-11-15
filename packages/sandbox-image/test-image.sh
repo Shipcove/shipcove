@@ -8,7 +8,7 @@ for t in git gh glab bash python3 pip3 uv node npm pi rg jq; do run sh -c "comma
 run pi --version
 run node -e "require('playwright')" || { echo "playwright introuvable"; exit 1; }
 run sh -c 'ls /opt/cap/browsers | grep -q chromium' || { echo "Chromium absent"; exit 1; }
-run test -f /opt/cap/pi-extension/browser.ts || { echo "plugin browser absent"; exit 1; }
+for f in browser ask; do run test -f /opt/cap/pi-extension/$f.ts || { echo "plugin $f absent"; exit 1; }; done
 [[ "$(run stat -c %U /home/agent)" == "agent" ]] || { echo "/home/agent non possédé par agent"; exit 1; }
 run node --version
 run sh -c 'mkdir -p /tmp/w/a && echo hi > /tmp/w/a/f && /opt/cap/bin/cap-snapshot scan /tmp/w' | grep -q '"h":"'

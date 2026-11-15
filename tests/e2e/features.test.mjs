@@ -915,3 +915,40 @@ test('captures d’écran : plugin browser de Pi (Chromium de la sandbox), scrip
   const files = await owner.get(`/workspaces/${ws.id}/files/all`);
   assert.ok(!JSON.stringify(files.body ?? {}).includes('screenshots'), 'captures exclues des fichiers persistés');
 });
+
+test('questions de Pi (plugin ask) : formulaire dans la conversation, réponse rattachée, Pi reprend ; disponible en mode Plan', async () => {
+  const owner = await newUser();
+  const ws = await workspace(owner, 'Questions');
+  // Mode Plan : lecture seule, mais les questions restent permises.
+  assert.equal((await owner.req('PATCH', `/workspaces/${ws.id}`, { agentMode: 'plan' })).status, 200);
+  const ask = {
+    title: 'Cadrage',
+    questions: [
+      { question: 'À qui est destinée la plateforme ?', options: [{ label: 'Usage personnel' }, { label: 'Équipes internes' }], recommended: 1 },
+      { question: 'Quels langages ?', options: [{ label: 'TypeScript' }, { label: 'Python' }, { label: 'Go' }], multi_select: true },
+    ],
+  };
+  const conv = await owner.get(`/workspaces/${ws.id}/conversation`);
+  const sent = await owner.post(`/workspaces/${ws.id}/messages`, { text: `Cadrons. [[tool:ask_user ${JSON.stringify(ask)}]]` }, { 'Idempotency-Key': `f-${uid()}` });
+  const events = await owner.events(ws.id, conv.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === sent.body.runId, 420_000);
+  assert.equal(events.at(-1).type, 'run.completed', JSON.stringify(events.at(-1)));
+  const done = events.find((e) => e.type === 'tool.completed');
+  assert.ok(done && !done.data.isError, JSON.stringify(done));
+  assert.match(done.data.output, /2 questions affichées/);
+  assert.match(done.data.output, /Arrête-toi/);
+  const started = events.find((e) => e.type === 'tool.started');
+  assert.equal(started.data.toolName, 'ask_user');
+  assert.deepEqual(started.data.args.questions.map((q) => q.question), ask.questions.map((q) => q.question), 'questions transmises à l’interface');
+
+  // Réponse rattachée à l'appel : métadonnée persistée et nouveau run avec le texte des réponses.
+  const conv2 = await owner.get(`/workspaces/${ws.id}/conversation`);
+  const answer = await owner.post(`/workspaces/${ws.id}/messages`, { text: 'Réponses :\n1. → Équipes internes\n2. → TypeScript ; Go', answersTo: done.data.toolCallId }, { 'Idempotency-Key': `f-${uid()}` });
+  assert.equal(answer.status, 201, JSON.stringify(answer.body));
+  const ev2 = await owner.events(ws.id, conv2.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === answer.body.runId, 420_000);
+  assert.equal(ev2.at(-1).type, 'run.completed');
+  assert.deepEqual(ev2.find((e) => e.type === 'message.created' && e.data.role === 'user').data.meta, { kind: 'answers', toolCallId: done.data.toolCallId });
+  const reloaded = await owner.get(`/workspaces/${ws.id}/conversation`);
+  const msg = reloaded.body.messages.find((m) => m.meta?.kind === 'answers');
+  assert.equal(msg.meta.toolCallId, done.data.toolCallId);
+  assert.match(msg.text, /Équipes internes/);
+});
