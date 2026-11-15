@@ -22,7 +22,7 @@ import {
   type SandboxProvider,
 } from '@cap/sandbox';
 import { PI_PLUGINS, buildModelsJson, buildSettingsJson, type PiModelConfig } from '@cap/agent-runtime';
-import { AppError, DB, ENV, EventsService, GitProviderClient, SettingsService, randomToken, sha256Hex } from '@cap/server-core';
+import { AppError, DB, ENV, EventsService, GitProviderClient, SettingsService, modelAllowedFor, randomToken, sha256Hex } from '@cap/server-core';
 import { isUniqueViolation } from '@cap/server-core';
 import { LeaseService } from '@cap/storage';
 import type { WorkerEnv } from '../env.js';
@@ -370,7 +370,7 @@ export class SandboxManager {
       .select()
       .from(llmModels)
       .where(and(eq(llmModels.enabled, true), isNull(llmModels.deletedAt)));
-    const allowed = models;
+    const allowed = models.filter((m) => modelAllowedFor(m, ws.ownerId));
     const def = allowed.find((m) => m.id === ws.modelId) ?? allowed.find((m) => m.isDefault) ?? allowed[0];
     const piModels: PiModelConfig[] = allowed.map((m) => ({
       id: m.litellmModel,

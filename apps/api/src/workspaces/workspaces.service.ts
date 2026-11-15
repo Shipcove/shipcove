@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { ACTIVE_RUN_STATUSES, type RepositoryRef, type WorkspaceDto } from '@cap/contracts';
 import { agentRuns, conversations, llmModels, repositories, workspaces, type Database, type DbOrTx } from '@cap/database';
-import { AppError, DB, EventsService, GitProviderClient, GitProviderError, SettingsService } from '@cap/server-core';
+import { AppError, DB, EventsService, GitProviderClient, GitProviderError, SettingsService, modelAllowedFor } from '@cap/server-core';
 import type { AuthUser } from '../common/request.js';
 import { LiteLlmAdminService } from '../admin/litellm.service.js';
 import { toRepoDto } from '../repositories/repositories.controller.js';
@@ -56,10 +56,10 @@ export class WorkspacesService {
     };
   }
 
-  /** Modèle activé (tous les modèles activés sont ouverts à tous les utilisateurs). */
-  async assertModelAllowed(modelId: string) {
+  /** Modèle activé et accessible à l'utilisateur (liste blanche vide = tous). */
+  async assertModelAllowed(modelId: string, userId: string) {
     const [m] = await this.db.select().from(llmModels).where(and(eq(llmModels.id, modelId), isNull(llmModels.deletedAt)));
-    if (!m || !m.enabled) throw new AppError('model_not_allowed', 'Modèle non autorisé');
+    if (!m || !m.enabled || !modelAllowedFor(m, userId)) throw new AppError('model_not_allowed', 'Modèle non autorisé');
     return m;
   }
 

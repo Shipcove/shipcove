@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
-import { and, desc, eq, gt, inArray, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
 import {
   agentRuns,
   attachments,
@@ -12,7 +12,7 @@ import {
   type Database,
 } from '@cap/database';
 import { PI_PROVIDER, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
-import { DB, ENV, EnvironmentService, EventsService, NotificationService, ObjectStorage, PgNotifier, QuotaService, RunQueueService, StreamScrubber, redactString, scrubDeep, scrubSecrets, type NewEvent } from '@cap/server-core';
+import { DB, ENV, EnvironmentService, EventsService, NotificationService, modelAllowedFor, ObjectStorage, PgNotifier, QuotaService, RunQueueService, StreamScrubber, redactString, scrubDeep, scrubSecrets, type NewEvent } from '@cap/server-core';
 import { toUserPath } from '@cap/storage';
 import type { WorkerEnv } from '../env.js';
 import { JobRunner } from '../jobs/job-runner.service.js';
@@ -179,9 +179,10 @@ export class RunOrchestrator implements OnApplicationBootstrap {
 
     // Modèle du run.
     const modelId = run.modelId ?? ws.modelId;
+    // Sans modèle choisi : le modèle par défaut s'il est accessible à l'utilisateur, sinon le premier accessible.
     const [model] = modelId
       ? await this.db.select().from(llmModels).where(eq(llmModels.id, modelId))
-      : await this.db.select().from(llmModels).where(and(eq(llmModels.isDefault, true), eq(llmModels.enabled, true)));
+      : (await this.db.select().from(llmModels).where(and(eq(llmModels.enabled, true), isNull(llmModels.deletedAt))).orderBy(desc(llmModels.isDefault), llmModels.displayName)).filter((m) => modelAllowedFor(m, ws.ownerId));
     if (!model) {
       await this.finish(runId, ws.id, 'failed', 'Aucun modèle disponible : configurez un modèle dans l’administration');
       return { status: 'failed' };

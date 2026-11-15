@@ -14,6 +14,7 @@ import { PgNotifier } from './events/pg-notifier.js';
 import { GitProviderClient } from './git/git-provider.client.js';
 import { RunQueueService } from './runs/run-queue.service.js';
 import { EnvironmentService } from './environment/environment.service.js';
+import { LiteLlmClient } from './llm/litellm.client.js';
 
 
 export interface CoreModuleOptions {
@@ -88,6 +89,7 @@ export class CoreModule {
         GitProviderClient,
         RunQueueService,
         EnvironmentService,
+        LiteLlmClient,
       ],
       exports: [
         ENV,
@@ -105,6 +107,7 @@ export class CoreModule {
         GitProviderClient,
         RunQueueService,
         EnvironmentService,
+        LiteLlmClient,
       ],
     };
   }

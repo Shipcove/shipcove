@@ -31,18 +31,7 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
   assert.ok(mock, 'modèle par défaut requis (lancer stack.test.mjs d’abord)');
   // Le modèle factice est déclaré « avec raisonnement » pour exercer le réglage d'effort.
   if (!mock.supportsReasoning) {
-    const r = await admin.put(`/admin/models/${mock.id}`, {
-      litellmModel: mock.litellmModel,
-      displayName: mock.displayName,
-      litellmParams: mock.litellmParams,
-      contextWindow: mock.contextWindow,
-      maxOutputTokens: mock.maxOutputTokens,
-      supportsImages: mock.supportsImages,
-      supportsReasoning: true,
-      enabled: true,
-      isDefault: true,
-      coefficients: { input: mock.coefficients.input, output: mock.coefficients.output, cacheRead: mock.coefficients.cacheRead, cacheWrite: mock.coefficients.cacheWrite },
-    });
+    const r = await admin.patch(`/admin/models/${mock.id}`, { supportsReasoning: true });
     assert.equal(r.status, 200, JSON.stringify(r.body));
   }
   const slug = `ui-${uid()}`;

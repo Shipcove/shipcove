@@ -81,6 +81,8 @@ async function newUser() {
   const password = 'Resilience-Password-123456';
   const r = await ctx.admin.post('/admin/users', { email: `${username}@example.test`, username, displayName: `R ${username}`, platformRole: 'user', password });
   assert.equal(r.status, 201, JSON.stringify(r.body));
+  // Indépendant du quota par défaut de l'instance (réglable par l'administrateur).
+  await ctx.admin.put('/admin/quotas/policies', { scope: 'user', subjectId: r.body.id, limit5h: null, limit7d: null, exempt: true });
   const c = new Client();
   assert.equal((await c.post('/auth/login', { login: username, password })).body.status, 'authenticated');
   c.id = r.body.id;

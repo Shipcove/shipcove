@@ -34,22 +34,50 @@ export const CoefficientsInputSchema = z.object({
   cacheWrite: DecimalStringSchema,
 });
 
-export const UpsertModelSchema = z.object({
-  litellmModel: z.string().min(1).max(200).regex(/^[\w.:/@-]+$/),
-  displayName: z.string().min(1).max(120),
-  /** Paramètres LiteLLM (`litellm_params`) hors secrets, ex. `{ "model": "anthropic/claude-x" }`. */
-  litellmParams: z.record(z.string(), z.unknown()).default({}),
-  /** Clé provider : écrite dans Vault, jamais relue. */
-  apiKey: z.string().min(1).max(4000).optional(),
-  contextWindow: z.number().int().min(1024).max(10_000_000),
-  maxOutputTokens: z.number().int().min(1).max(1_000_000),
-  supportsImages: z.boolean().default(false),
-  supportsReasoning: z.boolean().default(false),
-  enabled: z.boolean().default(true),
-  isDefault: z.boolean().default(false),
-  coefficients: CoefficientsInputSchema,
+/**
+ * Réglages d'un modèle découvert dans LiteLLM (la déclaration des modèles se fait dans LiteLLM).
+ * `allowedUserIds` vide : modèle accessible à tous les utilisateurs.
+ */
+export const UpdateModelSchema = z.object({
+  displayName: z.string().min(1).max(120).optional(),
+  contextWindow: z.number().int().min(1024).max(10_000_000).optional(),
+  maxOutputTokens: z.number().int().min(1).max(1_000_000).optional(),
+  supportsImages: z.boolean().optional(),
+  supportsReasoning: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+  isDefault: z.boolean().optional(),
+  allowedUserIds: z.array(z.uuid()).max(1000).optional(),
+  coefficients: CoefficientsInputSchema.optional(),
 });
-export type UpsertModel = z.infer<typeof UpsertModelSchema>;
+export type UpdateModel = z.infer<typeof UpdateModelSchema>;
+
+/** Modèle vu par l'administration. */
+export interface AdminModelDto extends ModelDto {
+  allowedUsers: Array<{ id: string; displayName: string; username: string }>;
+  lastSyncAt: string | null;
+  lastSyncError: string | null;
+}
+
+/** Connexion à LiteLLM (URL et clé maître, stockées dans Vault ; la clé n'est jamais renvoyée). */
+export const LiteLlmConnectionSchema = z.object({
+  url: z.url().max(500).refine((u) => /^https?:\/\//.test(u), 'URL http(s) attendue'),
+  /** Clé maître (ou clé virtuelle d'administration) ; absente = clé actuelle conservée. */
+  masterKey: z.string().min(1).max(4000).optional(),
+});
+export type LiteLlmConnection = z.infer<typeof LiteLlmConnectionSchema>;
+
+export interface LiteLlmConnectionDto {
+  url: string;
+  /** `admin` : réglée dans l'interface ; `env` : valeur de déploiement (LITELLM_URL). */
+  source: 'admin' | 'env';
+  keyConfigured: boolean;
+}
+
+export interface LiteLlmSyncResultDto {
+  discovered: number;
+  added: string[];
+  missing: string[];
+}
 
 /* ---------- Consommation & quotas ---------- */
 

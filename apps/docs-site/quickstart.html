@@ -61,18 +61,13 @@ curl -s http://localhost:8080/api/v1/health/ready</code></pre>
           <p>Ouvrez <a href="http://localhost:8080">http://localhost:8080</a> et connectez-vous avec <code>CAP_ADMIN_EMAIL</code> / <code>CAP_ADMIN_PASSWORD</code>. Les administrateurs doivent activer la double authentification (TOTP) dès la première connexion : scannez le QR code avec votre application d’authentification et conservez les codes de récupération.</p>
         </li>
         <li>
-          <h3>Déclarer un modèle</h3>
-          <p><strong>Administration → Modèles (LiteLLM)</strong> : ajoutez un modèle, par exemple :</p>
-          <table>
-            <thead><tr><th>Champ</th><th>Exemple</th></tr></thead>
-            <tbody>
-              <tr><td>Modèle LiteLLM</td><td><code>anthropic/claude-sonnet-4-5</code> (identifiant au format LiteLLM)</td></tr>
-              <tr><td>Clé d’API</td><td>votre clé du fournisseur (stockée dans Vault, jamais réaffichée)</td></tr>
-              <tr><td>Fenêtre de contexte / sortie max.</td><td>selon le modèle</td></tr>
-              <tr><td>Coefficients</td><td>coût relatif des tokens d’entrée, de sortie et de cache (base des quotas)</td></tr>
-            </tbody>
-          </table>
-          <p>Cochez <em>par défaut</em>, enregistrez puis utilisez <strong>Tester</strong> : la plateforme envoie une requête réelle via LiteLLM.</p>
+          <h3>Brancher LiteLLM et activer un modèle</h3>
+          <p>Les modèles se déclarent <strong>dans LiteLLM</strong> (son interface <code>http://localhost:4000/ui</code> avec la clé maître de <code>.secrets/litellm_master_key</code>, son API ou son <code>config.yaml</code>) ; la plateforme les découvre.</p>
+          <ul>
+            <li><strong>Administration → Modèles (LiteLLM)</strong>, carte <em>Connexion à LiteLLM</em> : gardez le LiteLLM fourni, ou indiquez l’URL et la clé d’administration d’un <strong>proxy LiteLLM existant</strong> (<em>Tester</em>, puis <em>Enregistrer</em>) ;</li>
+            <li><strong>Recharger les modèles</strong> : les modèles de LiteLLM apparaissent, <em>désactivés</em>, avec des coefficients préremplis depuis leurs prix connus (1 crédit = 0,001 $) ;</li>
+            <li>activez-en un, choisissez-le <em>par défaut</em>, puis <strong>Tester</strong> envoie une requête réelle. Une <em>liste blanche</em> d’utilisateurs peut restreindre l’accès à un modèle (vide = tout le monde).</li>
+          </ul>
         </li>
         <li>
           <h3>Inviter des utilisateurs et démarrer une conversation</h3>

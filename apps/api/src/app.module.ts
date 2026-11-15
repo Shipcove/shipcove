@@ -30,7 +30,7 @@ import { ConversationController, SharesController } from './conversations/conver
 import { ApprovalsController, GitConnectionsController, WorkspaceGitController } from './git/git.controller.js';
 import { ModelsController, NotificationsController, UsageController } from './usage/usage.controller.js';
 import { AdminController } from './admin/admin.controller.js';
-import { AdminModelsController } from './admin/admin-models.controller.js';
+import { AdminLiteLlmController, AdminModelsController } from './admin/admin-models.controller.js';
 import { LiteLlmAdminService } from './admin/litellm.service.js';
 import { IdempotencyService } from './common/idempotency.service.js';
 import { SkillsController } from './extensions/skills.controller.js';
@@ -67,6 +67,7 @@ export class AppModule {
         NotificationsController,
         AdminController,
         AdminModelsController,
+        AdminLiteLlmController,
         SsoController,
         AdminGitForgesController,
         GitOAuthController,

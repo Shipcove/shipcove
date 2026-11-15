@@ -151,7 +151,7 @@ export class ConversationController {
     return this.idempotency.run(user.id, idemKey, `POST /workspaces/${id}/messages`, body, async () => {
       const [conv] = await this.db.select().from(conversations).where(eq(conversations.workspaceId, id));
       const modelId = body.modelId ?? w.modelId ?? null;
-      const model = modelId ? await this.workspacesService.assertModelAllowed(modelId) : null;
+      const model = modelId ? await this.workspacesService.assertModelAllowed(modelId, user.id) : null;
       if (body.attachmentIds.length) {
         const owned = await this.db
           .select({ id: attachments.id, kind: attachments.kind })

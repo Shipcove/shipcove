@@ -22,6 +22,8 @@ export const llmModels = pgTable(
     enabled: boolean().notNull().default(true),
     isDefault: boolean().notNull().default(false),
     available: boolean().notNull().default(true),
+    /** Liste blanche d'utilisateurs ; vide = accessible à tous. */
+    allowedUserIds: uuid().array().notNull().default(sql`'{}'::uuid[]`),
     lastSyncAt: ts(),
     lastSyncError: text(),
     createdAt: createdAt(),

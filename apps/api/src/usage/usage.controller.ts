@@ -14,7 +14,7 @@ import {
   type UsageSummaryDto,
 } from '@cap/contracts';
 import { llmModels, llmRequests, modelCoefficients, notificationPreferences, notifications, type Database } from '@cap/database';
-import { DB, NotificationService, QuotaService, SettingsService } from '@cap/server-core';
+import { DB, NotificationService, QuotaService, SettingsService, modelAllowedFor } from '@cap/server-core';
 import { CurrentUser } from '../common/decorators.js';
 import type { AuthUser } from '../common/request.js';
 
@@ -50,10 +50,10 @@ export async function modelDtos(db: Database, rows: Array<typeof llmModels.$infe
 export class ModelsController {
   constructor(@Inject(DB) private readonly db: Database) {}
 
-  /** Modèles activés (ouverts à tous les utilisateurs). */
+  /** Modèles activés accessibles à l'utilisateur (liste blanche vide = tous). */
   @Get()
-  async list(): Promise<ModelDto[]> {
-    const rows = await this.db.select().from(llmModels).where(and(eq(llmModels.enabled, true), isNull(llmModels.deletedAt)));
+  async list(@CurrentUser() user: AuthUser): Promise<ModelDto[]> {
+    const rows = (await this.db.select().from(llmModels).where(and(eq(llmModels.enabled, true), isNull(llmModels.deletedAt)))).filter((m) => modelAllowedFor(m, user.id));
     // Les coefficients (crédits par 1 000 tokens) sont réservés à l'administration.
     return (await modelDtos(this.db, rows)).map((m) => ({ ...m, coefficients: null }));
   }

@@ -1,0 +1,1 @@
+ALTER TABLE "llm_models" ADD COLUMN "allowed_user_ids" uuid[] DEFAULT '{}'::uuid[] NOT NULL;

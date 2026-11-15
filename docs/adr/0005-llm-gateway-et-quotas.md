@@ -33,3 +33,18 @@ partir de `effective_from`) ; une consommation référence la version utilisée.
 5 h et 7 jours glissants, calculées par somme du ledger + réservations ouvertes sur la fenêtre.
 Les deux s'appliquent à l'utilisateur, et à lui seul : un compteur par personne pour toutes ses
 conversations, aucun plafond collectif (voir ADR 0015). Les titres automatiques ne sont pas décomptés.
+
+## Révision (2026-11-15) : LiteLLM source de vérité des modèles
+
+- La plateforme ne déclare plus les modèles dans LiteLLM : elle les **découvre** (`/model/info`,
+  repli `/v1/models`) au rechargement manuel, à l'enregistrement de la connexion et toutes les
+  10 minutes (worker). Un modèle découvert est créé **désactivé**, coefficients préremplis depuis
+  les prix LiteLLM (1 crédit = 0,001 USD) ; un modèle disparu est marqué indisponible, jamais
+  supprimé (le ledger le référence).
+- **Connexion** : URL et clé d'administration dans Vault (`infra/litellm`, écriture réservée à
+  l'API), lues par l'API, la gateway et le worker avec un cache de 30 s ; `LITELLM_URL` reste la
+  valeur par défaut. Mise à jour d'une installation existante : la politique Vault de l'API doit
+  être réappliquée (amorçage, avec `VAULT_TOKEN` en mode production).
+- **Liste blanche** par modèle (`allowed_user_ids`, vide = tous), appliquée à `/models`, à la
+  création et aux messages des conversations, à la configuration de Pi dans la sandbox et à la
+  passerelle LLM.

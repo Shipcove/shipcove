@@ -15,29 +15,42 @@ const ctx = {};
 
 const docker = (...args) => execFileSync('docker', args, { encoding: 'utf8' }).trim();
 
+/** API d'administration de LiteLLM (clé maître de l'environnement de développement, tests uniquement). */
+const LITELLM = process.env.CAP_E2E_LITELLM_URL ?? 'http://127.0.0.1:4000';
+const LITELLM_KEY = readFileSync(new URL('../../infrastructure/docker/.secrets/litellm_master_key', import.meta.url), 'utf8').trim();
+async function litellm(method, path, body) {
+  const res = await fetch(`${LITELLM}${path}`, { method, headers: { Authorization: `Bearer ${LITELLM_KEY}`, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const text = await res.text();
+  assert.ok(res.ok, `LiteLLM ${path} : ${res.status} ${text}`);
+  return text ? JSON.parse(text) : null;
+}
+/** Déclare (ou remplace) un modèle dans LiteLLM ; `params` nul : le retire. Prix personnalisés dans litellm_params. */
+async function litellmModel(name, params) {
+  for (const m of (await litellm('GET', '/model/info')).data.filter((x) => x.model_name === name)) await litellm('POST', '/model/delete', { id: m.model_info.id });
+  if (params) await litellm('POST', '/model/new', { model_name: name, litellm_params: { input_cost_per_token: 0.000003, output_cost_per_token: 0.000015, ...params }, model_info: { mode: 'chat' } });
+}
+
 test('administration : modèle LiteLLM (fournisseur factice), utilisateur', async () => {
   ctx.admin = await adminClient(state);
   save();
-  const models = await ctx.admin.get('/admin/models');
-  let model = models.body.find((m) => m.litellmModel === 'mock-model');
-  if (!model) {
-    const r = await ctx.admin.post('/admin/models', {
-      litellmModel: 'mock-model',
-      displayName: 'Mock (tests)',
-      litellmParams: { model: 'openai/mock-model', api_base: 'http://mock-llm:4010/v1' },
-      apiKey: 'not-needed',
-      contextWindow: 128000,
-      maxOutputTokens: 4096,
-      supportsImages: false,
-      supportsReasoning: false,
-      enabled: true,
-      isDefault: true,
-      allowedTeamIds: [],
-      coefficients: { input: '1', output: '2', cacheRead: '0.1', cacheWrite: '1.25' },
-    });
-    assert.equal(r.status, 201, JSON.stringify(r.body));
-    model = { id: r.body.id };
-  }
+  // Le modèle se déclare dans LiteLLM ; la plateforme le découvre puis l'administrateur l'active.
+  await litellmModel('mock-model', { model: 'openai/mock-model', api_base: 'http://mock-llm:4010/v1', api_key: 'not-needed' });
+  const reload = await ctx.admin.post('/admin/models/reload');
+  assert.equal(reload.status, 200, JSON.stringify(reload.body));
+  let model = (await ctx.admin.get('/admin/models')).body.find((m) => m.litellmModel === 'mock-model');
+  assert.ok(model, 'modèle découvert');
+  const enable = await ctx.admin.patch(`/admin/models/${model.id}`, {
+    displayName: 'Mock (tests)',
+    contextWindow: 128000,
+    maxOutputTokens: 4096,
+    enabled: true,
+    isDefault: true,
+    allowedUserIds: [],
+    coefficients: { input: '1', output: '2', cacheRead: '0.1', cacheWrite: '1.25' },
+  });
+  assert.equal(enable.status, 200, JSON.stringify(enable.body));
+  model = (await ctx.admin.get('/admin/models')).body.find((m) => m.id === model.id);
+  assert.equal(model.isDefault, true);
   ctx.modelId = model.id;
   // SMTP de recette (Mailpit) pour les emails transactionnels.
   await ctx.admin.put('/admin/smtp', { host: 'mailpit', port: 1025, secure: false, fromAddress: 'noreply@example.test', fromName: 'CAP' });
@@ -52,6 +65,67 @@ test('administration : modèle LiteLLM (fournisseur factice), utilisateur', asyn
   ctx.dev = new Client();
   const login = await ctx.dev.post('/auth/login', { login: username, password: 'Dev-Password-123456' });
   assert.equal(login.body.status, 'authenticated');
+});
+
+test('LiteLLM : connexion réglable depuis l’administration, découverte des modèles, activation, liste blanche', async () => {
+  // Connexion actuelle (valeur de déploiement ou réglée dans l'interface) ; la clé n'est jamais renvoyée.
+  const conn = await ctx.admin.get('/admin/litellm/connection');
+  assert.equal(conn.status, 200);
+  assert.ok(conn.body.keyConfigured);
+  assert.ok(!JSON.stringify(conn.body).includes(LITELLM_KEY));
+  assert.equal((await ctx.dev.get('/admin/litellm/connection')).status, 403);
+  // Test d'une connexion sans l'enregistrer : URL injoignable, mauvaise clé, puis la bonne.
+  assert.equal((await ctx.admin.post('/admin/litellm/connection/test', { url: 'http://inexistant.invalid:4000' })).body.ok, false);
+  assert.equal((await ctx.admin.post('/admin/litellm/connection/test', { url: conn.body.url, masterKey: 'sk-mauvaise-cle' })).body.ok, false);
+  const ok = await ctx.admin.post('/admin/litellm/connection/test', { url: conn.body.url });
+  assert.equal(ok.body.ok, true, JSON.stringify(ok.body));
+  assert.ok(ok.body.models.includes('mock-model'));
+  // Enregistrement (clé conservée) → recharge des modèles.
+  const saved = await ctx.admin.put('/admin/litellm/connection', { url: conn.body.url });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.equal(saved.body.connection.source, 'admin');
+  assert.equal(saved.body.syncError, null);
+
+  // Nouveau modèle déclaré dans LiteLLM : découvert désactivé, coefficients préremplis depuis ses prix.
+  const name = `mock-extra-${uid().toLowerCase()}`;
+  await litellmModel(name, { model: 'openai/mock-model', api_base: 'http://mock-llm:4010/v1', api_key: 'not-needed' });
+  try {
+    const reload = await ctx.admin.post('/admin/models/reload');
+    assert.ok(reload.body.added.includes(name), JSON.stringify(reload.body));
+    let extra = (await ctx.admin.get('/admin/models')).body.find((m) => m.litellmModel === name);
+    assert.equal(extra.enabled, false);
+    assert.equal(extra.coefficients.input, '3.00000000');
+    assert.equal(extra.coefficients.output, '15.00000000');
+    assert.ok(!(await ctx.dev.get('/models')).body.some((m) => m.id === extra.id), 'modèle désactivé invisible');
+    // Par défaut impossible tant qu'il est désactivé.
+    assert.equal((await ctx.admin.patch(`/admin/models/${extra.id}`, { isDefault: true })).status, 400);
+    assert.equal((await ctx.admin.patch(`/admin/models/${extra.id}`, { enabled: true })).status, 200);
+    assert.ok((await ctx.dev.get('/models')).body.some((m) => m.id === extra.id), 'activé, sans liste blanche : accessible à tous');
+
+    // Liste blanche : seul l'administrateur y figure → invisible et refusé pour l'utilisateur.
+    const me = (await ctx.admin.get('/me')).body;
+    assert.equal((await ctx.admin.patch(`/admin/models/${extra.id}`, { allowedUserIds: [me.id] })).status, 200);
+    assert.ok(!(await ctx.dev.get('/models')).body.some((m) => m.id === extra.id), 'hors liste blanche : invisible');
+    const w = await ctx.dev.post('/workspaces', { modelId: extra.id });
+    assert.equal(w.status, 403, JSON.stringify(w.body));
+    assert.equal(w.body.error.code, 'model_not_allowed');
+    assert.ok((await ctx.admin.get('/models')).body.some((m) => m.id === extra.id), 'dans la liste blanche : visible');
+    assert.equal((await ctx.admin.patch(`/admin/models/${extra.id}`, { allowedUserIds: ['00000000-0000-4000-8000-000000000000'] })).status, 400);
+
+    // Retiré de LiteLLM : signalé absent et indisponible, plus proposé.
+    await litellmModel(name, null);
+    const again = await ctx.admin.post('/admin/models/reload');
+    assert.ok(again.body.missing.includes(name));
+    extra = (await ctx.admin.get('/admin/models')).body.find((m) => m.id === extra.id);
+    assert.equal(extra.available, false);
+    assert.equal(extra.lastSyncError, 'Absent de LiteLLM');
+    assert.equal((await ctx.admin.del(`/admin/models/${extra.id}`)).status, 204);
+  } finally {
+    // Nettoyage même en cas d'échec : rien ne doit subsister dans LiteLLM ni dans le catalogue.
+    await litellmModel(name, null).catch(() => undefined);
+    const left = (await ctx.admin.get('/admin/models')).body.find((m) => m.litellmModel === name);
+    if (left) await ctx.admin.del(`/admin/models/${left.id}`);
+  }
 });
 
 test('conversation sans dépôt : Pi écrit via shell et via outil, checkpoint après chaque écriture, SSE, panneau Modifications, titre automatique', async () => {

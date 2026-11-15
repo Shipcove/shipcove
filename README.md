@@ -77,7 +77,9 @@ supprimer exige une **approbation humaine**.
 - **IAM intégrée** : comptes locaux, MFA TOTP, sessions révocables. Également :
   - **OIDC / Keycloak**, **SAML 2.0**, **LDAP / Active Directory** ;
   - **OAuth GitHub / GitLab**, sans jamais fusionner deux comptes par leur email.
-- **Modèles LiteLLM** : coefficients versionnés, modèle dédié aux titres automatiques.
+- **LiteLLM** : connexion réglable dans l'administration (proxy existant possible), découverte
+  automatique des modèles, activation, modèle par défaut, liste blanche d'utilisateurs, coefficients
+  versionnés, modèle dédié aux titres automatiques.
 - **Quotas personnels** : fenêtres glissantes de 5 h et 7 j, un compteur par personne pour toutes
   ses conversations. Ils sont présentés en **pourcentage** aux utilisateurs, et une réservation est faite
   avant chaque appel.
@@ -149,8 +151,10 @@ construit les images localement (laisser `CAP_REGISTRY` vide et `CAP_SANDBOX_IMA
 Ouvrez <http://localhost:8080> et connectez-vous avec `CAP_ADMIN_EMAIL` / `CAP_ADMIN_PASSWORD`. La
 MFA (TOTP) est demandée aux administrateurs dès la première connexion. Ensuite :
 
-1. **Administration → Modèles** : déclarez un modèle LiteLLM, par exemple `anthropic/claude-…` ou
-   `openai/…`, avec sa clé d'API (stockée dans Vault). Pour essayer sans fournisseur, utilisez
+1. **Modèles** : déclarez vos modèles dans LiteLLM (interface <http://localhost:4000/ui>, clé maître
+   dans `.secrets/litellm_master_key`), ou branchez un proxy LiteLLM existant dans
+   **Administration → Modèles → Connexion à LiteLLM**. Cliquez sur **Recharger les modèles**, puis
+   activez-en un et choisissez le modèle par défaut. Pour essayer sans fournisseur :
    `openai/mock-model` avec `api_base` = `http://mock-llm:4010/v1` (profil `dev`).
 2. **Invitations** : invitez vos collègues par email, ou créez leurs comptes dans **Utilisateurs**.
 3. **Accueil** : écrivez votre demande à Pi. Pour travailler sur un dépôt, configurez une forge dans

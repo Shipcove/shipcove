@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnApplica
 import { and, eq, sql } from 'drizzle-orm';
 import type { SecretProvider } from '@cap/secrets';
 import { agentRuns, sandboxInstances, serviceInstances, workspaces, type Database } from '@cap/database';
-import { DB, ENV, QuotaService, SECRETS, SettingsService, sha256Hex, type NormalizedUsage } from '@cap/server-core';
+import { DB, ENV, LiteLlmClient, QuotaService, SECRETS, SettingsService, sha256Hex, type NormalizedUsage } from '@cap/server-core';
 import type { WorkerEnv } from '../env.js';
 import { SandboxManager } from '../sandbox/sandbox-manager.service.js';
 import { CheckpointService } from '../sandbox/checkpoint.service.js';
@@ -36,6 +36,7 @@ export class MaintenanceService implements OnApplicationBootstrap, OnApplication
     private readonly git: GitBrokerService,
     private readonly quotas: QuotaService,
     private readonly retention: RetentionService,
+    private readonly litellm: LiteLlmClient,
   ) {}
 
   private tasks(): Task[] {
@@ -48,6 +49,8 @@ export class MaintenanceService implements OnApplicationBootstrap, OnApplication
       { name: 'idle-reaper', everyMs: 60_000, exclusive: true, fn: () => this.reapIdle() },
       { name: 'unsynced', everyMs: 60_000, exclusive: true, fn: () => this.retryUnsynced() },
       { name: 'llm-reconcile', everyMs: 5 * 60_000, exclusive: true, fn: () => this.reconcileUsage() },
+      // Découverte des modèles de LiteLLM (ajouts désactivés, disparitions signalées).
+      { name: 'llm-models', everyMs: 10 * 60_000, exclusive: true, fn: () => this.litellm.syncModels().then(() => undefined) },
       { name: 'sandbox-reconcile', everyMs: 10 * 60_000, exclusive: true, fn: () => this.sandboxes.reconcile() },
       { name: 'retention', everyMs: 60 * 60_000, exclusive: true, fn: () => this.retention.runAll() },
     ];
@@ -147,14 +150,15 @@ export class MaintenanceService implements OnApplicationBootstrap, OnApplication
   private async reconcileUsage(): Promise<void> {
     const pending = await this.quotas.pendingReconciliation(100);
     if (pending.length === 0) return;
-    const key = await this.secrets.readKey(this.env.LITELLM_MASTER_KEY_REF, 'masterKey').catch(() => undefined);
+    const conn = await this.litellm.connection().catch(() => null);
+    const key = conn?.key;
     const policy = (await this.settings.section('quotas')).unknownUsagePolicy;
     for (const r of pending) {
       let usage: NormalizedUsage | null = null;
       let cost: string | null = null;
       if (key && r.litellmCallId) {
         try {
-          const res = await fetch(`${this.env.LITELLM_URL}/spend/logs?request_id=${encodeURIComponent(r.litellmCallId)}`, {
+          const res = await fetch(`${conn!.url}/spend/logs?request_id=${encodeURIComponent(r.litellmCallId)}`, {
             headers: { Authorization: `Bearer ${key}` },
             signal: AbortSignal.timeout(10_000),
           });

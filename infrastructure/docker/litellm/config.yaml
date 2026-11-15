@@ -1,5 +1,6 @@
-# Configuration LiteLLM. Les modèles sont gérés par la console d'administration de la plateforme
-# (API /model/new de LiteLLM, STORE_MODEL_IN_DB=True). Aucune clé provider ici.
+# Configuration du LiteLLM fourni. Les modèles se déclarent dans LiteLLM (interface /ui, API
+# /model/new ou model_list ci-dessous) ; la plateforme les découvre via /model/info.
+# Un proxy LiteLLM existant peut le remplacer : Administration → Modèles → Connexion à LiteLLM.
 general_settings:
   store_model_in_db: true
   disable_spend_logs: false

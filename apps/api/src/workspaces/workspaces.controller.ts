@@ -48,7 +48,7 @@ export class WorkspacesController {
   /** Nouvelle conversation, éventuellement sur un dépôt Git (lu avec la connexion de l'utilisateur). */
   @Post()
   async create(@Body({ schema: CreateWorkspaceSchema }) body: CreateWorkspace, @CurrentUser() user: AuthUser, @ReqCtx() ctx: RequestContext): Promise<WorkspaceDto> {
-    if (body.modelId) await this.service.assertModelAllowed(body.modelId);
+    if (body.modelId) await this.service.assertModelAllowed(body.modelId, user.id);
     const w = await this.db.transaction(async (tx) => {
       const repo = body.repository ? await this.service.resolveRepository(tx, user, body.repository) : null;
       const [w] = await tx
@@ -83,7 +83,7 @@ export class WorkspacesController {
   async update(@Param('id', uuid) id: string, @Body({ schema: UpdateWorkspaceSchema }) body: z.infer<typeof UpdateWorkspaceSchema>, @CurrentUser() user: AuthUser): Promise<WorkspaceDto> {
     await this.access.requireWorkspaceOwner(user, id);
     if (body.modelId) {
-      const m = await this.service.assertModelAllowed(body.modelId);
+      const m = await this.service.assertModelAllowed(body.modelId, user.id);
       await this.events.emit(id, 'model.changed', { modelId: m.id, modelName: m.displayName });
     }
     // Un titre choisi par l'utilisateur n'est plus jamais remplacé automatiquement.
