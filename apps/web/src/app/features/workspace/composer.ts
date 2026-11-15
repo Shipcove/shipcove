@@ -106,9 +106,21 @@ const TOP_MODELS = 4;
             }
           </div>
           <input #fileInput type="file" multiple class="hidden" (change)="onFiles($event)" />
-          <textarea #textarea class="block h-9 max-h-60 flex-1 resize-none overflow-y-auto bg-transparent px-2 py-1.5 text-[0.95rem] leading-6 placeholder:text-stone-400 focus:outline-none" rows="1"
-            [placeholder]="store.draft ? 'Décrivez ce que Pi doit faire… (/ pour les commandes)' : running() ? 'Message mis en file d’attente jusqu’à la fin de la tâche en cours…' : 'Tapez / pour les commandes.'" [(ngModel)]="text" name="text"
-            (ngModelChange)="onTextChange()" (keydown)="onKey($event)" (paste)="onPaste($event)" [disabled]="!store.isOwner()" aria-label="Message"></textarea>
+          <div class="flex min-w-0 flex-1 flex-wrap items-center">
+            @for (s of selectedSkills(); track s.command) {
+              <span class="group/skill relative ml-2 inline-block shrink-0 cursor-default py-1.5 text-[0.95rem] leading-6 font-medium text-sky-600 dark:text-sky-400"
+                tabindex="0" [attr.aria-label]="'Skill ' + s.name + (s.description ? ' : ' + s.description : '')" data-skill-chip>
+                <span class="opacity-60">/</span>{{ s.name }}
+                <span role="tooltip" class="pointer-events-auto invisible absolute bottom-full left-0 z-40 mb-2 w-80 rounded-2xl border border-stone-200 bg-white p-4 font-normal opacity-0 shadow-[0_8px_30px_rgb(0_0_0/0.12)] transition-opacity delay-150 group-hover/skill:visible group-hover/skill:opacity-100 group-focus-visible/skill:visible group-focus-visible/skill:opacity-100 dark:border-stone-700 dark:bg-stone-900">
+                  <span class="block font-mono text-sm text-stone-500">{{ s.command }}</span>
+                  <span class="mt-1.5 block max-h-60 overflow-y-auto text-sm leading-relaxed whitespace-pre-line text-stone-800 dark:text-stone-200">{{ s.description || 'Aucune description.' }}</span>
+                </span>
+              </span>
+            }
+            <textarea #textarea class="block h-9 max-h-60 min-w-40 flex-1 resize-none overflow-y-auto bg-transparent px-2 py-1.5 text-[0.95rem] leading-6 placeholder:text-stone-400 focus:outline-none" rows="1"
+              [placeholder]="selectedSkills().length ? 'Ajoutez vos instructions (facultatif)' : store.draft ? 'Décrivez ce que Pi doit faire… (/ pour les commandes)' : running() ? 'Message mis en file d’attente jusqu’à la fin de la tâche en cours…' : 'Tapez / pour les commandes.'" [(ngModel)]="text" name="text"
+              (ngModelChange)="onTextChange()" (keydown)="onKey($event)" (paste)="onPaste($event)" [disabled]="!store.isOwner()" aria-label="Message"></textarea>
+          </div>
           @if (running()) {
             @if (store.activeRun()?.status === 'interrupting') {
               <button class="btn-ghost !rounded-lg !p-1.5" disabled aria-label="Arrêt en cours" title="Arrêt en cours…"><span class="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"></span></button>
@@ -116,7 +128,7 @@ const TOP_MODELS = 4;
               <button class="btn-ghost !rounded-lg !p-1.5" (click)="interrupt()" aria-label="Interrompre" title="Interrompre"><span class="block h-3.5 w-3.5 rounded-sm bg-current"></span></button>
             }
           }
-          <button class="btn-ghost !rounded-lg !p-1.5" (click)="submit()" [disabled]="!canSend() || !text.trim()"
+          <button class="btn-ghost !rounded-lg !p-1.5" (click)="submit()" [disabled]="!canSend() || (!text.trim() && !selectedSkills().length)"
             [attr.aria-label]="running() ? 'Mettre en file d’attente' : 'Envoyer'" [title]="running() ? 'Mettre en file d’attente (Entrée)' : 'Envoyer (Entrée)'"><cap-icon name="enter" [size]="18" /></button>
         </div>
       </div>
@@ -255,8 +267,10 @@ export class Composer {
   protected readonly slashCommands = computed(() =>
     this.skills()
       .filter((s) => s.enabledForMe)
-      .map((s) => ({ command: `/skill:${s.name}`, description: s.description })),
+      .map((s) => ({ command: `/skill:${s.name}`, name: s.name, description: s.description })),
   );
+  /** Skills choisis : blocs dans la zone de saisie, envoyés en tête du message. */
+  protected readonly selectedSkills = signal<Array<{ command: string; name: string; description: string }>>([]);
   protected readonly slashFiltered = computed(() => {
     const t = this.textSig();
     const q = t.startsWith('/') ? t.slice(1).split(/\s/)[0].toLowerCase() : '';
@@ -355,11 +369,17 @@ export class Composer {
     void this.router.navigateByUrl('/extensions');
   }
 
+  /** Skill choisi : ajouté comme un bloc (retiré d'un seul Retour arrière), le texte « /… » tapé est effacé. */
   protected useSlash(command: string): void {
-    this.text = `${command} `;
+    const skill = this.slashCommands().find((c) => c.command === command);
+    if (skill && !this.selectedSkills().some((s) => s.command === command)) this.selectedSkills.update((l) => [...l, skill]);
+    this.text = this.text.startsWith('/') ? this.text.replace(/^\/\S*\s?/, '') : this.text;
     this.textSig.set(this.text);
     this.menu.set(null);
-    queueMicrotask(() => this.textareaRef().nativeElement.focus());
+    queueMicrotask(() => {
+      this.autosize();
+      this.textareaRef().nativeElement.focus();
+    });
   }
 
   private async loadSkills(): Promise<void> {
@@ -386,6 +406,12 @@ export class Composer {
   /* ------------------------------- Saisie ------------------------------ */
 
   protected onTextChange(): void {
+    // « /skill:nom » tapé en entier puis espace : transformé en bloc.
+    const typed = /^\/skill:(\S+)\s/.exec(this.text);
+    if (typed && this.slashCommands().some((c) => c.name === typed[1])) {
+      this.useSlash(`/skill:${typed[1]}`);
+      return;
+    }
     this.textSig.set(this.text);
     this.autosize();
     if (this.text.startsWith('/') && !this.text.includes(' ')) {
@@ -404,6 +430,13 @@ export class Composer {
   }
 
   protected onKey(e: KeyboardEvent): void {
+    // Retour arrière en début de saisie : le dernier skill est retiré d'un coup, comme un bloc.
+    const el = e.target as HTMLTextAreaElement;
+    if (e.key === 'Backspace' && el.selectionStart === 0 && el.selectionEnd === 0 && this.selectedSkills().length) {
+      e.preventDefault();
+      this.selectedSkills.update((l) => l.slice(0, -1));
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       if (this.menu() === 'slash' && this.slashFiltered()[0]) {
@@ -415,8 +448,10 @@ export class Composer {
   }
 
   protected async submit(): Promise<void> {
-    const text = this.text.trim();
-    if (!text || this.sending()) return;
+    const skills = this.selectedSkills().map((s) => s.command);
+    const text = [...skills, this.text.trim()].filter(Boolean).join(' ');
+    if (!this.text.trim() && !skills.length) return;
+    if (this.sending()) return;
     const ready = this.attachments().filter((a) => a.status === 'ready');
     this.sending.set(true);
     try {
@@ -424,6 +459,7 @@ export class Composer {
       await this.store.send(text, ready.map((a) => a.id), this.running() ? 'follow_up' : 'new_run');
       this.text = '';
       this.textSig.set('');
+      this.selectedSkills.set([]);
       this.attachments.set([]);
       this.previews.set({});
       queueMicrotask(() => this.autosize());

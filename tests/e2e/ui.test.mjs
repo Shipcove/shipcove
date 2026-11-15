@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
-import { BASE, adminClient, uid } from './client.mjs';
+import { BASE, Client, adminClient, uid } from './client.mjs';
 
 const STATE_FILE = new URL('./.e2e-state.json', import.meta.url);
 const state = existsSync(STATE_FILE) ? JSON.parse(readFileSync(STATE_FILE, 'utf8')) : {};
@@ -38,6 +38,14 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
   const username = `ui${uid()}`;
   const password = 'Ui-Password-123456';
   const user = await admin.post('/admin/users', { email: `${username}@example.test`, username, displayName: `UI ${username}`, platformRole: 'user', password });
+  // Skill personnel de l'utilisateur, pour les blocs de skills dans la zone de saisie.
+  const skillName = `ui-skill-${uid().toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+  {
+    const c = new Client();
+    await c.post('/auth/login', { login: username, password });
+    const r = await c.post('/skills', { name: skillName, description: 'Rédige une note de version claire à partir des commits récents.', scope: 'personal', files: [{ path: 'SKILL.md', content: `---\nname: ${skillName}\ndescription: Note de version\n---\n\nRédige la note.\n` }] });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+  }
 
   const browser = await chromium.launch({ executablePath, args: ['--no-sandbox'] });
   try {
@@ -85,6 +93,32 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     const sidebar = page.locator('nav[aria-label="Conversations"]');
     await sidebar.locator('text=Aujourd’hui').waitFor();
     await sidebar.locator('a:has-text("Crée un fichier.")').waitFor();
+    // Skill choisi via « / » : bloc dans la zone de saisie, description au survol, retiré d'un seul Retour arrière.
+    const box = page.locator('textarea[aria-label="Message"]');
+    await box.fill('/');
+    await page.click(`[role="option"]:has-text("/skill:${skillName}")`);
+    const chip = page.locator('cap-composer [data-skill-chip]');
+    await chip.waitFor();
+    assert.equal(await box.inputValue(), '', 'le texte « / » tapé est remplacé par le bloc');
+    assert.match(await chip.innerText(), new RegExp(`/${skillName}`));
+    await chip.hover();
+    await chip.locator('[role="tooltip"]').waitFor({ state: 'visible' });
+    assert.match(await chip.locator('[role="tooltip"]').innerText(), /note de version claire/);
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: new URL('skill-chip.png', OUT).pathname, clip: { x: 300, y: 560, width: 720, height: 440 } });
+    await box.focus();
+    await page.keyboard.press('Backspace');
+    await chip.waitFor({ state: 'detached', timeout: 3000 }).catch(() => assert.fail('un seul Retour arrière retire le bloc'));
+    // Commande tapée en entier : transformée en bloc, puis envoyée avec le texte.
+    await box.fill(`/skill:${skillName} `);
+    await chip.waitFor();
+    await box.type('Prépare la note');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('text=Réponse factice', { timeout: 120_000 });
+    const bubble = page.locator('cap-conversation span[title="/skill:' + skillName + '"]').last();
+    await bubble.waitFor();
+    await chip.waitFor({ state: 'detached', timeout: 3000 }).catch(() => assert.fail('blocs retirés après envoi'));
+
     // Renommage dans l'en-tête.
     await page.click('button[aria-label="Renommer la conversation"]');
     await page.fill('input[aria-label="Titre de la conversation"]', 'Conversation UI');

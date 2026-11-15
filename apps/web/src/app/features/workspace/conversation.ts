@@ -26,7 +26,9 @@ import { WorkspaceStore } from './workspace.store';
               @if (canRewind(m)) {
                 <button class="btn-ghost mt-1.5 !p-1 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100" (click)="rewind(m)" [disabled]="busy()" title="Revenir à l’état des fichiers d’avant ce message" aria-label="Revenir avant ce message"><cap-icon name="undo" [size]="14" /></button>
               }
-              <div class="max-w-[85%] min-w-0 rounded-2xl bg-stone-200/80 px-4 py-2.5 text-[0.925rem] [overflow-wrap:anywhere] dark:bg-stone-800"><span class="whitespace-pre-wrap">{{ m.text }}</span>
+              <div class="max-w-[85%] min-w-0 rounded-2xl bg-stone-200/80 px-4 py-2.5 text-[0.925rem] [overflow-wrap:anywhere] dark:bg-stone-800">@let parts = skillParts(m.text);
+                @for (sk of parts.skills; track sk) { <span class="mr-1.5 font-medium text-sky-700 dark:text-sky-400" [title]="'/skill:' + sk"><span class="opacity-60">/</span>{{ sk }}</span> }
+                <span class="whitespace-pre-wrap">{{ parts.rest }}</span>
                 @if (m.attachments.length) {
                   <div class="mt-2 flex flex-wrap gap-1">
                     @for (a of m.attachments; track a.id) { <span class="badge bg-white/70 dark:bg-stone-700"><cap-icon name="paperclip" [size]="11" />{{ a.fileName }}</span> }
@@ -74,6 +76,17 @@ import { WorkspaceStore } from './workspace.store';
   host: { class: 'block h-full' },
 })
 export class Conversation {
+  /** Skills en tête d'un message (« /skill:a /skill:b texte ») affichés comme des blocs. */
+  protected skillParts(text: string): { skills: string[]; rest: string } {
+    const skills: string[] = [];
+    let rest = text;
+    for (let m = /^\s*\/skill:(\S+)/.exec(rest); m; m = /^\s*\/skill:(\S+)/.exec(rest)) {
+      skills.push(m[1]);
+      rest = rest.slice(m[0].length);
+    }
+    return { skills, rest: skills.length ? rest.trimStart() : text };
+  }
+
   protected readonly store = inject(WorkspaceStore);
   readonly openFile = output<string>();
   private readonly scroller = viewChild.required<ElementRef<HTMLElement>>('scroller');

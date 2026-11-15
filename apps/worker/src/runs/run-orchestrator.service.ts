@@ -14,6 +14,8 @@ import {
 import { PI_PROVIDER, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
 import { DB, ENV, EnvironmentService, EventsService, NotificationService, modelAllowedFor, ObjectStorage, PgNotifier, QuotaService, RunQueueService, StreamScrubber, redactString, scrubDeep, scrubSecrets, type NewEvent } from '@cap/server-core';
 import { toUserPath } from '@cap/storage';
+import { execCollect } from '@cap/sandbox';
+import { SKILLS_DIR, expandSkillCommands } from './skill-expansion.js';
 import type { WorkerEnv } from '../env.js';
 import { JobRunner } from '../jobs/job-runner.service.js';
 import { CheckpointService } from '../sandbox/checkpoint.service.js';
@@ -118,7 +120,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     if (msg.action === 'steer' && msg.messageId) {
       const [m] = await this.db.select().from(messages).where(eq(messages.id, msg.messageId));
       if (!m) return;
-      await ctx.runtime.steer(m.text).catch((e) => this.logger.warn(`steer: ${e.message}`));
+      const text = await this.expandSkills(ctx.workspaceId, ctx.runId, m.text).catch(() => m.text);
+      await ctx.runtime.steer(text).catch((e) => this.logger.warn(`steer: ${e.message}`));
     }
   }
 
@@ -344,7 +347,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       const sb = this.active.get(run.id)?.sandbox ?? (await this.sandboxes.ensureRunning(run.workspaceId));
       await this.sandboxes.writeFiles(sb.handle, files);
     }
-    let text = notes.length ? `${m.text}\n\nFichiers joints disponibles :\n${notes.join('\n')}` : m.text;
+    const body = await this.expandSkills(run.workspaceId, run.id, m.text);
+    let text = notes.length ? `${body}\n\nFichiers joints disponibles :\n${notes.join('\n')}` : body;
     // Événements de la plateforme survenus depuis le run précédent (ex. retour en arrière des
     // fichiers) : Pi en est informé, sa mémoire de session ne les contient pas.
     const [prev] = await this.db
@@ -370,6 +374,19 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       text = `[Note de la plateforme : depuis ton dernier échange, l’utilisateur a restauré les fichiers du workspace à un état antérieur (${platformNotes.length} fois). Des modifications que tu as faites ont pu être annulées : ne te fie pas à ta mémoire, vérifie l’état actuel des fichiers avant d’agir.]\n\n${text}`;
     }
     return { text, images };
+  }
+
+  /**
+   * Skills choisis en tête du message (un ou plusieurs blocs dans l'interface) : développés comme
+   * le fait Pi (qui n'en traite qu'un, et seulement en tout début de message).
+   */
+  private async expandSkills(workspaceId: string, runId: string, text: string): Promise<string> {
+    if (!text.trimStart().startsWith('/skill:')) return text;
+    const sb = this.active.get(runId)?.sandbox ?? (await this.sandboxes.ensureRunning(workspaceId));
+    return expandSkillCommands(text, async (name) => {
+      const r = await execCollect(this.sandboxes.provider, sb.handle, ['cat', '--', `${SKILLS_DIR}/${name}/SKILL.md`], { timeoutMs: 15_000 });
+      return r.exitCode === 0 ? r.stdout.toString('utf8') : null;
+    });
   }
 
   /** Dernier refus de quota du run (10 min), avec la fenêtre en cause. */

@@ -272,8 +272,9 @@ test('forges via la plateforme seulement : TLS intercepté, jeton de run, garde-
     'curl -s -o /dev/null -D - -X PUT -H "Authorization: token $GH_TOKEN" https://api.github.com/repos/o/r/pulls/1/merge | grep -i -E "^HTTP|x-cap-forge-denied" | tr -d "\\r"',
     'curl -s --noproxy "*" -m 5 https://github.com >/dev/null 2>&1 && echo direct:open || echo direct:blocked',
     'curl -s -m 5 https://registry.gitlab.com/ >/dev/null 2>&1 && echo registry:open || echo registry:blocked',
-    'curl -s -m 5 http://169.254.169.254/ >/dev/null 2>&1 && echo meta:open || echo meta:blocked',
-    'curl -s -m 5 http://postgres:5432 >/dev/null 2>&1 && echo pg:open || echo pg:blocked',
+    // Bloqué = refus explicite du proxy (403 X-Cap-Egress-Denied) ou connexion impossible.
+    '(curl -s -m 5 -o /dev/null -D - http://169.254.169.254/ 2>/dev/null | grep -qi "x-cap-egress-denied" || ! curl -s -m 5 -o /dev/null http://169.254.169.254/ 2>/dev/null) && echo meta:blocked || echo meta:open',
+    '(curl -s -m 5 -o /dev/null -D - http://postgres:5432/ 2>/dev/null | grep -qi "x-cap-egress-denied" || ! curl -s -m 5 -o /dev/null http://postgres:5432/ 2>/dev/null) && echo pg:blocked || echo pg:open',
   ].join('; ');
   const sent = await ctx.dev.post(`/workspaces/${ctx.ws.id}/messages`, { text: `Teste le réseau. [[tool:bash ${JSON.stringify({ command: cmd })}]]` });
   const events = await ctx.dev.events(ctx.ws.id, conv.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === sent.body.runId, 300_000);
@@ -291,6 +292,17 @@ test('forges via la plateforme seulement : TLS intercepté, jeton de run, garde-
   const npmTool = ev2.find((e) => e.type === 'tool.completed' && e.runId === npm.body.runId);
   assert.ok(npmTool, `aucun outil exécuté : ${JSON.stringify(ev2.map((e) => [e.type, e.runId === npm.body.runId, e.data?.error ?? e.data?.reason ?? '']))}`);
   assert.match(npmTool.data.output, /npm:200/);
+
+  // Un client qui coupe brutalement un tunnel (RST) ne fait jamais tomber la passerelle.
+  const restarts = () => Number(docker('inspect', 'cap-gateway-1', '--format', '{{.RestartCount}}'));
+  const before = restarts();
+  const rst = (host) => `node -e 'const s=require("net").connect(3128,"gateway",()=>{s.write("CONNECT ${host}:443 HTTP/1.1\\r\\nHost: ${host}:443\\r\\n\\r\\n");s.resetAndDestroy();});s.on("error",()=>{})'`;
+  const conv3 = await ctx.dev.get(`/workspaces/${ctx.ws.id}/conversation`);
+  const reset = await ctx.dev.post(`/workspaces/${ctx.ws.id}/messages`, { text: `RST [[tool:bash ${JSON.stringify({ command: `for i in 1 2 3 4 5 6 7 8 9 10; do ${rst('registry.gitlab.com')}; ${rst('example.com')}; done; sleep 2; echo rst-ok` })}]]` });
+  const ev3 = await ctx.dev.events(ctx.ws.id, conv3.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === reset.body.runId, 300_000);
+  assert.equal(ev3.at(-1).type, 'run.completed', JSON.stringify(ev3.at(-1)));
+  await sleep(2000);
+  assert.equal(restarts(), before, 'la passerelle n’a pas redémarré');
 });
 
 test('quotas : réservation refusée → run suspendu proprement, puis reprise', async () => {

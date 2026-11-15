@@ -1077,3 +1077,27 @@ test('outils Node dans la sandbox : npm install -g utilisable par l’agent, npm
   assert.match(out, /projet-ok/);
   assert.match(out, /playwright-ok/, 'outils de l’image toujours résolus');
 });
+
+test('plusieurs skills choisis en tête du message : tous développés pour Pi (qui n’en traite qu’un seul)', async () => {
+  const user = await newUser();
+  const id = uid().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const mk = async (name, marker) => {
+    const content = `---\nname: ${name}\ndescription: Skill ${marker}\n---\n\nApplique ceci. [[tool:bash {"command":"echo ${marker}"}]]\n`;
+    const r = await user.post('/skills', { name, description: `Skill ${marker}`, scope: 'personal', files: [{ path: 'SKILL.md', content }] });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+  };
+  await mk(`ska-${id}`, 'SKILL_A_OK');
+  await mk(`skb-${id}`, 'SKILL_B_OK');
+  const ws = await workspace(user, 'Skills multiples');
+  const conv = await user.get(`/workspaces/${ws.id}/conversation`);
+  const sent = await user.post(`/workspaces/${ws.id}/messages`, { text: `/skill:ska-${id} /skill:skb-${id} Fais-le` }, { 'Idempotency-Key': `f-${uid()}` });
+  assert.equal(sent.status, 201, JSON.stringify(sent.body));
+  const evs = await user.events(ws.id, conv.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === sent.body.runId, 300_000);
+  assert.equal(evs.at(-1).type, 'run.completed', JSON.stringify(evs.at(-1)));
+  const outputs = evs.filter((e) => e.type === 'tool.completed').map((e) => e.data.output).join('\n');
+  assert.match(outputs, /SKILL_A_OK/, 'premier skill développé');
+  assert.match(outputs, /SKILL_B_OK/, 'second skill développé');
+  // Le message affiché reste celui de l'utilisateur (les blocs ne sont pas recopiés dans le fil).
+  const saved = (await user.get(`/workspaces/${ws.id}/conversation`)).body.messages.find((m) => m.role === 'user');
+  assert.equal(saved.text, `/skill:ska-${id} /skill:skb-${id} Fais-le`);
+});
