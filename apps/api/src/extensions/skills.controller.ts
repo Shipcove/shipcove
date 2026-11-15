@@ -153,7 +153,7 @@ export class SkillsController {
 
   @Post()
   async create(@Body({ schema: CreateSkillSchema }) body: CreateSkill, @CurrentUser() user: AuthUser, @ReqCtx() ctx: RequestContext) {
-    return this.createFrom(user, ctx, { name: body.name, scope: body.scope, description: body.description, source: body.source, categoryId: body.categoryId ?? null, files: resolveSkillFiles(body.files) });
+    return this.createFrom(user, ctx, { name: body.name, description: body.description, source: body.source, categoryId: body.categoryId ?? null, files: resolveSkillFiles(body.files) });
   }
 
   private async assertCategory(categoryId: string | null | undefined) {
@@ -162,17 +162,22 @@ export class SkillsController {
     if (!c) throw new AppError('validation_failed', 'Catégorie inconnue');
   }
 
-  private async createFrom(user: AuthUser, ctx: RequestContext, input: { name: string; scope: 'global' | 'personal'; description?: string; source?: string; categoryId?: string | null; files: StoredSkillFile[] }) {
+  /**
+   * Création (formulaire ou import .zip) : toujours un skill personnel. Le rendre global est une
+   * action distincte et unique, réservée aux administrateurs (`PUT /skills/:id/scope`).
+   */
+  private async createFrom(user: AuthUser, ctx: RequestContext, input: { name: string; description?: string; source?: string; categoryId?: string | null; files: StoredSkillFile[] }) {
     await this.assertCategory(input.categoryId);
     const cfg = await this.settings.section('skills');
-    if (input.scope === 'personal' && !cfg.personalSkillsAllowed) throw new AppError('forbidden', 'Les skills personnels sont désactivés');
-    const meta = { scope: input.scope, ownerId: input.scope === 'personal' ? user.id : null };
-    await this.assertManage(user, meta);
+    const admin = user.platformRole === 'platform_admin';
+    // Les administrateurs passent toujours par un skill personnel pour publier un skill global.
+    if (!admin && !cfg.personalSkillsAllowed) throw new AppError('forbidden', 'Les skills personnels sont désactivés');
+    const meta = { scope: 'personal' as const, ownerId: user.id };
     const description = readFrontmatter(input.files[0].content).description ?? input.description;
     if (!description) throw new AppError('validation_failed', 'Description requise : champ « description » du frontmatter de SKILL.md');
     const findings = analyzeSkill(input.files, input.name);
     // Disponible tout de suite ; revue seulement si l'administrateur l'impose pour les skills personnels.
-    const status = input.scope === 'personal' && cfg.personalSkillsRequireReview ? 'pending_review' : 'published';
+    const status = !admin && cfg.personalSkillsRequireReview ? 'pending_review' : 'published';
     const [s] = await this.db
       .insert(skills)
       .values({ name: input.name, description, ...meta, status, source: input.source ?? null, categoryId: input.categoryId ?? null, latestVersion: 1 })
@@ -182,7 +187,7 @@ export class SkillsController {
         throw err;
       });
     await this.db.insert(skillVersions).values({ skillId: s.id, version: 1, files: input.files, digest: sha256Hex(canonicalJson(input.files)), analysis: { findings, scannedAt: new Date().toISOString() }, createdBy: user.id });
-    await this.audit.record({ actorId: user.id, action: 'skill.create', targetType: 'skill', targetId: s.id, ip: ctx.ip, metadata: { scope: input.scope, files: input.files.length, findings } });
+    await this.audit.record({ actorId: user.id, action: 'skill.create', targetType: 'skill', targetId: s.id, ip: ctx.ip, metadata: { scope: 'personal', files: input.files.length, findings } });
     return { id: s.id, status, findings };
   }
 
@@ -283,7 +288,7 @@ export class SkillsController {
   async importZip(@UploadedFile() file: UploadedZip | undefined, @Body() raw: Record<string, string>, @CurrentUser() user: AuthUser, @ReqCtx() ctx: RequestContext) {
     if (!file) throw new AppError('validation_failed', 'Fichier .zip manquant');
     const fields = z
-      .object({ scope: SkillScopeSchema.default('personal'), skillId: z.uuid().optional(), name: SkillNameSchema.optional(), categoryId: z.uuid().optional() })
+      .object({ skillId: z.uuid().optional(), name: SkillNameSchema.optional(), categoryId: z.uuid().optional() })
       .safeParse(raw);
     if (!fields.success) throw new AppError('validation_failed', 'Paramètres d’import invalides');
     // Markdown uniquement : scripts, binaires et images de l'archive sont ignorés (et signalés).
@@ -299,7 +304,7 @@ export class SkillsController {
     const fallback = file.originalname.replace(/\.zip$/i, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     const name = fields.data.name ?? (fmName && SkillNameSchema.safeParse(fmName).success ? fmName : fallback);
     if (!SkillNameSchema.safeParse(name).success) throw new AppError('validation_failed', `Nom de skill invalide : « ${name} » (minuscules, chiffres, tirets)`);
-    return { ...(await this.createFrom(user, ctx, { name, scope: fields.data.scope, categoryId: fields.data.categoryId ?? null, files, source: `zip:${file.originalname.slice(0, 200)}` })), ignored };
+    return { ...(await this.createFrom(user, ctx, { name, categoryId: fields.data.categoryId ?? null, files, source: `zip:${file.originalname.slice(0, 200)}` })), ignored };
   }
 
   /** Export .zip (arborescence markdown). */

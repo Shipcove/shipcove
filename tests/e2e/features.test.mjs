@@ -164,16 +164,21 @@ test('skills : disponibles dès la création, chaque utilisateur active et réac
   const names = { global: `glob-${id}`, global2: `glob2-${id}`, personal: `perso-${id}`, otherUser: `voisin-${id}` };
   const mine = async (n) => (await ctx.dev.get('/skills')).body.find((s) => s.name === n);
 
-  // Global et personnel : disponibles tout de suite, sans étape de publication.
-  const g = await ctx.admin.post('/skills', { name: names.global, scope: 'global', files: skillFiles(names.global) });
-  assert.equal(g.status, 201, JSON.stringify(g.body));
-  assert.equal(g.body.status, 'published');
-  const g2 = await ctx.admin.post('/skills', { name: names.global2, scope: 'global', files: skillFiles(names.global2) });
-  const p = await ctx.dev.post('/skills', { name: names.personal, scope: 'personal', files: skillFiles(names.personal) });
+  // Global et personnel : disponibles tout de suite, sans étape de publication. Un skill global est
+  // un skill personnel de l'administrateur rendu global (méthode unique : PUT /skills/:id/scope).
+  const makeGlobal = async (name) => {
+    const r = await ctx.admin.post('/skills', { name, files: skillFiles(name) });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal(r.body.status, 'published');
+    assert.equal((await ctx.admin.put(`/skills/${r.body.id}/scope`, { scope: 'global' })).status, 200);
+    return r;
+  };
+  const g = await makeGlobal(names.global);
+  const g2 = await makeGlobal(names.global2);
+  const p = await ctx.dev.post('/skills', { name: names.personal, files: skillFiles(names.personal) });
   assert.equal(p.body.status, 'published', JSON.stringify(p.body));
-  assert.equal((await ctx.admin.post('/skills', { name: `t-${id}`, scope: 'team', files: skillFiles(`t-${id}`) })).status, 400, 'pas de portée « équipe »');
   const neighbour = await newUser();
-  assert.equal((await neighbour.post('/skills', { name: names.otherUser, scope: 'personal', files: skillFiles(names.otherUser) })).status, 201);
+  assert.equal((await neighbour.post('/skills', { name: names.otherUser, files: skillFiles(names.otherUser) })).status, 201);
   // Le voisin ne voit ni ne pilote le skill personnel de dev.
   assert.equal((await neighbour.get(`/skills/${p.body.id}`)).status, 404);
   assert.equal((await neighbour.put(`/skills/${p.body.id}/installation`, { scope: 'personal', enabled: false })).status, 404);
@@ -206,7 +211,11 @@ test('skills : disponibles dès la création, chaque utilisateur active et réac
 
   // Suppression : réservée à qui gère le skill ; effective au run suivant.
   assert.equal((await ctx.dev.del(`/skills/${g.body.id}`)).status, 403);
-  assert.equal((await ctx.dev.post('/skills', { name: `x-${id}`, scope: 'global', files: skillFiles(`x-${id}`) })).status, 403, 'skill global réservé à l’admin');
+  // Une portée demandée à la création est ignorée (toujours personnel) ; rendre global est réservé à l'admin.
+  const x = await ctx.dev.post('/skills', { name: `x-${id}`, scope: 'global', files: skillFiles(`x-${id}`) });
+  assert.equal(x.status, 201);
+  assert.equal((await mine(`x-${id}`)).scope, 'personal', 'création toujours personnelle');
+  assert.equal((await ctx.dev.put(`/skills/${x.body.id}/scope`, { scope: 'global' })).status, 403, 'skill global réservé à l’admin');
   assert.equal((await ctx.admin.del(`/skills/${g.body.id}`)).status, 204);
   assert.equal((await ctx.dev.get(`/skills/${g.body.id}`)).status, 404);
   assert.ok(!(await ls()).includes(names.global), 'skill supprimé absent');
@@ -214,7 +223,7 @@ test('skills : disponibles dès la création, chaque utilisateur active et réac
   // Revue imposée par l'administrateur : skill personnel en attente, inactif jusqu'à validation.
   assert.equal((await ctx.admin.req('PATCH', '/admin/settings', { section: 'skills', values: { personalSkillsRequireReview: true } })).status, 200);
   try {
-    const r = await neighbour.post('/skills', { name: `revue-${id}`, scope: 'personal', files: skillFiles(`revue-${id}`) });
+    const r = await neighbour.post('/skills', { name: `revue-${id}`, files: skillFiles(`revue-${id}`) });
     assert.equal(r.body.status, 'pending_review');
     let mineR = (await neighbour.get('/skills')).body.find((s) => s.id === r.body.id);
     assert.equal(mineR.enabledForMe, false);
@@ -1111,7 +1120,7 @@ test('plusieurs skills choisis en tête du message : tous développés pour Pi (
   const id = uid().toLowerCase().replace(/[^a-z0-9]/g, '');
   const mk = async (name, marker) => {
     const content = `---\nname: ${name}\ndescription: Skill ${marker}\n---\n\nApplique ceci. [[tool:bash {"command":"echo ${marker}"}]]\n`;
-    const r = await user.post('/skills', { name, description: `Skill ${marker}`, scope: 'personal', files: [{ path: 'SKILL.md', content }] });
+    const r = await user.post('/skills', { name, description: `Skill ${marker}`, files: [{ path: 'SKILL.md', content }] });
     assert.equal(r.status, 201, JSON.stringify(r.body));
   };
   await mk(`ska-${id}`, 'SKILL_A_OK');
@@ -1278,7 +1287,7 @@ test('catégories de skills : gérées par les administrateurs, choisies par les
 
   // Un auteur range son skill (création, puis changement) ; catégorie inconnue refusée.
   const md = (n) => [{ path: 'SKILL.md', content: `---\nname: ${n}\ndescription: Test\n---\n` }];
-  const s = await user.post('/skills', { name: `cat-${id}`, scope: 'personal', categoryId: a.body.id, files: md(`cat-${id}`) });
+  const s = await user.post('/skills', { name: `cat-${id}`, categoryId: a.body.id, files: md(`cat-${id}`) });
   assert.equal(s.status, 201, JSON.stringify(s.body));
   let mine = (await user.get('/skills')).body.find((x) => x.id === s.body.id);
   assert.equal(mine.categoryId, a.body.id);

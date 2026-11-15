@@ -65,7 +65,6 @@ export const CreateSkillSchema = z.object({
   name: SkillNameSchema,
   /** Facultative : reprise du frontmatter de SKILL.md (champ `description`) si présent. */
   description: z.string().min(1).max(1024).optional(),
-  scope: SkillScopeSchema,
   categoryId: z.uuid().nullable().optional(),
   /** SKILL.md (frontmatter inclus) et fichiers markdown annexes, dossiers compris (« references/api.md »). */
   files: z.array(SkillFileContentSchema).min(1).max(SKILL_LIMITS.maxFiles),

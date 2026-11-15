@@ -11,6 +11,7 @@ import { Icon } from '../../shared/icon';
 import { CodeEditor } from '../../shared/monaco';
 import { BytesPipe, CodeBlocksDirective, MarkdownPipe } from '../../shared/pipes';
 import { downloadSkillZip, isTextFile, splitFrontmatter } from './skill-util';
+import { SkillScopeService } from './skill-scope.service';
 
 /** Fichier en cours d'édition. `sourcePath` : fichier repris tel quel de la version chargée. */
 interface EditFile {
@@ -62,10 +63,6 @@ Les fichiers markdown annexes (dossier \`references/\` par exemple) sont lus par
         <a routerLink="/extensions" class="btn-ghost !p-1.5" aria-label="Retour aux skills" title="Retour"><cap-icon name="chevronLeft" /></a>
         @if (isNew()) {
           <input class="input !w-56 font-mono" [(ngModel)]="newName" (ngModelChange)="renameTemplate()" placeholder="nom-du-skill" aria-label="Nom du skill" autocomplete="off" />
-          <select class="input !w-auto" [(ngModel)]="newScope" aria-label="Portée">
-            <option value="personal">Personnel</option>
-            @if (auth.isAdmin()) { <option value="global">Global (tous les utilisateurs)</option> }
-          </select>
           <select class="input !w-auto" [ngModel]="categoryId()" (ngModelChange)="categoryId.set($event)" aria-label="Catégorie">
             <option [ngValue]="null">Sans catégorie</option>
             @for (c of categories(); track c.id) { <option [ngValue]="c.id">{{ c.name }}</option> }
@@ -94,6 +91,11 @@ Les fichiers markdown annexes (dossier \`references/\` par exemple) sont lus par
                 <span class="relative h-5 w-9 rounded-full bg-stone-300 transition-colors peer-checked:bg-emerald-600 peer-focus-visible:ring-2 peer-focus-visible:ring-accent-500 after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4 dark:bg-stone-700"></span>
                 {{ d.skill.enabledForMe ? 'Activé' : 'Désactivé' }}
               </label>
+            }
+            @if (auth.isAdmin()) {
+              <button class="btn-ghost !py-1 text-sm" (click)="toggleScope()" [disabled]="busy()"
+                [title]="d.skill.scope === 'global' ? 'Le skill redevient personnel (à vous) et n’est plus disponible pour les autres' : 'Rendre ce skill disponible pour tous les utilisateurs'">
+                <cap-icon name="globe" [size]="14" /> <span class="hidden sm:inline">{{ d.skill.scope === 'global' ? 'Retirer du global' : 'Rendre global' }}</span></button>
             }
             <button class="btn-ghost !py-1 text-sm" (click)="exportZip()" title="Télécharger le skill (.zip)"><cap-icon name="archive" [size]="14" /> <span class="hidden sm:inline">Exporter</span></button>
           }
@@ -233,6 +235,7 @@ export class SkillEditor implements OnDestroy {
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
   private readonly confirm = inject(ConfirmService);
+  private readonly scopes = inject(SkillScopeService);
   private readonly createInput = viewChild<ElementRef<HTMLInputElement>>('createInput');
   private readonly layout = inject(LayoutService);
 
@@ -263,7 +266,6 @@ export class SkillEditor implements OnDestroy {
   ]);
   protected readonly maxTotal = SKILL_LIMITS.maxTotalBytes;
   protected newName = '';
-  protected newScope: 'personal' | 'global' = 'personal';
   protected newPath = '';
 
   protected readonly isNew = computed(() => this.skillId() === 'new');
@@ -539,7 +541,7 @@ export class SkillEditor implements OnDestroy {
     try {
       if (this.isNew()) {
         const name = this.newName.trim();
-        const r = await this.api.post<{ id: string; findings: string[] }>('/skills', { name, scope: this.newScope, categoryId: this.categoryId(), files: this.payload(false) });
+        const r = await this.api.post<{ id: string; findings: string[] }>('/skills', { name, categoryId: this.categoryId(), files: this.payload(false) });
         this.toast.show('Skill créé', 'success');
         await this.router.navigate(['/extensions/skills', r.id], { replaceUrl: true });
       } else {
@@ -574,6 +576,13 @@ export class SkillEditor implements OnDestroy {
     }
   }
 
+  /** Administrateur : rendre global / retirer du global (même action que sur la carte). */
+  protected async toggleScope(): Promise<void> {
+    const d = this.detail();
+    if (!d) return;
+    if (await this.scopes.toggle(d.skill)) await this.load(this.skillId());
+  }
+
   protected async importZip(e: Event): Promise<void> {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -586,7 +595,6 @@ export class SkillEditor implements OnDestroy {
     const form = new FormData();
     form.append('file', file, file.name);
     if (this.isNew()) {
-      form.append('scope', this.newScope);
       if (this.categoryId()) form.append('categoryId', this.categoryId()!);
       if (this.newName.trim()) form.append('name', this.newName.trim());
     } else form.append('skillId', this.skillId());

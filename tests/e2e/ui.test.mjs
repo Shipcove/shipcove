@@ -43,7 +43,7 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
   {
     const c = new Client();
     await c.post('/auth/login', { login: username, password });
-    const r = await c.post('/skills', { name: skillName, description: 'Rédige une note de version claire à partir des commits récents.', scope: 'personal', files: [{ path: 'SKILL.md', content: `---\nname: ${skillName}\ndescription: Rédige une note de version claire à partir des commits récents.\n---\n\nRédige la note.\n` }] });
+    const r = await c.post('/skills', { name: skillName, description: 'Rédige une note de version claire à partir des commits récents.', files: [{ path: 'SKILL.md', content: `---\nname: ${skillName}\ndescription: Rédige une note de version claire à partir des commits récents.\n---\n\nRédige la note.\n` }] });
     assert.equal(r.status, 201, JSON.stringify(r.body));
   }
 
@@ -374,8 +374,8 @@ test('skills : état activé visible d’un coup d’œil, import .zip, éditeur
   await c.post('/auth/login', { login: username, password });
   const id = uid().toLowerCase().replace(/[^a-z0-9]/g, '');
   const md = (n, d) => [{ path: 'SKILL.md', content: `---\nname: ${n}\ndescription: ${d}\n---\n\nCorps.\n` }];
-  const on = await c.post('/skills', { name: `actif-${id}`, scope: 'personal', files: md(`actif-${id}`, 'Skill activé') });
-  const off = await c.post('/skills', { name: `inactif-${id}`, scope: 'personal', files: md(`inactif-${id}`, 'Skill désactivé') });
+  const on = await c.post('/skills', { name: `actif-${id}`, files: md(`actif-${id}`, 'Skill activé') });
+  const off = await c.post('/skills', { name: `inactif-${id}`, files: md(`inactif-${id}`, 'Skill désactivé') });
   await c.put(`/skills/${off.body.id}/installation`, { scope: 'personal', enabled: false });
   // Catégorie définie par l'administrateur, choisie par l'auteur.
   const cat = await admin.post('/admin/skill-categories', { name: `Catégorie UI ${id}`, description: 'Skills du test d’interface' });
