@@ -1,6 +1,9 @@
 import { crc32, deflateRawSync, inflateRawSync } from 'node:zlib';
-import { SKILL_LIMITS, isSafeSkillPath, type StoredSkillFile } from '@cap/contracts';
+import { isMarkdownPath, isSafeSkillPath, type StoredSkillFile } from '@cap/contracts';
 import { AppError } from '@cap/server-core';
+
+/** Archive importée : plus large que le skill (les fichiers non markdown y sont ignorés). */
+export const ARCHIVE_LIMITS = { maxFiles: 1000, maxFileBytes: 10 * 1024 * 1024, maxTotalBytes: 30 * 1024 * 1024 };
 
 /** Entrées ignorées à l'import (métadonnées de systèmes de fichiers). */
 const IGNORED = /(^|\/)(__MACOSX|\.DS_Store|Thumbs\.db|desktop\.ini)(\/|$)/i;
@@ -16,7 +19,7 @@ export interface ZipEntry {
  * garde-fous : chemins sûrs uniquement, liens symboliques refusés, ZIP64 refusé, nombre d'entrées
  * et taille décompressée bornés (bombes de décompression), CRC vérifié.
  */
-export function readZip(buf: Buffer, limits = SKILL_LIMITS): ZipEntry[] {
+export function readZip(buf: Buffer, limits: { maxFiles: number; maxFileBytes: number; maxTotalBytes: number } = ARCHIVE_LIMITS): ZipEntry[] {
   const min = Math.max(0, buf.length - 22 - 0xffff);
   let eocd = -1;
   for (let i = buf.length - 22; i >= min; i--) {
@@ -138,12 +141,18 @@ export function writeZip(files: Array<{ path: string; data: Buffer; executable?:
   return Buffer.concat([...locals, cd, end]);
 }
 
-/** Fichiers d'une archive → fichiers stockés (texte UTF-8 si possible, sinon base64). */
-export function toStoredFiles(entries: ZipEntry[]): StoredSkillFile[] {
-  return entries.map((e) => {
-    const text = isText(e.data);
-    return { path: e.path, content: text ? e.data.toString('utf8') : e.data.toString('base64'), ...(text ? {} : { encoding: 'base64' as const }), ...(e.executable ? { executable: true } : {}) };
-  });
+/**
+ * Fichiers d'une archive → fichiers d'un skill : seuls les fichiers markdown en texte UTF-8 sont
+ * retenus ; les autres (scripts, binaires, images…) sont ignorés et listés.
+ */
+export function toSkillFiles(entries: ZipEntry[]): { files: StoredSkillFile[]; ignored: string[] } {
+  const files: StoredSkillFile[] = [];
+  const ignored: string[] = [];
+  for (const e of entries) {
+    if (isMarkdownPath(e.path) && isText(e.data)) files.push({ path: e.path, content: e.data.toString('utf8') });
+    else ignored.push(e.path);
+  }
+  return { files, ignored };
 }
 
 /** UTF-8 valide sans octet nul : traité comme texte (éditable). */

@@ -158,27 +158,22 @@ async function bashViaPi(client, wsId, command) {
 
 const skillFiles = (name) => [{ path: 'SKILL.md', content: `---\nname: ${name}\ndescription: Skill de test ${name}\n---\n\nUtilise des tests.\n` }];
 
-test('skills : portées (global / personnel), désactivation et révocation appliquées au run suivant', async () => {
+test('skills : disponibles dès la création, chaque utilisateur active et réactive (même un skill global désactivé par défaut), suppression, validation', async () => {
   const ws = await workspace(ctx.dev, 'Skills');
   const id = uid().toLowerCase().replace(/[^a-z0-9]/g, '');
   const names = { global: `glob-${id}`, global2: `glob2-${id}`, personal: `perso-${id}`, otherUser: `voisin-${id}` };
+  const mine = async (n) => (await ctx.dev.get('/skills')).body.find((s) => s.name === n);
 
-  // Global : brouillon puis publication par l'administrateur.
-  const g = await ctx.admin.post('/skills', { name: names.global, description: 'global', scope: 'global', files: skillFiles(names.global) });
+  // Global et personnel : disponibles tout de suite, sans étape de publication.
+  const g = await ctx.admin.post('/skills', { name: names.global, scope: 'global', files: skillFiles(names.global) });
   assert.equal(g.status, 201, JSON.stringify(g.body));
-  assert.equal(g.body.status, 'draft');
-  assert.equal((await ctx.admin.post(`/skills/${g.body.id}/status`, { status: 'published' })).status, 200);
-  const g2 = await ctx.admin.post('/skills', { name: names.global2, description: 'global 2', scope: 'global', files: skillFiles(names.global2) });
-  await ctx.admin.post(`/skills/${g2.body.id}/status`, { status: 'published' });
-  // Personnel (publié directement).
-  const p = await ctx.dev.post('/skills', { name: names.personal, description: 'perso', scope: 'personal', files: skillFiles(names.personal) });
+  assert.equal(g.body.status, 'published');
+  const g2 = await ctx.admin.post('/skills', { name: names.global2, scope: 'global', files: skillFiles(names.global2) });
+  const p = await ctx.dev.post('/skills', { name: names.personal, scope: 'personal', files: skillFiles(names.personal) });
   assert.equal(p.body.status, 'published', JSON.stringify(p.body));
-  // Hors périmètre : skill personnel d'un autre utilisateur ; la portée « équipe » n'existe plus.
-  assert.equal((await ctx.admin.post('/skills', { name: `t-${id}`, description: 'x', scope: 'team', files: skillFiles(`t-${id}`) })).status, 400);
+  assert.equal((await ctx.admin.post('/skills', { name: `t-${id}`, scope: 'team', files: skillFiles(`t-${id}`) })).status, 400, 'pas de portée « équipe »');
   const neighbour = await newUser();
-  const nb = await neighbour.post('/skills', { name: names.otherUser, description: 'x', scope: 'personal', files: skillFiles(names.otherUser) });
-  assert.equal(nb.status, 201);
-
+  assert.equal((await neighbour.post('/skills', { name: names.otherUser, scope: 'personal', files: skillFiles(names.otherUser) })).status, 201);
   // Le voisin ne voit ni ne pilote le skill personnel de dev.
   assert.equal((await neighbour.get(`/skills/${p.body.id}`)).status, 404);
   assert.equal((await neighbour.put(`/skills/${p.body.id}/installation`, { scope: 'personal', enabled: false })).status, 404);
@@ -188,17 +183,50 @@ test('skills : portées (global / personnel), désactivation et révocation appl
   for (const n of [names.global, names.global2, names.personal]) assert.ok(out.includes(n), `${n} présent :\n${out}`);
   assert.ok(!out.includes(names.otherUser), `${names.otherUser} absent :\n${out}`);
 
-  // Désactivation personnelle + révocation globale : effectives au run suivant, sandbox toujours active.
-  assert.equal((await ctx.dev.put(`/skills/${p.body.id}/installation`, { scope: 'personal', enabled: false })).status, 200);
-  assert.equal((await ctx.admin.post(`/skills/${g.body.id}/status`, { status: 'revoked' })).status, 200);
-  // Une fois révoqué, un skill ne peut pas être republié.
-  assert.equal((await ctx.admin.post(`/skills/${g.body.id}/status`, { status: 'published' })).status, 409);
+  // Un utilisateur simple désactive puis RÉACTIVE un skill personnel et un skill global.
+  for (const target of [p.body.id, g.body.id]) assert.equal((await ctx.dev.put(`/skills/${target}/installation`, { scope: 'personal', enabled: false })).status, 200);
   out = await ls();
-  assert.ok(out.includes(names.global2), out);
-  assert.ok(!out.includes(names.personal), `skill désactivé encore présent :\n${out}`);
-  assert.ok(!out.includes(names.global), `skill révoqué encore présent :\n${out}`);
-  // Un membre ne publie pas de skill global.
-  assert.equal((await ctx.dev.post('/skills', { name: `x-${id}`, description: 'x', scope: 'global', files: skillFiles(`x-${id}`) })).status, 403);
+  assert.ok(!out.includes(names.personal) && !out.includes(names.global), `désactivés encore présents :\n${out}`);
+  assert.equal((await mine(names.global)).enabledForMe, false);
+  for (const target of [p.body.id, g.body.id]) assert.equal((await ctx.dev.put(`/skills/${target}/installation`, { scope: 'personal', enabled: true })).status, 200);
+  assert.equal((await mine(names.global)).enabledForMe, true, 'réactivation possible');
+  out = await ls();
+  assert.ok(out.includes(names.personal) && out.includes(names.global), `réactivés absents :\n${out}`);
+
+  // L'administrateur désactive un skill global par défaut : chacun peut le réactiver pour soi.
+  assert.equal((await ctx.dev.put(`/skills/${g2.body.id}/installation`, { scope: 'global', enabled: false })).status, 403, 'réglage par défaut réservé à l’admin');
+  assert.equal((await ctx.admin.put(`/skills/${g2.body.id}/installation`, { scope: 'global', enabled: false })).status, 200);
+  assert.equal((await mine(names.global2)).enabledForMe, false);
+  assert.equal((await mine(names.global2)).enabledByDefault, false);
+  assert.ok(!(await ls()).includes(names.global2), 'désactivé par défaut');
+  assert.equal((await ctx.dev.put(`/skills/${g2.body.id}/installation`, { scope: 'personal', enabled: true })).status, 200);
+  assert.equal((await mine(names.global2)).enabledForMe, true, 'le choix de l’utilisateur l’emporte');
+  assert.ok((await ls()).includes(names.global2));
+  assert.equal((await neighbour.get('/skills')).body.find((s) => s.id === g2.body.id).enabledForMe, false, 'les autres gardent le réglage par défaut');
+
+  // Suppression : réservée à qui gère le skill ; effective au run suivant.
+  assert.equal((await ctx.dev.del(`/skills/${g.body.id}`)).status, 403);
+  assert.equal((await ctx.dev.post('/skills', { name: `x-${id}`, scope: 'global', files: skillFiles(`x-${id}`) })).status, 403, 'skill global réservé à l’admin');
+  assert.equal((await ctx.admin.del(`/skills/${g.body.id}`)).status, 204);
+  assert.equal((await ctx.dev.get(`/skills/${g.body.id}`)).status, 404);
+  assert.ok(!(await ls()).includes(names.global), 'skill supprimé absent');
+
+  // Revue imposée par l'administrateur : skill personnel en attente, inactif jusqu'à validation.
+  assert.equal((await ctx.admin.req('PATCH', '/admin/settings', { section: 'skills', values: { personalSkillsRequireReview: true } })).status, 200);
+  try {
+    const r = await neighbour.post('/skills', { name: `revue-${id}`, scope: 'personal', files: skillFiles(`revue-${id}`) });
+    assert.equal(r.body.status, 'pending_review');
+    let mineR = (await neighbour.get('/skills')).body.find((s) => s.id === r.body.id);
+    assert.equal(mineR.enabledForMe, false);
+    assert.ok((await ctx.admin.get('/skills/review/pending')).body.some((s) => s.id === r.body.id));
+    assert.equal((await neighbour.post(`/skills/${r.body.id}/approve`)).status, 403);
+    assert.equal((await ctx.admin.post(`/skills/${r.body.id}/approve`)).status, 200);
+    mineR = (await neighbour.get('/skills')).body.find((s) => s.id === r.body.id);
+    assert.equal(mineR.status, 'published');
+    assert.equal(mineR.enabledForMe, true);
+  } finally {
+    await ctx.admin.req('PATCH', '/admin/settings', { section: 'skills', values: { personalSkillsRequireReview: false } });
+  }
 });
 
 // Serveur MCP stdio minimal (JSON-RPC ligne à ligne), exécuté dans la sandbox.
@@ -1156,82 +1184,113 @@ async function importSkill(client, zipBuf, fields = {}) {
   return { status: res.status, body: await res.json().catch(() => null) };
 }
 
-test('skills avec dossiers : import .zip (sous-dossiers, binaire, script exécutable), arborescence dans la sandbox, édition, export, archives piégées refusées', async () => {
+test('skills markdown avec dossiers : import .zip (non-markdown ignoré), arborescence dans la sandbox, édition, export, archives piégées refusées', async () => {
   const user = await newUser();
   const id = uid().toLowerCase().replace(/[^a-z0-9]/g, '');
   const name = `arbo-${id}`;
-  const png = Buffer.from(PNG_1PX);
   const zipBuf = await skillZip([
-    { name: `${name}/SKILL.md`, data: `---\nname: ${name}\ndescription: >\n  Skill de test avec dossiers\n  et sous-dossiers.\n---\n\nVoir references/.\n` },
+    { name: `${name}/SKILL.md`, data: `---\nname: ${name}\ndescription: >\n  Skill de test avec dossiers\n  et sous-dossiers.\n---\n\nVoir [le guide](references/api/guide.md).\n` },
     { name: `${name}/references/api/guide.md`, data: '# Guide\n' },
-    { name: `${name}/scripts/run.sh`, data: '#!/bin/sh\necho script-ok\n', mode: 0o100755 },
-    { name: `${name}/assets/img/logo.png`, data: png },
+    { name: `${name}/references/faq.markdown`, data: '# FAQ\n' },
+    { name: `${name}/scripts/run.sh`, data: '#!/bin/sh\necho script\n', mode: 0o100755 },
+    { name: `${name}/assets/logo.png`, data: Buffer.from(PNG_1PX) },
     { name: '__MACOSX/._SKILL.md', data: 'x' },
   ]);
   const imp = await importSkill(user, zipBuf, { scope: 'personal' });
   assert.equal(imp.status, 201, JSON.stringify(imp.body));
+  assert.deepEqual(imp.body.ignored.sort(), ['assets/logo.png', 'scripts/run.sh'], 'fichiers non markdown ignorés et signalés');
   const skillId = imp.body.id;
   let detail = (await user.get(`/skills/${skillId}`)).body;
   assert.equal(detail.skill.name, name, 'nom lu dans le frontmatter');
   assert.equal(detail.skill.description, 'Skill de test avec dossiers et sous-dossiers.', 'description lue dans le frontmatter (bloc replié)');
-  assert.deepEqual(detail.files.map((f) => f.path), ['SKILL.md', 'assets/img/logo.png', 'references/api/guide.md', 'scripts/run.sh'], 'dossier racine retiré, métadonnées ignorées');
-  const logo = detail.files.find((f) => f.path === 'assets/img/logo.png');
-  assert.equal(logo.encoding, 'base64');
-  assert.equal(logo.size, png.length);
-  assert.equal(detail.files.find((f) => f.path === 'scripts/run.sh').executable, true);
-  assert.equal((await user.get('/skills')).body.find((s) => s.id === skillId).fileCount, 4);
+  assert.deepEqual(detail.files.map((f) => f.path), ['SKILL.md', 'references/api/guide.md', 'references/faq.markdown']);
+  assert.ok(detail.files.every((f) => !('encoding' in f) && !('executable' in f)));
 
-  // Arborescence fidèle dans la sandbox : dossiers, binaire intact, script exécutable.
+  // Arborescence fidèle dans la sandbox, markdown uniquement.
   const ws = await workspace(user, 'Skills arborescence');
   const dir = `/home/agent/.pi/agent/skills/${name}`;
-  let out = await bashViaPi(user, ws.id, `cd ${dir} && find . -type f | sort && sha256sum assets/img/logo.png && ./scripts/run.sh`);
-  for (const p of ['./SKILL.md', './assets/img/logo.png', './references/api/guide.md', './scripts/run.sh']) assert.ok(out.includes(p), `${p} absent :\n${out}`);
-  const { createHash } = await import('node:crypto');
-  assert.ok(out.includes(createHash('sha256').update(png).digest('hex')), 'binaire intact');
-  assert.match(out, /script-ok/, 'script exécutable');
+  let out = await bashViaPi(user, ws.id, `cd ${dir} && find . -type f | sort`);
+  assert.equal(out.trim(), ['./SKILL.md', './references/api/guide.md', './references/faq.markdown'].join('\n'), out);
 
-  // Édition : binaire repris sans être renvoyé (et déplacé), nouveau fichier en sous-dossier, fichier supprimé.
-  const v2 = await user.post(`/skills/${skillId}/versions`, {
+  // Édition : fichier repris sans être renvoyé (et déplacé), nouveau fichier en sous-dossier, fichier supprimé.
+  const v2 = await user.put(`/skills/${skillId}/files`, {
     files: [
-      { path: 'SKILL.md', content: detail.files[0].content.replace('Voir references/.', 'Voir references/ et docs/.'), encoding: 'utf8' },
-      { path: 'images/logo.png', sourcePath: 'assets/img/logo.png' },
-      { path: 'references/api/guide.md', sourcePath: 'references/api/guide.md' },
-      { path: 'docs/fr/notes.md', content: 'Notes', encoding: 'utf8' },
+      { path: 'SKILL.md', content: detail.files[0].content.replace('Voir', 'Lire') },
+      { path: 'docs/api/guide.md', sourcePath: 'references/api/guide.md' },
+      { path: 'docs/fr/notes.md', content: 'Notes' },
     ],
   });
-  assert.equal(v2.status, 201, JSON.stringify(v2.body));
+  assert.equal(v2.status, 200, JSON.stringify(v2.body));
   detail = (await user.get(`/skills/${skillId}`)).body;
-  assert.equal(detail.version, 2);
-  assert.deepEqual(detail.files.map((f) => f.path), ['SKILL.md', 'docs/fr/notes.md', 'images/logo.png', 'references/api/guide.md']);
-  assert.equal(detail.files.find((f) => f.path === 'images/logo.png').content, logo.content);
-  assert.equal((await user.get(`/skills/${skillId}?version=1`)).body.files.length, 4, 'version précédente consultable');
+  assert.ok(!('versions' in detail), 'pas d’historique de versions');
+  assert.deepEqual(detail.files.map((f) => f.path), ['SKILL.md', 'docs/api/guide.md', 'docs/fr/notes.md']);
+  assert.equal(detail.files.find((f) => f.path === 'docs/api/guide.md').content, '# Guide\n');
   out = await bashViaPi(user, ws.id, `cd ${dir} && find . -type f | sort`);
-  assert.match(out, /\.\/docs\/fr\/notes\.md/);
-  assert.match(out, /\.\/images\/logo\.png/);
-  assert.doesNotMatch(out, /scripts\/run\.sh|assets\/img/, 'fichiers retirés absents au run suivant');
+  assert.equal(out.trim(), ['./SKILL.md', './docs/api/guide.md', './docs/fr/notes.md'].join('\n'), 'fichiers retirés absents au run suivant');
 
-  // Export : archive relue à l'identique (aller-retour par un nouvel import en version 3).
+  // Pas de script, de binaire ni de fichier non markdown par l'API.
+  for (const files of [
+    [{ path: 'SKILL.md', content: 'x' }, { path: 'run.sh', content: 'echo' }],
+    [{ path: 'SKILL.md', content: 'x' }, { path: 'img.png', content: 'iVBORw0KGgo=' }],
+    [{ path: 'SKILL.md', content: 'a\u0000b' }],
+  ]) assert.equal((await user.put(`/skills/${skillId}/files`, { files })).status, 400, JSON.stringify(files.map((f) => f.path)));
+
+  // Export : archive relue à l'identique (aller-retour par un import qui remplace le contenu).
   const exp = await fetch(`${BASE}/api/v1/skills/${skillId}/export`, { headers: { Cookie: [...user.cookies].map(([k, v]) => `${k}=${v}`).join('; ') } });
   assert.equal(exp.status, 200);
   assert.equal(exp.headers.get('content-type'), 'application/zip');
   const back = await importSkill(user, Buffer.from(await exp.arrayBuffer()), { skillId });
   assert.equal(back.status, 201, JSON.stringify(back.body));
+  assert.deepEqual(back.body.ignored, []);
   const v3 = (await user.get(`/skills/${skillId}`)).body;
-  assert.equal(v3.version, 3);
   assert.deepEqual(v3.files.map((f) => [f.path, f.content]), detail.files.map((f) => [f.path, f.content]));
 
   // Archives et chemins piégés refusés ; autorité respectée.
   for (const [label, entries] of [
-    ['remontée de dossier', [{ name: 'SKILL.md', data: '---\nname: x\ndescription: x\n---' }, { name: '../../evil.sh', data: 'x' }]],
-    ['lien symbolique', [{ name: 'SKILL.md', data: '---\nname: x\ndescription: x\n---' }, { name: 'lien', data: '/etc/passwd', mode: 0o120777 }]],
+    ['remontée de dossier', [{ name: 'SKILL.md', data: '---\nname: x\ndescription: x\n---' }, { name: '../../evil.md', data: 'x' }]],
+    ['lien symbolique', [{ name: 'SKILL.md', data: '---\nname: x\ndescription: x\n---' }, { name: 'lien.md', data: '/etc/passwd', mode: 0o120777 }]],
     ['SKILL.md absent', [{ name: 'docs/a.md', data: 'x' }]],
   ]) {
     const r = await importSkill(user, await skillZip(entries), { scope: 'personal', name: `piege-${id}` });
     assert.equal(r.status, 400, `${label} : ${JSON.stringify(r.body)}`);
   }
   assert.equal((await importSkill(user, Buffer.from('pas une archive'), { scope: 'personal' })).status, 400);
-  assert.equal((await user.post(`/skills/${skillId}/versions`, { files: [{ path: 'SKILL.md', content: 'x', encoding: 'utf8' }, { path: '../x', content: 'x', encoding: 'utf8' }] })).status, 400);
   const other = await newUser();
   assert.equal((await importSkill(other, zipBuf, { skillId })).status, 404, 'skill d’un autre utilisateur');
   assert.equal((await other.get(`/skills/${skillId}/export`)).status, 404);
+});
+
+test('catégories de skills : gérées par les administrateurs, choisies par les auteurs, ordre et suppression', async () => {
+  const user = await newUser();
+  const id = uid().toLowerCase().replace(/[^a-z0-9]/g, '');
+  // Réservé aux administrateurs.
+  assert.equal((await user.post('/admin/skill-categories', { name: `Interdit ${id}` })).status, 403);
+  const a = await ctx.admin.post('/admin/skill-categories', { name: `Front ${id}`, description: 'Interfaces web' });
+  const b = await ctx.admin.post('/admin/skill-categories', { name: `Data ${id}` });
+  assert.equal(a.status, 201, JSON.stringify(a.body));
+  assert.equal((await ctx.admin.post('/admin/skill-categories', { name: `front ${id}` })).status, 409, 'nom unique (sans tenir compte de la casse)');
+  // Ordre : B avant A.
+  const all = (await ctx.admin.get('/admin/skill-categories')).body.map((c) => c.id);
+  const ids = [b.body.id, a.body.id, ...all.filter((x) => x !== a.body.id && x !== b.body.id)];
+  assert.equal((await ctx.admin.put('/admin/skill-categories', { ids })).status, 200);
+  const seen = (await user.get('/skill-categories')).body;
+  assert.ok(seen.findIndex((c) => c.id === b.body.id) < seen.findIndex((c) => c.id === a.body.id), 'ordre visible par les utilisateurs');
+
+  // Un auteur range son skill (création, puis changement) ; catégorie inconnue refusée.
+  const md = (n) => [{ path: 'SKILL.md', content: `---\nname: ${n}\ndescription: Test\n---\n` }];
+  const s = await user.post('/skills', { name: `cat-${id}`, scope: 'personal', categoryId: a.body.id, files: md(`cat-${id}`) });
+  assert.equal(s.status, 201, JSON.stringify(s.body));
+  let mine = (await user.get('/skills')).body.find((x) => x.id === s.body.id);
+  assert.equal(mine.categoryId, a.body.id);
+  assert.equal((await user.patch(`/skills/${s.body.id}`, { categoryId: b.body.id })).status, 200);
+  assert.equal((await user.patch(`/skills/${s.body.id}`, { categoryId: '00000000-0000-4000-8000-000000000000' })).status, 400);
+  const other = await newUser();
+  assert.equal((await other.patch(`/skills/${s.body.id}`, { categoryId: null })).status, 404, 'skill d’un autre utilisateur');
+  assert.equal((await user.get('/skill-categories')).body.find((c) => c.id === b.body.id).skillCount, 1);
+
+  // Suppression : le skill passe « sans catégorie ».
+  assert.equal((await ctx.admin.del(`/admin/skill-categories/${b.body.id}`)).status, 204);
+  mine = (await user.get('/skills')).body.find((x) => x.id === s.body.id);
+  assert.equal(mine.categoryId, null);
+  await ctx.admin.del(`/admin/skill-categories/${a.body.id}`);
 });

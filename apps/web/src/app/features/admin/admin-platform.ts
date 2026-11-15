@@ -1,3 +1,5 @@
+import { ConfirmService } from '../../core/confirm.service';
+import { AdminSkillCategories } from './admin-skill-categories';
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -81,35 +83,68 @@ export class AdminSandboxes implements OnInit {
 
 @Component({
   selector: 'cap-admin-extensions',
-  imports: [RouterLink, SettingsSection],
+  imports: [RouterLink, SettingsSection, AdminSkillCategories],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h1 class="text-xl font-semibold">Skills & MCP</h1>
     <p class="text-sm text-stone-500">Gestion du catalogue global et des serveurs MCP : <a routerLink="/extensions" class="underline">page Skills & MCP</a> (les actions de portée globale y sont disponibles pour les administrateurs).</p>
+    <cap-admin-skill-categories />
     <div class="mt-4 grid gap-4 lg:grid-cols-2"><cap-settings-section section="skills" title="Politique des skills" /><cap-settings-section section="mcp" title="Politique MCP" /></div>
-    <h2 class="mt-6 mb-2 text-sm font-semibold text-stone-500 uppercase">Skills en attente ou à surveiller</h2>
+    @if (pending().length) {
+      <h2 class="mt-6 mb-2 text-sm font-semibold text-stone-500 uppercase">Skills personnels en attente de validation</h2>
+      <div class="card divide-y divide-stone-100 dark:divide-stone-800">
+        @for (s of pending(); track s.id) {
+          <div class="flex flex-wrap items-start gap-2 px-4 py-3 text-sm">
+            <div class="min-w-0 flex-1"><a [routerLink]="['/extensions/skills', s.id]" class="font-mono font-medium hover:underline">{{ s.name }}</a> <span class="text-xs text-stone-500">{{ s.fileCount }} fichier(s)</span>
+              <div class="text-xs text-stone-500">{{ s.description }}</div>
+              @if (s.findings.length) { <ul class="list-disc pl-5 text-xs text-amber-700">@for (f of s.findings; track f) { <li>{{ f }}</li> }</ul> }</div>
+            <button class="btn-primary !py-0.5 text-xs" (click)="approve(s)">Valider</button>
+            <button class="btn-ghost !py-0.5 text-xs text-red-600" (click)="remove(s)">Supprimer</button>
+          </div>
+        }
+      </div>
+    }
+    <h2 class="mt-6 mb-2 text-sm font-semibold text-stone-500 uppercase">Skills globaux</h2>
+    <p class="mb-2 text-xs text-stone-500">« Activé par défaut » s’applique à tous les utilisateurs qui n’ont pas fait leur propre choix ; chacun garde la main sur son interrupteur.</p>
     <div class="card divide-y divide-stone-100 dark:divide-stone-800">
-      @for (s of skills(); track s.id) {
-        <div class="flex items-start gap-2 px-4 py-3 text-sm">
-          <div class="min-w-0 flex-1"><span class="font-mono font-medium">{{ s.name }}</span> <span class="text-xs text-stone-500">{{ s.scope }} · {{ s.status }} · v{{ s.latestVersion }}</span>
-            @if (s.findings.length) { <ul class="list-disc pl-5 text-xs text-amber-700">@for (f of s.findings; track f) { <li>{{ f }}</li> }</ul> }</div>
-          @if (s.status === 'pending_review' || s.status === 'draft') { <button class="btn-secondary !py-0.5 text-xs" (click)="setStatus(s, 'published')">Publier</button> }
-          @if (s.status === 'published') { <button class="btn-ghost !py-0.5 text-xs" (click)="setStatus(s, 'disabled')">Désactiver</button> }
-          @if (s.status !== 'revoked') { <button class="btn-ghost !py-0.5 text-xs text-red-600" (click)="setStatus(s, 'revoked')">Révoquer</button> }
+      @for (s of globals(); track s.id) {
+        <div class="flex flex-wrap items-center gap-2 px-4 py-2.5 text-sm">
+          <div class="min-w-0 flex-1"><a [routerLink]="['/extensions/skills', s.id]" class="font-mono font-medium hover:underline">{{ s.name }}</a> <span class="text-xs text-stone-500">{{ s.fileCount }} fichier(s)</span>
+            @if (s.findings.length) { <span class="ml-1 text-xs text-amber-700" [title]="s.findings.join('\n')">⚠ {{ s.findings.length }}</span> }</div>
+          <label class="flex cursor-pointer items-center gap-2 text-xs" [class]="s.enabledByDefault ? 'text-emerald-700 dark:text-emerald-400' : 'text-stone-500'">
+            Activé par défaut
+            <input type="checkbox" class="peer sr-only" [checked]="s.enabledByDefault" (change)="setDefault(s)" [attr.aria-label]="'Activé par défaut : ' + s.name" />
+            <span class="relative h-5 w-9 rounded-full bg-stone-300 transition-colors peer-checked:bg-emerald-600 peer-focus-visible:ring-2 peer-focus-visible:ring-accent-500 after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4 dark:bg-stone-700"></span>
+          </label>
+          <button class="btn-ghost !py-0.5 text-xs text-red-600" (click)="remove(s)">Supprimer</button>
         </div>
-      } @empty { <p class="px-4 py-3 text-sm text-stone-500">Aucun skill.</p> }
+      } @empty { <p class="px-4 py-3 text-sm text-stone-500">Aucun skill global.</p> }
     </div>
   `,
 })
 export class AdminExtensions implements OnInit {
   private readonly api = inject(Api);
   private readonly toast = inject(ToastService);
-  protected readonly skills = signal<SkillDto[]>([]);
+  private readonly confirm = inject(ConfirmService);
+  protected readonly globals = signal<SkillDto[]>([]);
+  protected readonly pending = signal<SkillDto[]>([]);
   async ngOnInit() {
-    this.skills.set(await this.api.get<SkillDto[]>('/skills'));
+    const [all, pending] = await Promise.all([this.api.get<SkillDto[]>('/skills'), this.api.get<SkillDto[]>('/skills/review/pending').catch(() => [] as SkillDto[])]);
+    this.globals.set(all.filter((s) => s.scope === 'global'));
+    this.pending.set(pending);
   }
-  protected async setStatus(s: SkillDto, status: string) {
-    await this.api.post(`/skills/${s.id}/status`, { status }).catch((e) => this.toast.error(e));
+  protected async setDefault(s: SkillDto) {
+    await this.api.put(`/skills/${s.id}/installation`, { scope: 'global', enabled: !s.enabledByDefault }).catch((e) => this.toast.error(e));
+    await this.ngOnInit();
+  }
+  protected async approve(s: SkillDto) {
+    await this.api.post(`/skills/${s.id}/approve`).catch((e) => this.toast.error(e));
+    await this.ngOnInit();
+  }
+  protected async remove(s: SkillDto) {
+    const ok = await this.confirm.ask({ title: 'Supprimer le skill ?', message: s.scope === 'global' ? '{subject} sera supprimé pour tous les utilisateurs.' : '{subject} sera supprimé.', subject: s.name, confirmLabel: 'Supprimer', danger: true });
+    if (!ok) return;
+    await this.api.delete(`/skills/${s.id}`).catch((e) => this.toast.error(e));
     await this.ngOnInit();
   }
 }

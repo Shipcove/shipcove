@@ -1,27 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { readZip, toStoredFiles, writeZip } from './skill-archive.js';
+import { readZip, toSkillFiles, writeZip } from './skill-archive.js';
 import { readFrontmatter, resolveSkillFiles } from './skill-files.js';
 
 const png = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
 
 describe('archives de skills', () => {
-  it('aller-retour : dossiers, binaire, droit d’exécution, dossier racine retiré', () => {
+  it('aller-retour : dossiers et sous-dossiers, dossier racine retiré ; seul le markdown est retenu', () => {
     const zip = writeZip(
       [
         { path: 'SKILL.md', data: Buffer.from('---\nname: demo\ndescription: Démo\n---\nCorps') },
-        { path: 'scripts/build.sh', data: Buffer.from('#!/bin/sh\necho ok\n'), executable: true },
         { path: 'references/api/guide.md', data: Buffer.from('# Guide '.repeat(200)) },
+        { path: 'scripts/build.sh', data: Buffer.from('#!/bin/sh\necho ok\n'), executable: true },
         { path: 'assets/logo.png', data: png },
+        { path: 'docs/notes.markdown', data: Buffer.from('notes') },
       ],
       'demo',
     );
-    const entries = readZip(zip);
-    expect(entries.map((e) => e.path).sort()).toEqual(['SKILL.md', 'assets/logo.png', 'references/api/guide.md', 'scripts/build.sh']);
-    expect(entries.find((e) => e.path === 'scripts/build.sh')!.executable).toBe(true);
-    expect(entries.find((e) => e.path === 'assets/logo.png')!.data.equals(png)).toBe(true);
-    const stored = toStoredFiles(entries);
-    expect(stored.find((f) => f.path === 'assets/logo.png')!.encoding).toBe('base64');
-    expect(stored.find((f) => f.path === 'SKILL.md')!.encoding).toBeUndefined();
+    const { files, ignored } = toSkillFiles(readZip(zip));
+    expect(files.map((f) => f.path).sort()).toEqual(['SKILL.md', 'docs/notes.markdown', 'references/api/guide.md']);
+    expect(ignored.sort()).toEqual(['assets/logo.png', 'scripts/build.sh']);
   });
 
   it('ignore les métadonnées de systèmes de fichiers', () => {
@@ -34,13 +31,13 @@ describe('archives de skills', () => {
   });
 
   it('refuse les chemins dangereux et les archives corrompues ou trop grosses', () => {
-    expect(() => readZip(writeZip([{ path: '../evil.sh', data: Buffer.from('x') }]))).toThrow(/chemin dangereux/);
+    expect(() => readZip(writeZip([{ path: '../evil.md', data: Buffer.from('x') }]))).toThrow(/chemin dangereux/);
     expect(() => readZip(writeZip([{ path: 'a/.git/config', data: Buffer.from('x') }]))).toThrow(/chemin/);
     expect(() => readZip(Buffer.from('pas un zip'))).toThrow(/illisible/);
-    const big = writeZip([{ path: 'big.txt', data: Buffer.alloc(6 * 1024 * 1024, 97) }]);
+    const big = writeZip([{ path: 'big.md', data: Buffer.alloc(11 * 1024 * 1024, 97) }]);
     expect(() => readZip(big)).toThrow(/dépasse/);
     const corrupt = writeZip([{ path: 'SKILL.md', data: Buffer.from('contenu original') }]);
-    corrupt[30 + 'SKILL.md'.length + 2] ^= 0xff; // octet de données altéré (stocké sans compression)
+    corrupt[30 + 'SKILL.md'.length + 2] ^= 0xff;
     expect(() => readZip(corrupt)).toThrow(/intégrité|décompression/);
   });
 });
@@ -48,19 +45,21 @@ describe('archives de skills', () => {
 describe('fichiers d’une version', () => {
   const previous = [
     { path: 'SKILL.md', content: 'v1' },
-    { path: 'assets/logo.png', content: png.toString('base64'), encoding: 'base64' as const },
+    { path: 'references/a.md', content: 'A' },
+    { path: 'old.png', content: 'xx', encoding: 'base64' },
   ];
 
   it('reprend un fichier inchangé (y compris renommé) sans le renvoyer', () => {
-    const out = resolveSkillFiles([{ path: 'SKILL.md', content: 'v2', encoding: 'utf8' }, { path: 'images/logo.png', sourcePath: 'assets/logo.png' }], previous);
-    expect(out).toEqual([{ path: 'SKILL.md', content: 'v2' }, { path: 'images/logo.png', content: previous[1].content, encoding: 'base64' }]);
+    const out = resolveSkillFiles([{ path: 'SKILL.md', content: 'v2' }, { path: 'docs/a.md', sourcePath: 'references/a.md' }], previous);
+    expect(out).toEqual([{ path: 'SKILL.md', content: 'v2' }, { path: 'docs/a.md', content: 'A' }]);
   });
 
-  it('refuse doublons, conflit fichier/dossier, SKILL.md absent', () => {
-    expect(() => resolveSkillFiles([{ path: 'SKILL.md', content: 'a', encoding: 'utf8' }, { path: 'skill.md', content: 'b', encoding: 'utf8' }])).toThrow(/double/);
-    expect(() => resolveSkillFiles([{ path: 'SKILL.md', content: 'a', encoding: 'utf8' }, { path: 'docs', content: 'b', encoding: 'utf8' }, { path: 'docs/a.md', content: 'c', encoding: 'utf8' }])).toThrow(/fichier et un dossier/);
-    expect(() => resolveSkillFiles([{ path: 'docs/SKILL.md', content: 'a', encoding: 'utf8' }])).toThrow(/SKILL.md est obligatoire/);
-    expect(() => resolveSkillFiles([{ path: 'SKILL.md', content: 'a', encoding: 'utf8' }, { path: 'x.png', sourcePath: 'absent.png' }], previous)).toThrow(/introuvable/);
+  it('refuse doublons, conflit fichier/dossier, SKILL.md absent, ancien fichier non markdown, contenu binaire', () => {
+    expect(() => resolveSkillFiles([{ path: 'SKILL.md', content: 'a' }, { path: 'skill.md', content: 'b' }])).toThrow(/double/);
+    expect(() => resolveSkillFiles([{ path: 'SKILL.md', content: 'a' }, { path: 'docs.md', content: 'b' }, { path: 'docs.md/a.md', content: 'c' }])).toThrow(/fichier et un dossier/);
+    expect(() => resolveSkillFiles([{ path: 'docs/SKILL.md', content: 'a' }])).toThrow(/SKILL.md est obligatoire/);
+    expect(() => resolveSkillFiles([{ path: 'SKILL.md', content: 'a' }, { path: 'x.md', sourcePath: 'old.png' }], previous)).toThrow(/introuvable/);
+    expect(() => resolveSkillFiles([{ path: 'SKILL.md', content: 'a\u0000b' }])).toThrow(/texte/);
   });
 
   it('lit le frontmatter (valeur simple, guillemets, bloc replié)', () => {

@@ -1,21 +1,22 @@
-import { SKILL_LIMITS, type SkillFileInput, type StoredSkillFile } from '@cap/contracts';
+import { SKILL_LIMITS, isMarkdownPath, type SkillFileInput, type StoredSkillFile } from '@cap/contracts';
 import { AppError } from '@cap/server-core';
 
-/** Taille réelle (octets) d'un fichier stocké. */
-export function fileSize(f: Pick<StoredSkillFile, 'content' | 'encoding'>): number {
-  return f.encoding === 'base64' ? Buffer.from(f.content, 'base64').length : Buffer.byteLength(f.content, 'utf8');
+/** Taille (octets) d'un fichier markdown. */
+export function fileSize(f: Pick<StoredSkillFile, 'content'>): number {
+  return Buffer.byteLength(f.content, 'utf8');
 }
 
-export function fileData(f: Pick<StoredSkillFile, 'content' | 'encoding'>): Buffer {
-  return f.encoding === 'base64' ? Buffer.from(f.content, 'base64') : Buffer.from(f.content, 'utf8');
+/** Fichier markdown texte (les anciennes versions ont pu contenir des scripts ou des binaires). */
+export function isMarkdownFile(f: { path: string; encoding?: string }): boolean {
+  return isMarkdownPath(f.path) && f.encoding !== 'base64';
 }
 
 /**
- * Fichiers d'une version : contenus fournis ou repris de la version précédente (`sourcePath`),
- * chemins uniques, SKILL.md à la racine, limites de nombre et de taille.
+ * Fichiers d'une version : markdown uniquement, contenus fournis ou repris de la version
+ * précédente (`sourcePath`), chemins uniques, SKILL.md à la racine, limites de nombre et de taille.
  */
-export function resolveSkillFiles(input: SkillFileInput[], previous: StoredSkillFile[] = []): StoredSkillFile[] {
-  const byPath = new Map(previous.map((f) => [f.path, f]));
+export function resolveSkillFiles(input: SkillFileInput[], previous: Array<{ path: string; content: string; encoding?: string }> = []): StoredSkillFile[] {
+  const byPath = new Map(previous.filter(isMarkdownFile).map((f) => [f.path, f]));
   const out: StoredSkillFile[] = [];
   const seen = new Set<string>();
   let total = 0;
@@ -23,32 +24,27 @@ export function resolveSkillFiles(input: SkillFileInput[], previous: StoredSkill
     const key = f.path.toLowerCase();
     if (seen.has(key)) throw new AppError('validation_failed', `Chemin en double : ${f.path}`);
     seen.add(key);
-    let stored: StoredSkillFile;
+    let content: string;
     if ('sourcePath' in f) {
       const src = byPath.get(f.sourcePath);
       if (!src) throw new AppError('validation_failed', `Fichier introuvable dans la version actuelle : ${f.sourcePath}`);
-      stored = { ...src, path: f.path, ...(f.executable !== undefined ? { executable: f.executable || undefined } : {}) };
-    } else {
-      if (f.encoding === 'base64' && !/^[A-Za-z0-9+/]*={0,2}$/.test(f.content)) throw new AppError('validation_failed', `Contenu base64 invalide : ${f.path}`);
-      stored = { path: f.path, content: f.content, ...(f.encoding === 'base64' ? { encoding: 'base64' as const } : {}), ...(f.executable ? { executable: true } : {}) };
-    }
-    if (!stored.executable) delete stored.executable;
-    const size = fileSize(stored);
+      content = src.content;
+    } else content = f.content;
+    if (content.includes('\u0000')) throw new AppError('validation_failed', `${f.path} n’est pas un fichier texte`);
+    const size = Buffer.byteLength(content, 'utf8');
     if (size > SKILL_LIMITS.maxFileBytes) throw new AppError('validation_failed', `${f.path} dépasse ${SKILL_LIMITS.maxFileBytes / 1024 / 1024} Mo`);
     total += size;
     if (total > SKILL_LIMITS.maxTotalBytes) throw new AppError('validation_failed', `Le skill dépasse ${SKILL_LIMITS.maxTotalBytes / 1024 / 1024} Mo`);
-    out.push(stored);
+    out.push({ path: f.path, content });
   }
-  // Un fichier et un dossier ne peuvent pas porter le même chemin (« docs » et « docs/a.md »).
+  // Un fichier et un dossier ne peuvent pas porter le même chemin (« docs.md/a.md » et « docs.md »).
   for (const p of seen) {
     const parts = p.split('/');
     for (let i = 1; i < parts.length; i++) {
       if (seen.has(parts.slice(0, i).join('/'))) throw new AppError('validation_failed', `« ${parts.slice(0, i).join('/')} » est à la fois un fichier et un dossier`);
     }
   }
-  const md = out.find((f) => f.path === 'SKILL.md');
-  if (!md) throw new AppError('validation_failed', 'SKILL.md est obligatoire, à la racine du skill');
-  if (md.encoding === 'base64') throw new AppError('validation_failed', 'SKILL.md doit être un fichier texte');
+  if (!out.some((f) => f.path === 'SKILL.md')) throw new AppError('validation_failed', 'SKILL.md est obligatoire, à la racine du skill');
   return out.sort((a, b) => (a.path === 'SKILL.md' ? -1 : b.path === 'SKILL.md' ? 1 : a.path.localeCompare(b.path)));
 }
 

@@ -377,9 +377,13 @@ test('skills : état activé visible d’un coup d’œil, import .zip, éditeur
   const on = await c.post('/skills', { name: `actif-${id}`, scope: 'personal', files: md(`actif-${id}`, 'Skill activé') });
   const off = await c.post('/skills', { name: `inactif-${id}`, scope: 'personal', files: md(`inactif-${id}`, 'Skill désactivé') });
   await c.put(`/skills/${off.body.id}/installation`, { scope: 'personal', enabled: false });
+  // Catégorie définie par l'administrateur, choisie par l'auteur.
+  const cat = await admin.post('/admin/skill-categories', { name: `Catégorie UI ${id}`, description: 'Skills du test d’interface' });
+  assert.equal(cat.status, 201, JSON.stringify(cat.body));
+  assert.equal((await c.patch(`/skills/${on.body.id}`, { categoryId: cat.body.id })).status, 200);
   // Archive à importer par l'interface (deflate, dossier racine).
   const entries = [
-    [`zip-${id}/SKILL.md`, `---\nname: zip-${id}\ndescription: Importé depuis un zip\n---\n\nVoir references/guide.md\n`],
+    [`zip-${id}/SKILL.md`, `---\nname: zip-${id}\ndescription: Importé depuis un zip\n---\n\n# Titre du skill\n\nVoir [le guide](references/guide.md).\n`],
     [`zip-${id}/references/guide.md`, '# Guide\n'],
     [`zip-${id}/references/api/endpoints.md`, '# Endpoints\n'],
   ];
@@ -442,6 +446,9 @@ test('skills : état activé visible d’un coup d’œil, import .zip, éditeur
     assert.equal(await cardOn.locator('input[type="checkbox"]').isChecked(), true);
     assert.equal(await cardOff.locator('input[type="checkbox"]').isChecked(), false);
     assert.ok((await page.locator('[data-skill-card]').first().getAttribute('aria-label')).endsWith('activé'), 'activés en premier');
+    // Regroupement par catégorie (ordre défini par l'administrateur).
+    const group = page.locator(`[data-skill-group][aria-label="Catégorie Catégorie UI ${id}"]`);
+    await group.locator(`[data-skill-card][aria-label="actif-${id}, activé"]`).waitFor();
     await page.screenshot({ path: new URL('skills-liste.png', OUT).pathname });
     await page.click('[role="tab"]:has-text("Désactivés")');
     assert.equal(await page.locator('[data-skill-card]').count(), published - enabled);
@@ -449,6 +456,18 @@ test('skills : état activé visible d’un coup d’œil, import .zip, éditeur
     await page.click('[role="tab"]:has-text("Tous")');
     await cardOff.locator('label:has(input[type="checkbox"])').click();
     await page.waitForSelector(`[data-skill-card][aria-label="inactif-${id}, activé"]`);
+    // Filtre « Activés » : désactiver puis réactiver — la carte et son interrupteur restent à leur place.
+    await page.click('[role="tab"]:has-text("Activés")');
+    const target = page.locator(`[data-skill-card][aria-label^="inactif-${id},"]`);
+    const rank = () => page.evaluate((n) => [...document.querySelectorAll('[data-skill-card]')].findIndex((el) => el.getAttribute('aria-label').startsWith(`${n},`)), `inactif-${id}`);
+    const before = await rank();
+    await target.locator('label:has(input[type="checkbox"])').click();
+    await page.waitForSelector(`[data-skill-card][aria-label="inactif-${id}, désactivé"]`);
+    assert.equal(await rank(), before, 'la carte garde sa place dans la liste');
+    await target.locator('label:has(input[type="checkbox"])').click();
+    await page.waitForSelector(`[data-skill-card][aria-label="inactif-${id}, activé"]`);
+    assert.equal((await c.get('/skills')).body.find((s) => s.id === off.body.id).enabledForMe, true, 'réactivé');
+    await page.click('[role="tab"]:has-text("Tous")');
     assert.equal((await c.get('/skills')).body.find((s) => s.id === off.body.id).enabledForMe, true, 'activation enregistrée');
 
     // Import .zip : skill créé puis ouvert dans l'éditeur, dossiers et sous-dossiers affichés.
@@ -457,6 +476,13 @@ test('skills : état activé visible d’un coup d’œil, import .zip, éditeur
     const tree = page.locator('aside[aria-label="Fichiers du skill"]');
     await tree.locator('button[title="references"]').waitFor();
     await tree.locator('button[title="references/api"]').waitFor();
+    // Aperçu markdown : en-tête du frontmatter, titre rendu ; un lien vers un autre .md l'ouvre.
+    const preview = page.locator('[data-skill-preview]');
+    await preview.locator('h1:has-text("Titre du skill")').waitFor();
+    assert.match(await preview.innerText(), /Importé depuis un zip/);
+    await page.screenshot({ path: new URL('skills-apercu.png', OUT).pathname });
+    await preview.locator('a:has-text("le guide")').click();
+    await page.waitForSelector('[data-skill-preview] h1:has-text("Guide")');
     await tree.locator('button[title="references/api/endpoints.md"]').click();
     await page.waitForSelector('cap-code-editor .monaco-editor');
     // Nouveau fichier dans le sous-dossier sélectionné, puis enregistrement (v2).
@@ -472,11 +498,10 @@ test('skills : état activé visible d’un coup d’œil, import .zip, éditeur
     await page.keyboard.type('# Authentification');
     await tree.locator('button[title="references/api/auth.md"] [title="Modifié"]').waitFor();
     await page.screenshot({ path: new URL('skills-editeur.png', OUT).pathname });
-    await page.click('button:has-text("Enregistrer (v2)")');
-    await page.waitForSelector('text=Version 2 enregistrée');
+    await page.click('button:has-text("Enregistrer")');
+    await page.waitForSelector('text=Skill enregistré');
     const skillId = new URL(page.url()).pathname.split('/').pop();
     const saved = (await c.get(`/skills/${skillId}`)).body;
-    assert.equal(saved.version, 2);
     assert.deepEqual(saved.files.map((f) => f.path), ['SKILL.md', 'references/api/auth.md', 'references/api/endpoints.md', 'references/guide.md']);
     assert.match(saved.files.find((f) => f.path === 'references/api/auth.md').content, /Authentification/);
 
@@ -496,5 +521,6 @@ test('skills : état activé visible d’un coup d’œil, import .zip, éditeur
     assert.deepEqual(issues, [], `erreurs console / CSP :\n${issues.join('\n')}`);
   } finally {
     await browser.close();
+    await admin.del(`/admin/skill-categories/${cat.body.id}`).catch(() => undefined);
   }
 });

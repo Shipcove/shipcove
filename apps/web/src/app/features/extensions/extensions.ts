@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import type { McpServerDto, SkillDto } from '@cap/contracts';
+import type { McpServerDto, SkillCategoryDto, SkillDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
 import { AuthStore } from '../../core/auth.store';
 import { ToastService } from '../../core/toast.service';
@@ -30,21 +30,37 @@ import { Icon } from '../../shared/icon';
             <input #zipInput type="file" accept=".zip,application/zip" class="hidden" (change)="importZip($event)" />
           </div>
         </div>
-        <p class="mt-1 text-sm text-stone-500">Pi voit la description des skills activés et charge leur contenu quand la tâche s’y prête. Un skill peut contenir des dossiers (références, scripts, modèles…).</p>
+        <p class="mt-1 text-sm text-stone-500">Pi voit la description des skills activés et charge leur contenu quand la tâche s’y prête. Un skill est fait de fichiers markdown, organisés en dossiers si besoin.</p>
 
         <div class="mt-3 flex flex-wrap items-center gap-2">
           <div class="flex gap-1 rounded-lg bg-stone-100 p-1 dark:bg-stone-800/70" role="tablist" aria-label="Filtrer les skills">
             @for (f of filters(); track f.id) {
               <button role="tab" class="rounded-md px-3 py-1 text-sm" [attr.aria-selected]="filter() === f.id"
-                [class]="filter() === f.id ? 'bg-white font-medium shadow-sm dark:bg-stone-900' : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'" (click)="filter.set(f.id)">
+                [class]="filter() === f.id ? 'bg-white font-medium shadow-sm dark:bg-stone-900' : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'" (click)="setFilter(f.id)">
                 {{ f.label }} <span class="text-stone-400 tabular-nums">{{ f.count }}</span></button>
             }
           </div>
+          @if (categories().length) {
+            <select class="input !w-auto !py-1.5" [ngModel]="category()" (ngModelChange)="category.set($event)" aria-label="Catégorie">
+              <option value="all">Toutes les catégories</option>
+              @for (c of categories(); track c.id) { <option [value]="c.id">{{ c.name }}</option> }
+              <option value="none">Sans catégorie</option>
+            </select>
+          }
           <input class="input !w-full !py-1.5 sm:!w-64" placeholder="Rechercher un skill…" [ngModel]="query()" (ngModelChange)="query.set($event)" aria-label="Rechercher un skill" />
         </div>
 
-        <div class="mt-3 grid gap-3 md:grid-cols-2">
-          @for (s of visibleSkills(); track s.id) {
+        @for (g of groups(); track g.id) {
+          <div class="mt-5" [attr.aria-label]="'Catégorie ' + g.name" data-skill-group>
+            @if (groups().length > 1 || g.id !== 'none') {
+              <div class="mb-2 flex items-baseline gap-2">
+                <h3 class="text-sm font-semibold text-stone-700 dark:text-stone-300">{{ g.name }}</h3>
+                <span class="text-xs text-stone-400">{{ g.enabled }} activé(s) · {{ g.skills.length }}</span>
+                @if (g.description) { <span class="hidden truncate text-xs text-stone-500 sm:inline">— {{ g.description }}</span> }
+              </div>
+            }
+            <div class="grid gap-3 md:grid-cols-2">
+              @for (s of g.skills; track s.id) {
             <article class="flex flex-col rounded-xl border p-4 transition-colors"
               [class]="s.enabledForMe ? 'border-emerald-300 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-950/20' : 'border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900'"
               [attr.aria-label]="s.name + (s.enabledForMe ? ', activé' : ', désactivé')" data-skill-card>
@@ -56,19 +72,17 @@ import { Icon } from '../../shared/icon';
                   <a [routerLink]="['/extensions/skills', s.id]" class="block truncate font-mono font-medium hover:underline">{{ s.name }}</a>
                   <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-stone-500">
                     <span class="badge bg-stone-200/70 text-stone-700 dark:bg-stone-800 dark:text-stone-300">{{ s.scope === 'global' ? 'Global' : 'Personnel' }}</span>
-                    @if (s.status !== 'published') { <span class="badge bg-amber-100 text-amber-800">{{ statusLabel(s.status) }}</span> }
-                    <span>v{{ s.latestVersion }} · {{ s.fileCount }} fichier(s)</span>
+                    @if (s.status === 'pending_review') { <span class="badge bg-amber-100 text-amber-800" title="Un administrateur doit valider ce skill avant que Pi puisse l’utiliser">En attente de validation</span> }
+                    <span>{{ s.fileCount }} fichier(s)</span>
                     @if (s.findings.length) { <span class="inline-flex items-center gap-0.5 text-amber-700" [title]="s.findings.join('\n')"><cap-icon name="alert" [size]="12" /> {{ s.findings.length }}</span> }
                   </div>
                 </div>
-                @if (s.status === 'published') {
+                @if (s.status !== 'pending_review') {
                   <label class="flex shrink-0 cursor-pointer items-center gap-2 text-xs font-medium" [class]="s.enabledForMe ? 'text-emerald-700 dark:text-emerald-400' : 'text-stone-500'">
                     <span class="hidden sm:inline">{{ s.enabledForMe ? 'Activé' : 'Désactivé' }}</span>
                     <input type="checkbox" class="peer sr-only" [checked]="s.enabledForMe" (change)="toggleSkill(s)" [attr.aria-label]="(s.enabledForMe ? 'Désactiver ' : 'Activer ') + s.name" />
                     <span class="relative h-6 w-11 rounded-full bg-stone-300 transition-colors peer-checked:bg-emerald-600 peer-focus-visible:ring-2 peer-focus-visible:ring-accent-500 after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5 dark:bg-stone-700"></span>
                   </label>
-                } @else if (s.canManage && s.status === 'draft') {
-                  <button class="btn-secondary shrink-0 !py-1 text-xs" (click)="publish(s)">Publier</button>
                 }
               </div>
               <p class="mt-2 line-clamp-2 text-sm text-stone-600 dark:text-stone-400" [title]="s.description">{{ s.description }}</p>
@@ -76,10 +90,12 @@ import { Icon } from '../../shared/icon';
                 <a [routerLink]="['/extensions/skills', s.id]" class="btn-ghost !py-1 text-xs"><cap-icon [name]="s.canManage ? 'edit' : 'eye'" [size]="13" /> {{ s.canManage ? 'Modifier' : 'Voir' }}</a>
               </div>
             </article>
-          } @empty {
-            <p class="text-sm text-stone-500 md:col-span-2">{{ skills().length ? 'Aucun skill ne correspond.' : 'Aucun skill pour l’instant : créez-en un ou importez une archive .zip.' }}</p>
-          }
-        </div>
+              }
+            </div>
+          </div>
+        } @empty {
+          <p class="mt-3 text-sm text-stone-500">{{ skills().length ? 'Aucun skill ne correspond.' : 'Aucun skill pour l’instant : créez-en un ou importez une archive .zip.' }}</p>
+        }
       </section>
 
       <h2 class="mt-8 mb-2 text-sm font-semibold text-stone-500 uppercase">Serveurs MCP</h2>
@@ -129,34 +145,64 @@ export class ExtensionsPage implements OnInit {
   protected readonly servers = signal<McpServerDto[]>([]);
   protected readonly filter = signal<'all' | 'enabled' | 'disabled' | 'pending'>('all');
   protected readonly query = signal('');
+  protected readonly category = signal<string>('all');
+  protected readonly categories = signal<SkillCategoryDto[]>([]);
+  /** Regroupement par catégorie (ordre défini par les administrateurs), « Sans catégorie » en dernier. */
+  protected readonly groups = computed(() => {
+    const list = this.visibleSkills();
+    const cat = this.category();
+    const known = new Set(this.categories().map((c) => c.id));
+    const sections = [
+      ...this.categories().map((c) => ({ id: c.id, name: c.name, description: c.description, skills: list.filter((s) => s.categoryId === c.id) })),
+      { id: 'none', name: 'Sans catégorie', description: '', skills: list.filter((s) => !s.categoryId || !known.has(s.categoryId)) },
+    ];
+    return sections
+      .filter((g) => g.skills.length && (cat === 'all' || cat === g.id))
+      .map((g) => ({ ...g, enabled: g.skills.filter((s) => s.enabledForMe).length }));
+  });
   protected readonly importing = signal(false);
   private readonly router = inject(Router);
   protected readonly publishedCount = computed(() => this.skills().filter((s) => s.status === 'published').length);
+  /**
+   * Ordre figé au chargement (activés d'abord, puis par nom) : une carte qu'on vient de basculer
+   * ne change pas de place, et reste visible dans le filtre en cours jusqu'au prochain changement de filtre.
+   */
+  private readonly order = signal<Map<string, number>>(new Map());
+  private readonly sticky = signal<Set<string>>(new Set());
   protected readonly enabledCount = computed(() => this.skills().filter((s) => s.enabledForMe).length);
   protected readonly filters = computed(() => {
     const l = this.skills();
-    const pending = l.filter((s) => s.status !== 'published').length;
+    const pending = l.filter((s) => s.status === 'pending_review').length;
     return [
       { id: 'all' as const, label: 'Tous', count: l.length },
       { id: 'enabled' as const, label: 'Activés', count: l.filter((s) => s.enabledForMe).length },
       { id: 'disabled' as const, label: 'Désactivés', count: l.filter((s) => s.status === 'published' && !s.enabledForMe).length },
-      ...(pending ? [{ id: 'pending' as const, label: 'Non publiés', count: pending }] : []),
+      ...(pending ? [{ id: 'pending' as const, label: 'En attente', count: pending }] : []),
     ];
   });
   /** Activés d'abord, puis par nom ; filtre et recherche. */
   protected readonly visibleSkills = computed(() => {
     const q = this.query().trim().toLowerCase();
     const f = this.filter();
+    const sticky = this.sticky();
+    const order = this.order();
     return this.skills()
-      .filter((s) => (f === 'enabled' ? s.enabledForMe : f === 'disabled' ? s.status === 'published' && !s.enabledForMe : f === 'pending' ? s.status !== 'published' : true))
+      .filter((s) => sticky.has(s.id) || (f === 'enabled' ? s.enabledForMe : f === 'disabled' ? s.status === 'published' && !s.enabledForMe : f === 'pending' ? s.status === 'pending_review' : true))
       .filter((s) => !q || s.name.includes(q) || s.description.toLowerCase().includes(q))
-      .sort((a, b) => Number(b.enabledForMe) - Number(a.enabledForMe) || a.name.localeCompare(b.name));
+      .sort((a, b) => (order.get(a.id) ?? 1e9) - (order.get(b.id) ?? 1e9) || a.name.localeCompare(b.name));
   });
   protected mcp = { name: '', transport: 'streamable_http', scope: 'personal', url: '', auth: '', command: '', args: '' };
 
   async ngOnInit() {
-    const [s, m] = await Promise.all([this.api.get<SkillDto[]>('/skills'), this.api.get<McpServerDto[]>('/mcp-servers')]);
+    const [s, m, c] = await Promise.all([
+      this.api.get<SkillDto[]>('/skills'),
+      this.api.get<McpServerDto[]>('/mcp-servers'),
+      this.api.get<SkillCategoryDto[]>('/skill-categories').catch(() => [] as SkillCategoryDto[]),
+    ]);
     this.skills.set(s);
+    this.categories.set(c);
+    this.order.set(new Map([...s].sort((a, b) => Number(b.enabledForMe) - Number(a.enabledForMe) || a.name.localeCompare(b.name)).map((x, i) => [x.id, i])));
+    this.sticky.set(new Set());
     this.servers.set(m);
   }
 
@@ -174,9 +220,15 @@ export class ExtensionsPage implements OnInit {
     return (m.scope === 'personal' && m.ownerId === this.auth.me()?.id) || (m.scope === 'global' && this.auth.isAdmin());
   }
 
+  protected setFilter(id: 'all' | 'enabled' | 'disabled' | 'pending') {
+    this.sticky.set(new Set());
+    this.filter.set(id);
+  }
+
   /** Bascule immédiate dans la liste, rétablie en cas d'erreur. */
   protected async toggleSkill(s: SkillDto) {
     const enabled = !s.enabledForMe;
+    this.sticky.update((set) => new Set([...set, s.id]));
     this.skills.update((l) => l.map((x) => (x.id === s.id ? { ...x, enabledForMe: enabled } : x)));
     try {
       await this.api.put(`/skills/${s.id}/installation`, { scope: 'personal', enabled });
@@ -186,9 +238,7 @@ export class ExtensionsPage implements OnInit {
     }
   }
 
-  protected statusLabel(st: SkillDto['status']): string {
-    return { draft: 'Brouillon', pending_review: 'En attente de revue', published: 'Publié', disabled: 'Suspendu', revoked: 'Révoqué' }[st];
-  }
+
 
   /** Import d'une archive .zip : skill personnel, ouvert ensuite dans l'éditeur. */
   protected async importZip(e: Event) {
@@ -201,8 +251,8 @@ export class ExtensionsPage implements OnInit {
     form.append('scope', 'personal');
     this.importing.set(true);
     try {
-      const r = await this.api.upload<{ id: string; findings: string[] }>('/skills/import', form);
-      this.toast.show('Skill importé', 'success');
+      const r = await this.api.upload<{ id: string; findings: string[]; ignored: string[] }>('/skills/import', form);
+      this.toast.show(r.ignored.length ? `Skill importé — ${r.ignored.length} fichier(s) non markdown ignoré(s) : ${r.ignored.slice(0, 5).join(', ')}${r.ignored.length > 5 ? '…' : ''}` : 'Skill importé', 'success', r.ignored.length ? 12_000 : 5000);
       await this.router.navigate(['/extensions/skills', r.id]);
     } catch (err) {
       this.toast.error(err);
@@ -210,9 +260,7 @@ export class ExtensionsPage implements OnInit {
       this.importing.set(false);
     }
   }
-  protected publish(s: SkillDto) {
-    return this.act(() => this.api.post(`/skills/${s.id}/status`, { status: 'published' }));
-  }
+
   protected createServer() {
     const m = this.mcp;
     return this.act(

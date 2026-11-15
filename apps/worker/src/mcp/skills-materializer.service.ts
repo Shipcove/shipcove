@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import {
   mcpPermissions,
   mcpServers,
@@ -10,8 +10,8 @@ import {
   workspaces,
   type Database,
 } from '@cap/database';
-import { isSafeSkillPath } from '@cap/contracts';
-import { DB, effectiveToolPermission, scopeVisible, type PermissionRule } from '@cap/server-core';
+import { isMarkdownPath, isSafeSkillPath } from '@cap/contracts';
+import { DB, effectiveToolPermission, scopeVisible, skillEnabledFor, type PermissionRule } from '@cap/server-core';
 import type { ActiveSandbox, SandboxManager } from '../sandbox/sandbox-manager.service.js';
 
 type Ws = typeof workspaces.$inferSelect;
@@ -36,37 +36,26 @@ export class SkillsMaterializer {
       .where(inArray(skillInstallations.skillId, visible.map((s) => s.id)));
     const out: Array<{ skill: typeof skills.$inferSelect; version: typeof skillVersions.$inferSelect }> = [];
     for (const s of visible) {
-      const mine = installs.filter(
-        (i) =>
-          i.skillId === s.id &&
-          (i.scope === 'global' || (i.scope === 'personal' && i.subjectId === subject.userId)),
-      );
-      // Désactivation à n'importe quelle portée applicable → inactif ; sinon actif par défaut.
-      if (mine.some((i) => !i.enabled)) continue;
-      const pinned = mine.find((i) => i.pinnedVersion)?.pinnedVersion;
+      // Choix de l'utilisateur, sinon réglage « activé par défaut » de l'administrateur, sinon activé.
+      if (!skillEnabledFor(installs, s.id, subject.userId)) continue;
       const [v] = await this.db
         .select()
         .from(skillVersions)
-        .where(and(eq(skillVersions.skillId, s.id), pinned ? eq(skillVersions.version, pinned) : eq(skillVersions.version, s.latestVersion)))
-        .orderBy(desc(skillVersions.version))
+        .where(and(eq(skillVersions.skillId, s.id), eq(skillVersions.version, s.latestVersion)))
         .limit(1);
       if (v) out.push({ skill: s, version: v });
     }
     return out;
   }
 
-  /** Fichiers des skills actifs, arborescence comprise : binaires décodés, scripts exécutables. */
-  async files(ws: Ws): Promise<Array<{ path: string; content: string | Buffer; mode?: number }>> {
+  /** Fichiers markdown des skills actifs, arborescence comprise (jamais de script ni de binaire). */
+  async files(ws: Ws): Promise<Array<{ path: string; content: string }>> {
     const active = await this.activeSkills(ws);
     return active.flatMap(({ skill, version }) =>
       version.files
-        // Chemins validés à l'enregistrement ; vérifiés de nouveau (défense en profondeur).
-        .filter((f) => isSafeSkillPath(f.path))
-        .map((f) => ({
-          path: `home/agent/.pi/agent/skills/${skill.name}/${f.path}`,
-          content: f.encoding === 'base64' ? Buffer.from(f.content, 'base64') : f.content,
-          ...(f.executable ? { mode: 0o755 } : {}),
-        })),
+        // Chemins validés à l'enregistrement ; vérifiés de nouveau (défense en profondeur), markdown uniquement.
+        .filter((f) => isSafeSkillPath(f.path) && isMarkdownPath(f.path) && f.encoding !== 'base64')
+        .map((f) => ({ path: `home/agent/.pi/agent/skills/${skill.name}/${f.path}`, content: f.content })),
     );
   }
 

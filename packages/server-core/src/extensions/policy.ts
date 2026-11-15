@@ -46,3 +46,20 @@ export function scopeVisible(scope: Scope, ownerId: string | null, subject: Subj
   if (scope === 'global') return true;
   return ownerId === subject.userId;
 }
+
+/**
+ * Skill activé pour un utilisateur : son propre choix l'emporte ; à défaut, le réglage
+ * « activé par défaut » de l'administrateur ; à défaut, activé.
+ */
+export function skillEnabledFor(installs: Array<{ skillId: string; scope: string; subjectId: string | null; enabled: boolean }>, skillId: string, userId: string): boolean {
+  const mine = installs.find((i) => i.skillId === skillId && i.scope === 'personal' && i.subjectId === userId);
+  if (mine) return mine.enabled;
+  const def = installs.find((i) => i.skillId === skillId && i.scope === 'global');
+  return def ? def.enabled : true;
+}
+
+/** Réglage « activé par défaut pour tous » d'un skill (administrateur). */
+export function skillEnabledByDefault(installs: Array<{ skillId: string; scope: string; enabled: boolean }>, skillId: string): boolean {
+  const def = installs.find((i) => i.skillId === skillId && i.scope === 'global');
+  return def ? def.enabled : true;
+}

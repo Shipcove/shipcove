@@ -35,6 +35,7 @@ import { AdminRegistryController } from './admin/admin-registry.controller.js';
 import { LiteLlmAdminService } from './admin/litellm.service.js';
 import { IdempotencyService } from './common/idempotency.service.js';
 import { SkillsController } from './extensions/skills.controller.js';
+import { AdminSkillCategoriesController, SkillCategoriesController } from './extensions/skill-categories.controller.js';
 import { McpController } from './extensions/mcp.controller.js';
 
 @Module({})
@@ -75,6 +76,8 @@ export class AppModule {
         GitOAuthController,
         AdminAuthProvidersController,
         SkillsController,
+        SkillCategoriesController,
+        AdminSkillCategoriesController,
         McpController,
       ],
       providers: [

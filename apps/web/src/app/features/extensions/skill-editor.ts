@@ -1,21 +1,20 @@
 import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, computed, effect, inject, input, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { SKILL_LIMITS, isSafeSkillPath, type SkillDetailDto, type SkillDto } from '@cap/contracts';
+import { SKILL_LIMITS, isMarkdownPath, isSafeSkillPath, type SkillCategoryDto, type SkillDetailDto, type SkillDto } from '@cap/contracts';
 import { Api, ApiError } from '../../core/api.service';
 import { AuthStore } from '../../core/auth.store';
 import { ConfirmService } from '../../core/confirm.service';
 import { ToastService } from '../../core/toast.service';
+import { LayoutService } from '../../core/layout.service';
 import { Icon } from '../../shared/icon';
 import { CodeEditor } from '../../shared/monaco';
-import { BytesPipe } from '../../shared/pipes';
-import { downloadSkillZip, isTextFile, toBase64 } from './skill-util';
+import { BytesPipe, CodeBlocksDirective, MarkdownPipe } from '../../shared/pipes';
+import { downloadSkillZip, isTextFile, splitFrontmatter } from './skill-util';
 
 /** Fichier en cours d'édition. `sourcePath` : fichier repris tel quel de la version chargée. */
 interface EditFile {
   path: string;
-  encoding: 'utf8' | 'base64';
-  executable: boolean;
   content: string;
   size: number;
   sourcePath: string | null;
@@ -43,17 +42,17 @@ description: Ce que fait ce skill et quand l’utiliser (Pi s’appuie sur cette
 
 ## Ressources
 
-Les fichiers annexes (dossiers \`references/\`, \`scripts/\`, \`assets/\`…) sont lus par Pi à la demande.
+Les fichiers markdown annexes (dossier \`references/\` par exemple) sont lus par Pi à la demande.
 `;
 
 /**
- * Éditeur de skill : arborescence (dossiers et sous-dossiers), édition des fichiers texte,
- * téléversement de fichiers (binaires compris), import et export .zip, historique des versions.
- * Lecture seule pour un skill que l'utilisateur ne gère pas ou pour une ancienne version.
+ * Éditeur de skill : arborescence (dossiers et sous-dossiers) de fichiers markdown, édition avec
+ * aperçu, téléversement de .md, import et export .zip, catégorie, suppression.
+ * Lecture seule (mais activable pour soi) pour un skill que l'utilisateur ne gère pas.
  */
 @Component({
   selector: 'cap-skill-editor',
-  imports: [FormsModule, RouterLink, Icon, CodeEditor, BytesPipe],
+  imports: [FormsModule, RouterLink, Icon, CodeEditor, BytesPipe, MarkdownPipe, CodeBlocksDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'block h-full', '(window:beforeunload)': 'beforeUnload($event)' },
   template: `
@@ -67,21 +66,28 @@ Les fichiers annexes (dossiers \`references/\`, \`scripts/\`, \`assets/\`…) so
             <option value="personal">Personnel</option>
             @if (auth.isAdmin()) { <option value="global">Global (tous les utilisateurs)</option> }
           </select>
+          <select class="input !w-auto" [ngModel]="categoryId()" (ngModelChange)="categoryId.set($event)" aria-label="Catégorie">
+            <option [ngValue]="null">Sans catégorie</option>
+            @for (c of categories(); track c.id) { <option [ngValue]="c.id">{{ c.name }}</option> }
+          </select>
         } @else if (detail(); as d) {
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <h1 class="truncate font-mono font-semibold">{{ d.skill.name }}</h1>
               <span class="badge bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300">{{ d.skill.scope === 'global' ? 'Global' : 'Personnel' }}</span>
               @if (d.skill.status !== 'published') { <span class="badge bg-amber-100 text-amber-800">{{ statusLabel(d.skill.status) }}</span> }
+              @if (d.skill.canManage && categories().length) {
+                <select class="input !w-auto !py-0.5 text-xs" [ngModel]="d.skill.categoryId" (ngModelChange)="setCategory($event)" aria-label="Catégorie">
+                  <option [ngValue]="null">Sans catégorie</option>
+                  @for (c of categories(); track c.id) { <option [ngValue]="c.id">{{ c.name }}</option> }
+                </select>
+              } @else if (categoryName(d.skill.categoryId); as cn) { <span class="badge bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300">{{ cn }}</span> }
             </div>
             <div class="truncate text-xs text-stone-500">{{ d.skill.description }}</div>
           </div>
         }
         <div class="ml-auto flex flex-wrap items-center gap-2">
           @if (detail(); as d) {
-            <select class="input !w-auto !py-1 text-sm" [ngModel]="d.version" (ngModelChange)="loadVersion($event)" aria-label="Version">
-              @for (v of d.versions; track v.version) { <option [ngValue]="v.version">v{{ v.version }}{{ v.version === d.skill.latestVersion ? ' (actuelle)' : '' }}</option> }
-            </select>
             @if (d.skill.status === 'published') {
               <label class="flex cursor-pointer items-center gap-2 text-sm" [title]="d.skill.enabledForMe ? 'Pi peut utiliser ce skill' : 'Pi n’utilise pas ce skill'">
                 <input type="checkbox" class="peer sr-only" [checked]="d.skill.enabledForMe" (change)="toggleEnabled()" />
@@ -91,13 +97,14 @@ Les fichiers annexes (dossiers \`references/\`, \`scripts/\`, \`assets/\`…) so
             }
             <button class="btn-ghost !py-1 text-sm" (click)="exportZip()" title="Télécharger le skill (.zip)"><cap-icon name="archive" [size]="14" /> <span class="hidden sm:inline">Exporter</span></button>
           }
+          @if (detail()?.skill?.canManage) {
+            <button class="btn-ghost !py-1 text-sm text-stone-500 hover:text-red-600" (click)="deleteSkill()" title="Supprimer le skill" aria-label="Supprimer le skill"><cap-icon name="trash" [size]="14" /></button>
+          }
           @if (editable()) {
-            <button class="btn-ghost !py-1 text-sm" (click)="zipInput.click()" [title]="isNew() ? 'Créer le skill depuis une archive .zip' : 'Remplacer le contenu par une archive .zip (nouvelle version)'">
+            <button class="btn-ghost !py-1 text-sm" (click)="zipInput.click()" [title]="isNew() ? 'Créer le skill depuis une archive .zip' : 'Remplacer le contenu par une archive .zip'">
               <cap-icon name="paperclip" [size]="14" /> <span class="hidden sm:inline">Importer .zip</span></button>
             <button class="btn-primary !py-1 text-sm" (click)="save()" [disabled]="busy() || (!isNew() && !dirty())">
-              {{ isNew() ? 'Créer le skill' : dirty() ? 'Enregistrer (v' + ((detail()?.skill?.latestVersion ?? 0) + 1) + ')' : 'Enregistré' }}</button>
-          } @else if (detail() && !viewingLatest() && detail()!.skill.canManage) {
-            <button class="btn-secondary !py-1 text-sm" (click)="restore()" [disabled]="busy()">Restaurer cette version</button>
+              {{ isNew() ? 'Créer le skill' : dirty() ? 'Enregistrer' : 'Enregistré' }}</button>
           }
           <input #zipInput type="file" accept=".zip,application/zip" class="hidden" (change)="importZip($event)" />
         </div>
@@ -111,7 +118,7 @@ Les fichiers annexes (dossiers \`references/\`, \`scripts/\`, \`assets/\`…) so
       }
       @if (!editable() && detail()) {
         <div class="border-b border-stone-200 bg-stone-50 px-4 py-1.5 text-xs text-stone-500 dark:border-stone-800 dark:bg-stone-900/60">
-          <cap-icon name="lock" [size]="12" /> {{ detail()!.skill.canManage ? 'Ancienne version : lecture seule.' : 'Lecture seule : ce skill est géré par ' + (detail()!.skill.scope === 'global' ? 'l’administrateur' : 'son propriétaire') + '.' }}
+          <cap-icon name="lock" [size]="12" /> Lecture seule : ce skill est géré par {{ detail()!.skill.scope === 'global' ? 'l’administrateur' : 'son propriétaire' }}. Vous pouvez l’activer ou le désactiver pour vous.
         </div>
       }
 
@@ -128,15 +135,15 @@ Les fichiers annexes (dossiers \`references/\`, \`scripts/\`, \`assets/\`…) so
             <div class="flex items-center gap-1 border-b border-stone-200 px-2 py-1.5 dark:border-stone-800">
               <button class="btn-ghost !p-1.5" (click)="startCreate('file')" title="Nouveau fichier" aria-label="Nouveau fichier"><cap-icon name="file" [size]="15" /><cap-icon name="plus" [size]="10" class="-ml-1.5" /></button>
               <button class="btn-ghost !p-1.5" (click)="startCreate('dir')" title="Nouveau dossier" aria-label="Nouveau dossier"><cap-icon name="folder" [size]="15" /><cap-icon name="plus" [size]="10" class="-ml-1.5" /></button>
-              <button class="btn-ghost !p-1.5" (click)="uploadInput.click()" title="Téléverser des fichiers dans le dossier sélectionné" aria-label="Téléverser des fichiers"><cap-icon name="paperclip" [size]="15" /></button>
-              <input #uploadInput type="file" multiple class="hidden" (change)="uploadFiles($event)" />
+              <button class="btn-ghost !p-1.5" (click)="uploadInput.click()" title="Téléverser des fichiers markdown (.md) dans le dossier sélectionné" aria-label="Téléverser des fichiers markdown"><cap-icon name="paperclip" [size]="15" /></button>
+              <input #uploadInput type="file" multiple accept=".md,.markdown,text/markdown" class="hidden" (change)="uploadFiles($event)" />
               <span class="ml-auto truncate text-[11px] text-stone-400" [title]="'Dossier cible : ' + (targetDir() || 'racine')">{{ targetDir() ? targetDir() + '/' : 'racine' }}</span>
             </div>
           }
           @if (creating(); as c) {
             <form class="flex items-center gap-1 border-b border-stone-200 px-2 py-1.5 dark:border-stone-800" (ngSubmit)="confirmCreate()">
               <cap-icon [name]="c === 'dir' ? 'folder' : 'file'" [size]="14" class="shrink-0 text-stone-400" />
-              <input #createInput class="input !py-1 font-mono text-xs" name="newPath" [(ngModel)]="newPath" [placeholder]="c === 'dir' ? 'dossier/sous-dossier' : 'dossier/fichier.md'" (keydown.escape)="creating.set(null)" aria-label="Chemin" />
+              <input #createInput class="input !py-1 font-mono text-xs" name="newPath" [(ngModel)]="newPath" [placeholder]="c === 'dir' ? 'dossier/sous-dossier' : 'dossier/fichier.md (markdown)'" (keydown.escape)="creating.set(null)" aria-label="Chemin" />
               <button class="btn-primary !px-2 !py-1 text-xs">OK</button>
             </form>
           }
@@ -154,10 +161,9 @@ Les fichiers annexes (dossiers \`references/\`, \`scripts/\`, \`assets/\`…) so
                         <cap-icon name="folder" [size]="14" class="shrink-0 text-sky-600" />
                       } @else {
                         <span class="w-3 shrink-0"></span>
-                        <cap-icon [name]="n.file!.encoding === 'base64' ? 'image' : 'file'" [size]="14" class="shrink-0 text-stone-400" />
+                        <cap-icon name="file" [size]="14" class="shrink-0 text-stone-400" />
                       }
                       <span class="truncate" [class.font-semibold]="n.path === 'SKILL.md'" [class.italic]="n.file?.dirty">{{ n.name }}</span>
-                      @if (n.file?.executable) { <span class="shrink-0 rounded bg-stone-200 px-1 font-mono text-[10px] text-stone-600 dark:bg-stone-700 dark:text-stone-300" title="Exécutable">x</span> }
                       @if (n.file?.dirty) { <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-500" title="Modifié"></span> }
                     </button>
                     @if (editable() && n.path !== 'SKILL.md') {
@@ -180,21 +186,37 @@ Les fichiers annexes (dossiers \`references/\`, \`scripts/\`, \`assets/\`…) so
         <section class="flex min-w-0 flex-1 flex-col" [class.max-md:hidden]="mobileTab() !== 'file'" aria-label="Contenu du fichier">
           @if (current(); as f) {
             <div class="flex items-center gap-2 border-b border-stone-200 px-3 py-1.5 text-xs text-stone-500 dark:border-stone-800">
-              <span class="truncate font-mono text-stone-700 dark:text-stone-300">{{ f.path }}</span>
-              <span>{{ f.size | bytes }}</span>
-              @if (editable() && f.path !== 'SKILL.md') {
-                <label class="ml-auto flex items-center gap-1" title="Droit d’exécution (scripts)"><input type="checkbox" [checked]="f.executable" (change)="toggleExecutable(f)" /> exécutable</label>
+              <span class="min-w-0 truncate font-mono text-stone-700 dark:text-stone-300">{{ f.path }}</span>
+              <span class="shrink-0">{{ f.size | bytes }}</span>
+              <div class="ml-auto flex shrink-0 gap-0.5 rounded-md bg-stone-100 p-0.5 dark:bg-stone-800" role="tablist" aria-label="Affichage">
+                @for (m of modes(); track m.id) {
+                  <button role="tab" class="rounded px-2 py-0.5" [attr.aria-selected]="view() === m.id"
+                    [class]="view() === m.id ? 'bg-white font-medium text-stone-800 shadow-sm dark:bg-stone-900 dark:text-stone-100' : 'hover:text-stone-800 dark:hover:text-stone-200'" (click)="view.set(m.id)">{{ m.label }}</button>
+                }
+              </div>
+            </div>
+            <div class="flex min-h-0 flex-1">
+              @if (view() !== 'preview') {
+                <div class="min-h-0 min-w-0 flex-1" [class.border-r]="view() === 'split'" [class.border-stone-200]="view() === 'split'" [class.dark:border-stone-800]="view() === 'split'">
+                  <cap-code-editor [value]="editorValue()" [path]="f.path" [readOnly]="!editable()" (changed)="edit($event)" />
+                </div>
+              }
+              @if (view() !== 'code') {
+                <!-- Aperçu : rendu identique aux réponses de Pi (HTML assaini). Liens vers d'autres .md du skill : ouverts ici. -->
+                <div class="min-h-0 min-w-0 flex-1 overflow-y-auto px-5 py-4" (click)="onPreviewClick($event)" aria-label="Aperçu markdown" data-skill-preview>
+                  @if (preview(); as p) {
+                    @if (p.meta.length) {
+                      <dl class="mb-4 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm dark:border-stone-800 dark:bg-stone-900/60">
+                        @for (m of p.meta; track m.key) {
+                          <div class="flex gap-2 py-0.5"><dt class="w-24 shrink-0 font-mono text-xs text-stone-500">{{ m.key }}</dt><dd class="min-w-0 [overflow-wrap:anywhere]">{{ m.value }}</dd></div>
+                        }
+                      </dl>
+                    }
+                    <div class="prose-chat" capCodeBlocks [innerHTML]="p.body | markdown"></div>
+                  }
+                </div>
               }
             </div>
-            @if (f.encoding === 'utf8') {
-              <div class="min-h-0 flex-1"><cap-code-editor [value]="editorValue()" [path]="f.path" [readOnly]="!editable()" (changed)="edit($event)" /></div>
-            } @else {
-              <div class="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-stone-500">
-                @if (imageUrl(); as url) { <img [src]="url" [alt]="f.path" class="max-h-80 max-w-full rounded-lg border border-stone-200 object-contain dark:border-stone-700" /> }
-                @else { <cap-icon name="file" [size]="36" class="text-stone-300" /> }
-                <div>Fichier binaire ({{ f.size | bytes }}) : non modifiable ici. Remplacez-le en téléversant un fichier du même nom.</div>
-              </div>
-            }
           } @else {
             <div class="flex flex-1 items-center justify-center p-6 text-sm text-stone-500">Sélectionnez un fichier.</div>
           }
@@ -212,6 +234,7 @@ export class SkillEditor implements OnDestroy {
   private readonly toast = inject(ToastService);
   private readonly confirm = inject(ConfirmService);
   private readonly createInput = viewChild<ElementRef<HTMLInputElement>>('createInput');
+  private readonly layout = inject(LayoutService);
 
   protected readonly detail = signal<SkillDetailDto | null>(null);
   protected readonly files = signal<EditFile[]>([]);
@@ -226,15 +249,25 @@ export class SkillEditor implements OnDestroy {
   protected readonly busy = signal(false);
   protected readonly findings = signal<string[]>([]);
   protected readonly mobileTab = signal<'tree' | 'file'>('tree');
-  protected readonly imageUrl = signal<string | null>(null);
+  protected readonly categories = signal<SkillCategoryDto[]>([]);
+  /** Catégorie d'un nouveau skill. */
+  protected readonly categoryId = signal<string | null>(null);
+  protected readonly view = signal<'code' | 'preview' | 'split'>('split');
+  /** Contenu courant du fichier ouvert, pour l'aperçu (mis à jour à la frappe). */
+  private readonly liveContent = signal('');
+  protected readonly preview = computed(() => (this.current() ? splitFrontmatter(this.liveContent()) : null));
+  protected readonly modes = computed(() => [
+    { id: 'code' as const, label: 'Code' },
+    { id: 'preview' as const, label: 'Aperçu' },
+    ...(this.layout.wide() ? [{ id: 'split' as const, label: 'Les deux' }] : []),
+  ]);
   protected readonly maxTotal = SKILL_LIMITS.maxTotalBytes;
   protected newName = '';
   protected newScope: 'personal' | 'global' = 'personal';
   protected newPath = '';
 
   protected readonly isNew = computed(() => this.skillId() === 'new');
-  protected readonly viewingLatest = computed(() => !this.detail() || this.detail()!.version === this.detail()!.skill.latestVersion);
-  protected readonly editable = computed(() => this.isNew() || (!!this.detail()?.skill.canManage && this.viewingLatest() && this.detail()!.skill.status !== 'revoked'));
+  protected readonly editable = computed(() => this.isNew() || !!this.detail()?.skill.canManage);
   protected readonly dirty = computed(() => this.removedOrRenamedSig() || this.files().some((f) => f.dirty || f.sourcePath !== f.path));
   private readonly removedOrRenamedSig = signal(false);
   protected readonly current = computed(() => this.files().find((f) => f.path === this.selected()) ?? null);
@@ -270,46 +303,39 @@ export class SkillEditor implements OnDestroy {
       const id = this.skillId();
       untracked(() => void this.load(id));
     });
-    // Aperçu d'une image binaire.
+    // « Les deux » n'existe que sur grand écran : aperçu seul sinon.
     effect(() => {
-      const f = this.current();
-      untracked(() => {
-        if (this.imageUrl()) URL.revokeObjectURL(this.imageUrl()!);
-        this.imageUrl.set(null);
-        const ext = f?.path.split('.').pop()?.toLowerCase() ?? '';
-        if (f?.encoding === 'base64' && ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) {
-          const bytes = Uint8Array.from(atob(f.content), (c) => c.charCodeAt(0));
-          this.imageUrl.set(URL.createObjectURL(new Blob([bytes], { type: ext === 'svg' ? 'image/svg+xml' : `image/${ext === 'jpg' ? 'jpeg' : ext}` })));
-        }
-      });
+      if (!this.layout.wide() && untracked(() => this.view()) === 'split') this.view.set('preview');
     });
+    void this.api.get<SkillCategoryDto[]>('/skill-categories').then((c) => this.categories.set(c)).catch(() => undefined);
   }
 
   ngOnDestroy(): void {
-    if (this.imageUrl()) URL.revokeObjectURL(this.imageUrl()!);
+    /* rien à libérer */
   }
 
   protected beforeUnload(e: BeforeUnloadEvent): void {
     if (this.editable() && this.dirty()) e.preventDefault();
   }
 
-  private async load(id: string, version?: number): Promise<void> {
+  private async load(id: string): Promise<void> {
     this.removedOrRenamedSig.set(false);
     this.emptyDirs.set(new Set());
     if (id === 'new') {
       this.detail.set(null);
       this.findings.set([]);
       this.newName = '';
-      this.files.set([{ path: 'SKILL.md', encoding: 'utf8', executable: false, content: TEMPLATE('nom-du-skill'), size: 0, sourcePath: null, dirty: true }]);
+      this.categoryId.set(null);
+      this.files.set([{ path: 'SKILL.md', content: TEMPLATE('nom-du-skill'), size: 0, sourcePath: null, dirty: true }]);
       this.files.update((l) => l.map((f) => ({ ...f, size: new Blob([f.content]).size })));
       this.select('SKILL.md', false);
       return;
     }
     try {
-      const d = await this.api.get<SkillDetailDto>(`/skills/${id}`, version ? { version: String(version) } : undefined);
+      const d = await this.api.get<SkillDetailDto>(`/skills/${id}`);
       this.detail.set(d);
-      this.findings.set(d.versions.find((v) => v.version === d.version)?.findings ?? []);
-      this.files.set(d.files.map((f) => ({ path: f.path, encoding: f.encoding, executable: f.executable, content: f.content, size: f.size, sourcePath: f.path, dirty: false })));
+      this.findings.set(d.skill.findings);
+      this.files.set(d.files.map((f) => ({ path: f.path, content: f.content, size: f.size, sourcePath: f.path, dirty: false })));
       this.select(this.files().some((f) => f.path === this.selected()) ? this.selected()! : 'SKILL.md', false);
     } catch (e) {
       this.toast.error(e);
@@ -317,14 +343,12 @@ export class SkillEditor implements OnDestroy {
     }
   }
 
-  protected async loadVersion(version: number): Promise<void> {
-    if (this.dirty() && !(await this.confirm.ask({ title: 'Abandonner les modifications ?', message: 'Les modifications non enregistrées seront perdues.', confirmLabel: 'Abandonner', danger: true }))) return;
-    await this.load(this.skillId(), version);
-  }
+
 
   protected statusLabel(s: SkillDto['status']): string {
-    return { draft: 'Brouillon', pending_review: 'En attente de revue', published: 'Publié', disabled: 'Suspendu', revoked: 'Révoqué' }[s];
+    return s === 'pending_review' ? 'En attente de validation' : 'Disponible';
   }
+
 
   /* ------------------------------ Navigation ------------------------------ */
 
@@ -342,7 +366,8 @@ export class SkillEditor implements OnDestroy {
     this.reveal(path);
     this.selected.set(path);
     this.selectedDir.set('');
-    this.editorValue.set(f.encoding === 'utf8' ? f.content : '');
+    this.editorValue.set(f.content);
+    this.liveContent.set(f.content);
     if (fromUser) this.mobileTab.set('file');
   }
 
@@ -358,11 +383,41 @@ export class SkillEditor implements OnDestroy {
 
   protected edit(content: string): void {
     const path = this.selected();
+    this.liveContent.set(content);
     this.files.update((l) => l.map((f) => (f.path === path && f.content !== content ? { ...f, content, size: new Blob([content]).size, dirty: true } : f)));
   }
 
-  protected toggleExecutable(f: EditFile): void {
-    this.files.update((l) => l.map((x) => (x.path === f.path ? { ...x, executable: !x.executable, dirty: true } : x)));
+  protected categoryName(id: string | null): string | null {
+    return this.categories().find((c) => c.id === id)?.name ?? null;
+  }
+
+  protected async setCategory(categoryId: string | null): Promise<void> {
+    const d = this.detail();
+    if (!d) return;
+    try {
+      await this.api.patch(`/skills/${d.skill.id}`, { categoryId });
+      this.detail.set({ ...d, skill: { ...d.skill, categoryId } });
+      this.toast.show(categoryId ? `Classé dans « ${this.categoryName(categoryId)} »` : 'Sans catégorie', 'success');
+    } catch (e) {
+      this.toast.error(e);
+    }
+  }
+
+  /** Lien de l'aperçu vers un autre fichier markdown du skill : ouvert dans l'éditeur. */
+  protected onPreviewClick(e: MouseEvent): void {
+    const a = (e.target as HTMLElement).closest('a');
+    const href = a?.getAttribute('href');
+    if (!href || /^([a-z]+:|#|\/\/)/i.test(href)) return;
+    const base = this.selected()?.split('/').slice(0, -1) ?? [];
+    const parts = [...base];
+    for (const seg of decodeURIComponent(href.split('#')[0]).split('/')) {
+      if (seg === '..') parts.pop();
+      else if (seg && seg !== '.') parts.push(seg);
+    }
+    const target = parts.join('/');
+    e.preventDefault();
+    if (this.files().some((f) => f.path === target)) this.select(target);
+    else this.toast.show(`Fichier introuvable dans le skill : ${target}`, 'error');
   }
 
   /** Nouveau skill : le nom du frontmatter suit le nom saisi. */
@@ -383,13 +438,14 @@ export class SkillEditor implements OnDestroy {
     const path = this.newPath.trim().replace(/^\/+|\/+$/g, '');
     if (!kind || !path) return this.creating.set(null);
     if (!isSafeSkillPath(path)) return this.toast.show('Chemin invalide (relatif, sans « .. »)', 'error');
+    if (kind === 'file' && !isMarkdownPath(path)) return this.toast.show('Seuls les fichiers markdown (.md) sont acceptés', 'error');
     if (this.exists(path)) return this.toast.show(`« ${path} » existe déjà`, 'error');
     if (kind === 'dir') {
       this.emptyDirs.update((s) => new Set([...s, path]));
       this.reveal(`${path}/x`);
       this.selectedDir.set(path);
     } else {
-      this.files.update((l) => [...l, { path, encoding: 'utf8', executable: /\.(sh|bash|py)$/.test(path), content: '', size: 0, sourcePath: null, dirty: true }]);
+      this.files.update((l) => [...l, { path, content: '', size: 0, sourcePath: null, dirty: true }]);
       this.select(path);
     }
     this.creating.set(null);
@@ -412,6 +468,7 @@ export class SkillEditor implements OnDestroy {
     const to = value.trim().replace(/^\/+|\/+$/g, '');
     if (!to || to === n.path) return;
     if (!isSafeSkillPath(to)) return this.toast.show('Chemin invalide (relatif, sans « .. »)', 'error');
+    if (n.kind === 'file' && !isMarkdownPath(to)) return this.toast.show('Seuls les fichiers markdown (.md) sont acceptés', 'error');
     const moved = (p: string) => (n.kind === 'dir' ? (p.startsWith(`${n.path}/`) ? to + p.slice(n.path.length) : p) : p === n.path ? to : p);
     const others = this.files().filter((f) => moved(f.path) === f.path);
     if (others.some((f) => f.path.toLowerCase() === to.toLowerCase() || f.path.toLowerCase().startsWith(`${to.toLowerCase()}/`))) return this.toast.show(`« ${to} » existe déjà`, 'error');
@@ -437,37 +494,33 @@ export class SkillEditor implements OnDestroy {
     this.removedOrRenamedSig.set(true);
   }
 
-  /** Téléversement dans le dossier cible ; un fichier du même nom est remplacé. */
+  /** Téléversement de fichiers markdown dans le dossier cible ; un fichier du même nom est remplacé. */
   protected async uploadFiles(e: Event): Promise<void> {
     const input = e.target as HTMLInputElement;
     const list = [...(input.files ?? [])];
     input.value = '';
+    let added = 0;
     for (const file of list) {
-      if (file.size > SKILL_LIMITS.maxFileBytes) {
-        this.toast.show(`${file.name} dépasse ${SKILL_LIMITS.maxFileBytes / 1024 / 1024} Mo`, 'error');
+      const path = this.targetDir() ? `${this.targetDir()}/${file.name}` : file.name;
+      if (!isMarkdownPath(path)) {
+        this.toast.show(`${file.name} ignoré : seuls les fichiers markdown (.md) sont acceptés`, 'error');
         continue;
       }
-      const path = this.targetDir() ? `${this.targetDir()}/${file.name}` : file.name;
-      if (!isSafeSkillPath(path)) {
-        this.toast.show(`Nom de fichier invalide : ${file.name}`, 'error');
+      if (file.size > SKILL_LIMITS.maxFileBytes || !isSafeSkillPath(path)) {
+        this.toast.show(`${file.name} refusé (taille ou nom invalide)`, 'error');
         continue;
       }
       const buf = new Uint8Array(await file.arrayBuffer());
-      const text = isTextFile(buf);
-      const entry: EditFile = {
-        path,
-        encoding: text ? 'utf8' : 'base64',
-        executable: /\.(sh|bash|py)$/.test(path),
-        content: text ? new TextDecoder().decode(buf) : toBase64(buf),
-        size: buf.length,
-        sourcePath: null,
-        dirty: true,
-      };
+      if (!isTextFile(buf)) {
+        this.toast.show(`${file.name} n’est pas un fichier texte`, 'error');
+        continue;
+      }
+      const entry: EditFile = { path, content: new TextDecoder().decode(buf), size: buf.length, sourcePath: null, dirty: true };
       this.files.update((l) => [...l.filter((f) => f.path !== path), entry]);
       this.reveal(path);
-      this.emptyDirs.update((s) => new Set([...s].filter((d) => !path.startsWith(`${d}/`))));
+      added++;
     }
-    if (list.length) this.toast.show(`${list.length} fichier(s) ajouté(s) dans ${this.targetDir() || 'la racine'}`, 'success');
+    if (added) this.toast.show(`${added} fichier(s) ajouté(s) dans ${this.targetDir() || 'la racine'}`, 'success');
   }
 
   /* ------------------------------ Enregistrement ------------------------------ */
@@ -475,8 +528,8 @@ export class SkillEditor implements OnDestroy {
   private payload(sourceRefs: boolean) {
     return this.files().map((f) =>
       sourceRefs && !f.dirty && f.sourcePath
-        ? { path: f.path, sourcePath: f.sourcePath, executable: f.executable }
-        : { path: f.path, content: f.content, encoding: f.encoding, executable: f.executable },
+        ? { path: f.path, sourcePath: f.sourcePath }
+        : { path: f.path, content: f.content },
     );
   }
 
@@ -486,12 +539,12 @@ export class SkillEditor implements OnDestroy {
     try {
       if (this.isNew()) {
         const name = this.newName.trim();
-        const r = await this.api.post<{ id: string; findings: string[] }>('/skills', { name, scope: this.newScope, files: this.payload(false) });
+        const r = await this.api.post<{ id: string; findings: string[] }>('/skills', { name, scope: this.newScope, categoryId: this.categoryId(), files: this.payload(false) });
         this.toast.show('Skill créé', 'success');
         await this.router.navigate(['/extensions/skills', r.id], { replaceUrl: true });
       } else {
-        const r = await this.api.post<{ version: number; findings: string[] }>(`/skills/${this.skillId()}/versions`, { files: this.payload(true) });
-        this.toast.show(`Version ${r.version} enregistrée`, 'success');
+        await this.api.put<{ findings: string[] }>(`/skills/${this.skillId()}/files`, { files: this.payload(true) });
+        this.toast.show('Skill enregistré', 'success');
         await this.load(this.skillId());
       }
     } catch (e) {
@@ -501,19 +554,23 @@ export class SkillEditor implements OnDestroy {
     }
   }
 
-  /** Ancienne version republiée comme nouvelle version. */
-  protected async restore(): Promise<void> {
+  protected async deleteSkill(): Promise<void> {
     const d = this.detail();
     if (!d) return;
-    this.busy.set(true);
+    const ok = await this.confirm.ask({
+      title: 'Supprimer le skill ?',
+      message: d.skill.scope === 'global' ? '{subject} sera supprimé pour tous les utilisateurs.' : '{subject} sera supprimé définitivement.',
+      subject: d.skill.name,
+      confirmLabel: 'Supprimer',
+      danger: true,
+    });
+    if (!ok) return;
     try {
-      const r = await this.api.post<{ version: number }>(`/skills/${d.skill.id}/versions`, { files: this.payload(false) });
-      this.toast.show(`Version ${d.version} restaurée (v${r.version})`, 'success');
-      await this.load(d.skill.id);
+      await this.api.delete(`/skills/${d.skill.id}`);
+      this.toast.show('Skill supprimé', 'success');
+      await this.router.navigateByUrl('/extensions');
     } catch (e) {
       this.toast.error(e);
-    } finally {
-      this.busy.set(false);
     }
   }
 
@@ -523,19 +580,20 @@ export class SkillEditor implements OnDestroy {
     input.value = '';
     if (!file) return;
     if (!this.isNew()) {
-      const ok = await this.confirm.ask({ title: 'Remplacer le contenu ?', message: 'Le contenu de {subject} sera remplacé par l’archive, dans une nouvelle version (les précédentes restent consultables).', subject: this.detail()?.skill.name, confirmLabel: 'Importer' });
+      const ok = await this.confirm.ask({ title: 'Remplacer le contenu ?', message: 'Le contenu de {subject} sera remplacé par celui de l’archive.', subject: this.detail()?.skill.name, confirmLabel: 'Remplacer' });
       if (!ok) return;
     }
     const form = new FormData();
     form.append('file', file, file.name);
     if (this.isNew()) {
       form.append('scope', this.newScope);
+      if (this.categoryId()) form.append('categoryId', this.categoryId()!);
       if (this.newName.trim()) form.append('name', this.newName.trim());
     } else form.append('skillId', this.skillId());
     this.busy.set(true);
     try {
-      const r = await this.api.upload<{ id: string; findings: string[] }>('/skills/import', form);
-      this.toast.show('Archive importée', 'success');
+      const r = await this.api.upload<{ id: string; findings: string[]; ignored: string[] }>('/skills/import', form);
+      this.toast.show(r.ignored.length ? `Archive importée — ${r.ignored.length} fichier(s) non markdown ignoré(s) : ${r.ignored.slice(0, 5).join(', ')}${r.ignored.length > 5 ? '…' : ''}` : 'Archive importée', 'success', r.ignored.length ? 12_000 : 5000);
       if (this.isNew()) await this.router.navigate(['/extensions/skills', r.id], { replaceUrl: true });
       else await this.load(this.skillId());
     } catch (err) {
@@ -547,7 +605,7 @@ export class SkillEditor implements OnDestroy {
 
   protected async exportZip(): Promise<void> {
     const d = this.detail();
-    if (d) await downloadSkillZip(this.api.base, d.skill.id, d.skill.name, d.version).catch(() => this.toast.show('Export impossible', 'error'));
+    if (d) await downloadSkillZip(this.api.base, d.skill.id, d.skill.name).catch(() => this.toast.show('Export impossible', 'error'));
   }
 
   protected async toggleEnabled(): Promise<void> {

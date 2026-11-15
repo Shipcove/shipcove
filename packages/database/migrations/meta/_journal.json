@@ -113,6 +113,20 @@
       "when": 1794755911170,
       "tag": "0015_llm_model_allowlist",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1794775139379,
+      "tag": "0016_skill_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794776725235,
+      "tag": "0017_skills_simplify",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,20 @@ import { boolean, index, integer, jsonb, pgTable, text, uniqueIndex, uuid } from
 import { createdAt, pk, ts, updatedAt } from './_common.js';
 import { users } from './iam.js';
 
+/** Catégories de skills, définies par les administrateurs (ordre d'affichage `position`). */
+export const skillCategories = pgTable(
+  'skill_categories',
+  {
+    id: pk(),
+    name: text().notNull(),
+    description: text().notNull().default(''),
+    position: integer().notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('skill_categories_name_uq').on(sql`lower(${t.name})`)],
+);
+
 export const skills = pgTable(
   'skills',
   {
@@ -11,8 +25,10 @@ export const skills = pgTable(
     description: text().notNull(),
     scope: text({ enum: ['global', 'personal'] }).notNull(),
     ownerId: uuid().references(() => users.id, { onDelete: 'cascade' }),
-    status: text({ enum: ['draft', 'pending_review', 'published', 'disabled', 'revoked'] }).notNull().default('draft'),
+    /** Disponible dès sa création ; `pending_review` si l'administrateur impose la revue des skills personnels. */
+    status: text({ enum: ['pending_review', 'published'] }).notNull().default('published'),
     source: text(),
+    categoryId: uuid().references(() => skillCategories.id, { onDelete: 'set null' }),
     latestVersion: integer().notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -34,7 +50,7 @@ export const skillVersions = pgTable(
       .notNull()
       .references(() => skills.id, { onDelete: 'cascade' }),
     version: integer().notNull(),
-    /** Fichiers (texte) du skill ; immuables par version. */
+    /** Fichiers markdown du skill ; immuables par version (d'anciennes versions ont pu contenir d'autres fichiers). */
     files: jsonb().$type<Array<{ path: string; content: string; encoding?: 'base64'; executable?: boolean }>>().notNull(),
     digest: text().notNull(),
     analysis: jsonb().$type<{ findings: string[]; scannedAt: string }>().notNull(),
