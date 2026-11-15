@@ -517,7 +517,7 @@ test('appels LLM concurrents : plafond jamais dépassé, une seule facturation p
   }
 });
 
-test('utilisateur de plusieurs équipes : quota de l’équipe propriétaire du projet, rôles distincts par équipe', async () => {
+test('utilisateur de plusieurs équipes : quota strictement personnel (un compteur par personne, aucun plafond d’équipe), rôles distincts par équipe', async () => {
   const mk = async (label) => {
     const slug = `${label}-${uid()}`;
     const t = await ctx.admin.post('/teams', { name: `${label} ${slug}`, slug });
@@ -548,22 +548,32 @@ test('utilisateur de plusieurs équipes : quota de l’équipe propriétaire du 
   assert.equal((await user.post(`/teams/${teamB}/members`, { userId: other.id, role: 'member' })).status, 204);
   assert.equal((await user.post(`/teams/${teamA}/members`, { userId: other.id, role: 'member' })).status, 403);
 
-  // Plafond de l'équipe A épuisé : le run du projet A est suspendu, celui du projet B passe.
-  assert.equal((await ctx.admin.put('/admin/quotas/policies', { scope: 'team', subjectId: teamA, limit5h: '0.001', limit7d: null, exempt: false })).status, 200);
+  // Aucun plafond d'équipe : refusé par l'API.
+  assert.equal((await ctx.admin.put('/admin/quotas/policies', { scope: 'team', subjectId: teamA, limit5h: '1', limit7d: null, exempt: false })).status, 400);
+  assert.ok(!('teams' in (await user.get('/usage')).body), 'aucun quota d’équipe exposé');
+
+  // Quota personnel épuisé : suspendu sur ses projets de A comme de B (un seul compteur personnel)…
+  assert.equal((await ctx.admin.put('/admin/quotas/policies', { scope: 'user', subjectId: user.id, limit5h: '0.001', limit7d: null, exempt: false })).status, 200);
   try {
-    const conv = await user.get(`/workspaces/${a.ws.id}/conversation`);
-    const sentA = await user.post(`/workspaces/${a.ws.id}/messages`, { text: 'Projet A' }, { 'Idempotency-Key': `f-${uid()}` });
-    if (sentA.status === 201) {
-      const ev = await user.events(a.ws.id, conv.body.lastEventId, (e) => e.runId === sentA.body.runId && ['quota.paused', 'run.completed', 'run.failed'].includes(e.type), 300_000);
-      assert.equal(ev.at(-1).type, 'quota.paused', JSON.stringify(ev.at(-1)));
-      assert.match(ev.at(-1).data.window, /team/);
-      await user.post(`/workspaces/${a.ws.id}/runs/${sentA.body.runId}/interrupt`);
-    } else {
-      assert.equal(sentA.body.error.code, 'quota_exceeded', JSON.stringify(sentA.body));
+    for (const target of [a, b]) {
+      const conv = await user.get(`/workspaces/${target.ws.id}/conversation`);
+      const sent = await user.post(`/workspaces/${target.ws.id}/messages`, { text: 'Bonjour' }, { 'Idempotency-Key': `f-${uid()}` });
+      if (sent.status === 201) {
+        const ev = await user.events(target.ws.id, conv.body.lastEventId, (e) => e.runId === sent.body.runId && ['quota.paused', 'run.completed', 'run.failed'].includes(e.type), 300_000);
+        assert.equal(ev.at(-1).type, 'quota.paused', JSON.stringify(ev.at(-1)));
+        assert.equal(ev.at(-1).data.window, '5h');
+        await user.post(`/workspaces/${target.ws.id}/runs/${sent.body.runId}/interrupt`);
+      } else {
+        assert.equal(sent.body.error.code, 'quota_exceeded', JSON.stringify(sent.body));
+      }
     }
-    await run(user, b.ws.id, 'Projet B');
+    // … sans toucher aux autres membres de ses équipes : leur quota est le leur.
+    const p = await other.post('/projects', { teamId: teamB, name: `P ${uid()}` });
+    const w = await other.post('/workspaces', { projectId: p.body.id, name: 'Coéquipier' });
+    opened.push({ client: other, id: w.body.id });
+    await run(other, w.body.id, 'Projet B, autre membre');
   } finally {
-    await ctx.admin.put('/admin/quotas/policies', { scope: 'team', subjectId: teamA, limit5h: null, limit7d: null, exempt: false });
+    await ctx.admin.put('/admin/quotas/policies', { scope: 'user', subjectId: user.id, limit5h: null, limit7d: null, exempt: false });
   }
 });
 

@@ -85,6 +85,13 @@
       "when": 1794698738481,
       "tag": "0011_agent_screenshots",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794749932446,
+      "tag": "0012_personal_quotas_only",
+      "breakpoints": true
     }
   ]
 }

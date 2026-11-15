@@ -75,8 +75,9 @@ supprimer exige une **approbation humaine**.
   - **OIDC / Keycloak**, **SAML 2.0**, **LDAP / Active Directory** ;
   - **OAuth GitHub / GitLab**, sans jamais fusionner deux comptes par leur email.
 - **Modèles LiteLLM** : droits par équipe et coefficients versionnés.
-- **Quotas** : fenêtres glissantes de 5 h et 7 j, par utilisateur et par équipe. Ils sont présentés
-  en **pourcentage** aux utilisateurs, et une réservation est faite avant chaque appel.
+- **Quotas personnels** : fenêtres glissantes de 5 h et 7 j, un compteur par personne (aucun plafond
+  d'équipe). Ils sont présentés en **pourcentage** aux utilisateurs, et une réservation est faite
+  avant chaque appel.
 - **Forges Git** (applications OAuth), **catalogue d'images** et **catalogue de services**.
 - **Rétention** des données avec gel légal, **audit** exportable, console d'administration complète.
 

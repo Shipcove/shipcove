@@ -63,7 +63,7 @@ export const quotaPolicies = pgTable(
   'quota_policies',
   {
     id: pk(),
-    scope: text({ enum: ['global_user_default', 'user', 'team'] }).notNull(),
+    scope: text({ enum: ['global_user_default', 'user'] }).notNull(),
     subjectId: uuid(),
     limit5h: credits(),
     limit7d: credits(),

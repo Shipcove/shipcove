@@ -92,7 +92,6 @@ export class AdminUsers implements OnInit {
         <td class="text-right"><button class="btn-ghost !py-0.5 text-xs text-red-600" (click)="remove(t['id'])">Supprimer</button></td></tr>
       }</tbody>
     </table></div>
-    <p class="mt-3 text-sm text-stone-500">Plafonds de crédits d’équipe (optionnels) : <a routerLink="/admin/quotas" class="underline">Quotas</a>.</p>
   `,
 })
 export class AdminTeams implements OnInit {

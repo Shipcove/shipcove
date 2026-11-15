@@ -292,14 +292,14 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     if (quotaReject) {
       // Fenêtre réellement en cause : celle du refus de réservation par la passerelle (une
       // réservation peut dépasser le reste disponible sans que la fenêtre soit à zéro).
-      const check = await this.quotas.canProceed(run.userId, ws.teamId);
+      const check = await this.quotas.canProceed(run.userId);
       const window = quotaReject.window ?? check.window ?? 'disabled';
       await this.db.update(agentRuns).set({ status: 'paused_quota', pausedReason: window, leaseExpiresAt: null }).where(eq(agentRuns.id, runId));
       await this.events.emit(ws.id, 'quota.paused', { window, resetsAt: check.window === window ? (check.resetsAt?.toISOString() ?? null) : null }, runId);
       await this.notifications.notify({
         userId: run.userId,
         type: 'quota.reached',
-        title: window.startsWith('team') ? 'Quota de l’équipe atteint' : 'Quota atteint',
+        title: 'Quota atteint',
         body: 'L’agent a été suspendu proprement. Vous pourrez reprendre lorsque votre quota sera de nouveau disponible.',
         link: `/workspaces/${ws.id}`,
         dedupeKey: `quota:${runId}`,
@@ -374,7 +374,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
   }
 
   /** Dernier refus de quota du run (10 min), avec la fenêtre en cause. */
-  private async recentQuotaRejection(runId: string): Promise<{ window: '5h' | '7d' | 'team_5h' | 'team_7d' | 'disabled' | null } | null> {
+  private async recentQuotaRejection(runId: string): Promise<{ window: '5h' | '7d' | 'disabled' | null } | null> {
     const [row] = await this.db
       .select({ error: llmRequests.error })
       .from(llmRequests)
@@ -382,8 +382,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       .orderBy(desc(llmRequests.createdAt))
       .limit(1);
     if (!row) return null;
-    const m = /\((team_5h|team_7d|5h|7d|disabled)\)/.exec(row.error ?? '');
-    return { window: (m?.[1] as '5h' | '7d' | 'team_5h' | 'team_7d' | 'disabled' | undefined) ?? null };
+    const m = /\((5h|7d|disabled)\)/.exec(row.error ?? '');
+    return { window: (m?.[1] as '5h' | '7d' | 'disabled' | undefined) ?? null };
   }
 
   private async finish(runId: string, workspaceId: string, status: 'completed' | 'failed' | 'interrupted', error: string | null): Promise<void> {

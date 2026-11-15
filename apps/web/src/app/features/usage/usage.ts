@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import type { QuotaWindowDto, UsageBreakdownDto, UsageRequestDto, UsageSummaryDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
@@ -23,11 +23,6 @@ import { QUOTA_DANGER, QUOTA_WARN, formatReset, quotaBarClass, quotaPct, quotaTe
           <div class="card p-4"><div class="mb-3 font-medium">Vos quotas</div>
             @for (w of s.user.windows; track w.window) { <ng-container *ngTemplateOutlet="bar; context: { $implicit: w, label: label(w.window) }" /> }
           </div>
-          @for (t of teamsWithLimits(); track t.teamId) {
-            <div class="card p-4"><div class="mb-3 font-medium">Équipe {{ t.teamName }}</div>
-              @for (w of t.windows; track w.window) { <ng-container *ngTemplateOutlet="bar; context: { $implicit: w, label: label(w.window) }" /> }
-            </div>
-          }
         </div>
       }
       <ng-template #bar let-w let-label="label">
@@ -81,7 +76,6 @@ export class UsagePage implements OnInit {
   protected readonly summary = signal<UsageSummaryDto | null>(null);
   protected readonly breakdown = signal<UsageBreakdownDto | null>(null);
   protected readonly requests = signal<UsageRequestDto[]>([]);
-  protected readonly teamsWithLimits = computed(() => (this.summary()?.teams ?? []).filter((t) => t.windows.some((w) => quotaPct(w) !== null)));
 
   protected readonly pct = quotaPct;
   protected readonly barClass = quotaBarClass;

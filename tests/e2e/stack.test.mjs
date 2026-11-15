@@ -231,7 +231,12 @@ test('quotas : réservation refusée → run suspendu proprement, puis reprise',
   await ctx.admin.put('/admin/quotas/policies', { scope: 'user', subjectId: ctx.userId, limit5h: null, limit7d: null, exempt: true });
 });
 
-test('previews : 3 ports par défaut, le 4e refusé ; jeton requis sur l’origine distincte', async () => {
+test('previews : 3 ports par défaut, le 4e refusé ; jeton requis sur l’origine distincte', async (t) => {
+  // Réglage de l'instance conservé : previews activées le temps du test seulement.
+  const before = (await ctx.admin.get('/admin/settings')).body.previews;
+  await ctx.admin.req('PATCH', '/admin/settings', { section: 'previews', values: { ...before, enabled: true, maxPortsPerWorkspace: 3 } });
+  t.after(() => ctx.admin.req('PATCH', '/admin/settings', { section: 'previews', values: before }));
+  await new Promise((r) => setTimeout(r, 1500));
   for (const port of [3001, 3002, 3003]) assert.equal((await ctx.dev.post(`/workspaces/${ctx.ws.id}/previews`, { port })).status, 201);
   const fourth = await ctx.dev.post(`/workspaces/${ctx.ws.id}/previews`, { port: 3004 });
   assert.equal(fourth.status, 409);

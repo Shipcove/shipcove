@@ -188,7 +188,7 @@ export class ConversationController {
         return { messageId: m.id, runId: active.id };
       }
       // Pas de lancement si le quota est déjà atteint (vérification préalable, l'autorité reste la gateway).
-      const quota = await this.quotas.canProceed(user.id, w.teamId);
+      const quota = await this.quotas.canProceed(user.id);
       if (!quota.ok) throw new AppError('quota_exceeded', 'Quota atteint', { window: quota.window, resetsAt: quota.resetsAt });
       return this.db.transaction(async (tx) => {
         const [m] = await tx.insert(messages).values({ conversationId: conv.id, role: 'user', authorId: user.id, text: body.text, meta: answersMeta(body) }).returning();
@@ -255,7 +255,7 @@ export class ConversationController {
   @HttpCode(202)
   async resume(@Param('id', uuid) id: string, @Param('runId', uuid) runId: string, @CurrentUser() user: AuthUser) {
     const w = await this.access.requireWorkspaceOwner(user, id);
-    const check = await this.quotas.canProceed(user.id, w.teamId);
+    const check = await this.quotas.canProceed(user.id);
     if (!check.ok) throw new AppError('quota_exceeded', 'Quota toujours atteint', { window: check.window, resetsAt: check.resetsAt });
     const [r] = await this.db
       .update(agentRuns)

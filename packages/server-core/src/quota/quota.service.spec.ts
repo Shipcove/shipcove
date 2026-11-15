@@ -67,10 +67,14 @@ describe('QuotaService (intégration PostgreSQL)', () => {
     expect(w5.remaining).toBe('9.40000000');
   });
 
-  it('applique le plafond d’équipe optionnel', async () => {
-    await db.insert(quotaPolicies).values({ scope: 'team', subjectId: teamId, limit5h: '3', limit7d: null });
+  it('quota personnel : un seul compteur par personne, quelle que soit l’équipe du projet ; aucun plafond d’équipe', async () => {
+    const [{ id: otherTeam }] = await db.insert(teams).values({ name: 'T2', slug: `t2-${Date.now()}` }).returning();
+    await db.insert(quotaPolicies).values({ scope: 'user', subjectId: userId, limit5h: '3', limit7d: null });
     await svc.reserve(reserveInput());
-    await expect(svc.reserve(reserveInput())).rejects.toMatchObject({ window: 'team_5h' });
+    // Projet d'une autre équipe de la même personne : son compteur personnel est déjà entamé.
+    await expect(svc.reserve({ ...reserveInput(), teamId: otherTeam })).rejects.toMatchObject({ window: '5h' });
+    // Une politique d'équipe active est refusée par la base.
+    await expect(db.insert(quotaPolicies).values({ scope: 'team' as never, subjectId: teamId, limit5h: '1', limit7d: null })).rejects.toThrow();
   });
 
   it('respecte exemptions et désactivation', async () => {

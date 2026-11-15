@@ -57,7 +57,7 @@ export interface AgentEventDataMap {
   'approval.required': { approvalId: string; action: GitActionKind; summary: string };
   'approval.resolved': { approvalId: string; decision: 'approved' | 'rejected' | 'expired' };
   'git.operation': { operationId: string; action: GitActionKind; status: string; detail: string | null };
-  'quota.paused': { window: '5h' | '7d' | 'team_5h' | 'team_7d' | 'disabled'; resetsAt: string | null };
+  'quota.paused': { window: '5h' | '7d' | 'disabled'; resetsAt: string | null };
   'quota.resumed': Record<string, never>;
   /** Pourcentages uniquement : remplissage du contexte (les quotas se relisent via GET /usage). */
   'usage.updated': { contextPercent?: number | null };

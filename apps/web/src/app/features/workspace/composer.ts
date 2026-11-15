@@ -278,7 +278,7 @@ export class Composer {
     return this.slashCommands().filter((c) => c.command.slice(1).toLowerCase().includes(q));
   });
 
-  /** Fenêtres de quota en pourcentage (utilisateur puis équipes avec plafond) ; jamais de crédits. */
+  /** Fenêtres du quota personnel en pourcentage ; jamais de crédits. */
   protected readonly warnAt = QUOTA_WARN;
   protected readonly dangerAt = QUOTA_DANGER;
   protected readonly barClass = quotaBarClass;
@@ -288,7 +288,6 @@ export class Composer {
     const u = this.store.usage();
     if (!u) return [];
     const rows = u.user.windows.map((w) => this.row(w, windowLabel(w.window)));
-    for (const t of u.teams) for (const w of t.windows) if (w.percent !== null) rows.push(this.row(w, `Équipe ${t.teamName} · ${w.window === '5h' ? '5 h' : '7 j'}`));
     return rows;
   });
   protected readonly usagePct = computed(() => Math.max(0, ...this.usageRows().map((r) => r.pct ?? 0)));
@@ -307,8 +306,6 @@ export class Composer {
     const labels: Record<string, string> = {
       '5h': 'Quota atteint (limite de 5 heures)',
       '7d': 'Quota atteint (7 jours glissants)',
-      team_5h: 'Quota de l’équipe atteint (limite de 5 heures)',
-      team_7d: 'Quota de l’équipe atteint (7 jours glissants)',
     };
     return labels[window] ?? 'Quota atteint';
   }

@@ -35,9 +35,8 @@ interface Policy {
       } @empty { <tr><td colspan="7" class="text-stone-500">Aucune politique : consommation illimitée.</td></tr> }</tbody>
     </table></div>
     <form class="card mt-3 grid gap-2 p-4 md:grid-cols-6" (ngSubmit)="savePolicy()">
-      <select class="input" name="sc" [(ngModel)]="p.scope"><option value="global_user_default">Défaut par utilisateur</option><option value="user">Utilisateur</option><option value="team">Équipe</option></select>
+      <select class="input" name="sc" [(ngModel)]="p.scope"><option value="global_user_default">Défaut par utilisateur</option><option value="user">Utilisateur</option></select>
       @if (p.scope === 'user') { <select class="input md:col-span-2" name="su" [(ngModel)]="p.subjectId">@for (u of users(); track u.id) { <option [value]="u.id">{{ u.displayName }} ({{ u.email }})</option> }</select> }
-      @if (p.scope === 'team') { <select class="input md:col-span-2" name="st" [(ngModel)]="p.subjectId">@for (t of teams(); track t['id']) { <option [value]="t['id']">{{ t['name'] }}</option> }</select> }
       <input class="input" name="l5" placeholder="limite 5 h (vide = ∞)" [(ngModel)]="p.limit5h" />
       <input class="input" name="l7" placeholder="limite 7 j (vide = ∞)" [(ngModel)]="p.limit7d" />
       <label class="flex items-center gap-1 text-sm"><input type="checkbox" name="ex" [(ngModel)]="p.exempt" /> Exempté</label>

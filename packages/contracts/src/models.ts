@@ -80,10 +80,9 @@ export function toQuotaWindow(w: WindowUsageDto): QuotaWindowDto {
   return { window: w.window, percent, resetsAt: percent === null ? null : w.resetsAt };
 }
 
+/** Quotas personnels uniquement (aucun plafond d'équipe). */
 export interface UsageSummaryDto {
   user: { windows: QuotaWindowDto[] };
-  /** Équipes de l'utilisateur ayant un plafond. */
-  teams: Array<{ teamId: string; teamName: string; windows: QuotaWindowDto[] }>;
   quotasEnabled: boolean;
 }
 
@@ -124,7 +123,8 @@ export interface LlmRequestDto {
 }
 
 export const QuotaPolicyInputSchema = z.object({
-  scope: z.enum(['global_user_default', 'user', 'team']),
+  /** Quotas personnels : limite par défaut pour tous, ou propre à un utilisateur. */
+  scope: z.enum(['global_user_default', 'user']),
   subjectId: z.uuid().nullable().default(null),
   limit5h: DecimalStringSchema.nullable(),
   limit7d: DecimalStringSchema.nullable(),

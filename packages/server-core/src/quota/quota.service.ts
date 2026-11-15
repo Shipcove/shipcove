@@ -23,7 +23,7 @@ export type WindowKey = (typeof WINDOWS)[number]['key'];
 
 export class QuotaExceededError extends Error {
   constructor(
-    readonly window: '5h' | '7d' | 'team_5h' | 'team_7d' | 'disabled',
+    readonly window: '5h' | '7d' | 'disabled',
     readonly resetsAt: Date | null,
   ) {
     super(`Quota de crédits atteint (${window})`);
@@ -106,7 +106,7 @@ export class QuotaService {
       );
 
       if (settings.enabled) {
-        await this.lockSubjects(tx, input.userId, input.teamId);
+        await this.lockSubjects(tx, input.userId);
         const userLimits = await this.userLimits(tx, input.userId);
         if (!userLimits.exempt) {
           for (const w of WINDOWS) {
@@ -115,23 +115,6 @@ export class QuotaService {
             const used = await this.usedInWindow(tx, 'user', input.userId, w.ms);
             if (used.add(amount).gt(limit)) {
               return { rejected: new QuotaExceededError(w.key, await this.resetsAt(tx, 'user', input.userId, w.ms)), litellmModel: model.litellmModel, coefficientId: coeff.id };
-            }
-          }
-        }
-        if (input.teamId) {
-          const team = await this.teamLimits(tx, input.teamId);
-          if (team && !team.exempt) {
-            for (const w of WINDOWS) {
-              const limit = w.key === '5h' ? team.limit5h : team.limit7d;
-              if (limit === null) continue;
-              const used = await this.usedInWindow(tx, 'team', input.teamId, w.ms);
-              if (used.add(amount).gt(limit)) {
-                return {
-                  rejected: new QuotaExceededError(w.key === '5h' ? 'team_5h' : 'team_7d', await this.resetsAt(tx, 'team', input.teamId, w.ms)),
-                  litellmModel: model.litellmModel,
-                  coefficientId: coeff.id,
-                };
-              }
             }
           }
         }
@@ -294,25 +277,13 @@ export class QuotaService {
     return this.windowsFor('user', userId, limits);
   }
 
-  async teamWindows(teamId: string): Promise<WindowUsageDto[]> {
-    const limits = (await this.teamLimits(this.db, teamId)) ?? { limit5h: null, limit7d: null, exempt: false };
-    return this.windowsFor('team', teamId, limits);
-  }
-
-  /** Le sujet peut-il reprendre (toutes fenêtres sous la limite) ? */
-  async canProceed(userId: string, teamId: string | null): Promise<{ ok: boolean; window?: QuotaExceededError['window']; resetsAt?: Date | null }> {
+  /** L'utilisateur peut-il reprendre (toutes ses fenêtres sous la limite) ? Les quotas sont personnels. */
+  async canProceed(userId: string): Promise<{ ok: boolean; window?: QuotaExceededError['window']; resetsAt?: Date | null }> {
     const settings = await this.settings.section('quotas');
     if (!settings.enabled) return { ok: true };
     for (const w of await this.userWindows(userId)) {
       if (!w.exempt && w.remaining !== null && new Decimal(w.remaining).lte(0)) {
         return { ok: false, window: w.window, resetsAt: w.resetsAt ? new Date(w.resetsAt) : null };
-      }
-    }
-    if (teamId) {
-      for (const w of await this.teamWindows(teamId)) {
-        if (!w.exempt && w.remaining !== null && new Decimal(w.remaining).lte(0)) {
-          return { ok: false, window: w.window === '5h' ? 'team_5h' : 'team_7d', resetsAt: w.resetsAt ? new Date(w.resetsAt) : null };
-        }
       }
     }
     return { ok: true };
@@ -337,8 +308,8 @@ export class QuotaService {
     return out;
   }
 
-  private async lockSubjects(tx: Tx, userId: string, teamId: string | null): Promise<void> {
-    const keys = [`user:${userId}`, ...(teamId ? [`team:${teamId}`] : [])].sort();
+  private async lockSubjects(tx: Tx, userId: string): Promise<void> {
+    const keys = [`user:${userId}`];
     for (const k of keys) {
       await tx.execute(sql`insert into quota_locks(subject_key) values (${k}) on conflict do nothing`);
     }
@@ -362,14 +333,6 @@ export class QuotaService {
     const p = own ?? def;
     if (!p) return { limit5h: null, limit7d: null, exempt: false };
     return { limit5h: p.limit5h, limit7d: p.limit7d, exempt: p.exempt };
-  }
-
-  private async teamLimits(tx: Tx | Database, teamId: string): Promise<Limits | null> {
-    const [p] = await tx
-      .select()
-      .from(quotaPolicies)
-      .where(and(eq(quotaPolicies.active, true), eq(quotaPolicies.scope, 'team'), eq(quotaPolicies.subjectId, teamId)));
-    return p ? { limit5h: p.limit5h, limit7d: p.limit7d, exempt: p.exempt } : null;
   }
 
   private async usedInWindow(tx: Tx, kind: 'user' | 'team', id: string, ms: number): Promise<Decimal> {

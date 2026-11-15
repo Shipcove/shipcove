@@ -72,20 +72,13 @@ export class UsageController {
   ) {}
 
   /**
-   * Quotas de l'utilisateur et de ses équipes plafonnées, en pourcentage uniquement :
-   * les crédits (unité interne de pondération) ne sont visibles que de l'administration.
+   * Quotas personnels de l'utilisateur, en pourcentage uniquement : les crédits (unité interne de
+   * pondération) ne sont visibles que de l'administration.
    */
   @Get()
   async summary(@CurrentUser() user: AuthUser): Promise<UsageSummaryDto> {
-    const myTeams = await this.db
-      .select({ id: teams.id, name: teams.name })
-      .from(teamMembers)
-      .innerJoin(teams, eq(teams.id, teamMembers.teamId))
-      .where(and(eq(teamMembers.userId, user.id), isNull(teams.deletedAt)));
-    const teamRows = await Promise.all(myTeams.map(async (t) => ({ teamId: t.id, teamName: t.name, windows: (await this.quotas.teamWindows(t.id)).map(toQuotaWindow) })));
     return {
       user: { windows: (await this.quotas.userWindows(user.id)).map(toQuotaWindow) },
-      teams: teamRows.filter((t) => t.windows.some((w) => w.percent !== null)),
       quotasEnabled: (await this.settings.section('quotas')).enabled,
     };
   }
