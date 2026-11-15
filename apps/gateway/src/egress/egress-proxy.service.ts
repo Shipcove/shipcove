@@ -57,7 +57,13 @@ export class EgressProxyService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     const server = http.createServer((req, res) => void this.handleHttp(req, res));
-    server.on('connect', (req, socket, head) => void this.handleConnect(req, socket as net.Socket, head));
+    server.on('connect', (req, socket, head) => {
+      const client = socket as net.Socket;
+      // Gestionnaire posé avant toute étape asynchrone (DNS, forges) : un client qui coupe
+      // brutalement (délai dépassé, RST) ne doit jamais faire tomber la passerelle.
+      client.on('error', () => client.destroy());
+      void this.handleConnect(req, client, head).catch(() => client.destroy());
+    });
     server.on('clientError', (_err, socket) => socket.destroy());
     server.listen(this.env.EGRESS_PORT, '0.0.0.0', () => this.logger.log(`Proxy d'egress à l'écoute sur :${this.env.EGRESS_PORT}`));
     this.server = server;

@@ -43,7 +43,11 @@ export class PreviewProxyService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     this.server = http.createServer((req, res) => void this.handle(req, res));
-    this.server.on('upgrade', (req, socket, head) => void this.upgrade(req, socket as net.Socket, head));
+    this.server.on('upgrade', (req, socket, head) => {
+      // Gestionnaire posé avant l'autorisation (asynchrone) : un client qui coupe ne fait pas tomber le service.
+      socket.on('error', () => socket.destroy());
+      void this.upgrade(req, socket as net.Socket, head).catch(() => socket.destroy());
+    });
     this.server.listen(this.env.PORT, '0.0.0.0', () => this.logger.log(`Preview gateway à l'écoute sur :${this.env.PORT}`));
   }
 
