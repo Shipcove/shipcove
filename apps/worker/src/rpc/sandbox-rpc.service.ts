@@ -51,7 +51,17 @@ export class SandboxRpcService implements OnApplicationBootstrap {
       case 'workspace.stop':
         return this.sandboxes.stop(p.workspaceId, p.reason ?? 'user', { force: p.force });
       case 'workspace.delete': {
-        // Suppression définitive demandée : la sandbox est détruite sans checkpoint final.
+        // Suppression définitive : on laisse d'abord un run interrompu se terminer (sinon il
+        // écrirait dans une conversation effacée), puis la sandbox est détruite sans checkpoint final.
+        for (let i = 0; i < 60; i++) {
+          const [active] = await this.db
+            .select({ id: agentRuns.id })
+            .from(agentRuns)
+            .where(and(eq(agentRuns.workspaceId, p.workspaceId), inArray(agentRuns.status, ['queued', 'running', 'interrupting'])))
+            .limit(1);
+          if (!active) break;
+          await new Promise((r) => setTimeout(r, 1000));
+        }
         await this.sandboxes.stop(p.workspaceId, 'suppression', { force: true });
         await this.retention.hardDeleteWorkspace(p.workspaceId);
         return { deleted: true };

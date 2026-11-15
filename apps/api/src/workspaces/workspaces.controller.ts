@@ -134,13 +134,26 @@ export class WorkspacesController {
     await this.db.update(workspaces).set({ status: 'ready', archivedAt: null }).where(eq(workspaces.id, id));
   }
 
-  /** Suppression : logique immédiate puis définitive (fichiers, checkpoints, conversation) par le worker. */
+  /**
+   * Suppression : immédiate pour l'utilisateur, puis définitive par le worker (sandbox et ses
+   * services, checkpoints et état de Pi sur S3, pièces jointes et captures, conversation, runs,
+   * événements). Un run en cours est interrompu et la file d'attente annulée.
+   */
   @Delete(':id')
   @HttpCode(204)
   async remove(@Param('id', uuid) id: string, @CurrentUser() user: AuthUser, @ReqCtx() ctx: RequestContext) {
     await this.access.requireWorkspaceOwner(user, id);
-    await this.assertNoActiveRun(id);
     await this.db.update(workspaces).set({ deletedAt: new Date() }).where(eq(workspaces.id, id));
+    await this.db
+      .update(agentRuns)
+      .set({ status: 'interrupted', endedAt: new Date(), error: 'Conversation supprimée' })
+      .where(and(eq(agentRuns.workspaceId, id), inArray(agentRuns.status, ['queued', 'paused_quota'])));
+    const running = await this.db
+      .update(agentRuns)
+      .set({ status: 'interrupting' })
+      .where(and(eq(agentRuns.workspaceId, id), eq(agentRuns.status, 'running')))
+      .returning({ id: agentRuns.id });
+    for (const r of running) await this.db.execute(sql`select pg_notify('cap_run_control', ${JSON.stringify({ runId: r.id, action: 'interrupt' })})`);
     await this.rpc.fire({ op: 'workspace.delete', workspaceId: id });
     await this.audit.record({ actorId: user.id, action: 'workspace.delete', targetType: 'workspace', targetId: id, ip: ctx.ip });
   }

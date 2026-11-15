@@ -51,7 +51,7 @@ export class RunQueueService {
         if (!m) return null;
         const [conv] = await tx.select().from(conversations).where(eq(conversations.id, conversationId));
         const [w] = await tx.select().from(workspaces).where(eq(workspaces.id, conv.workspaceId));
-        if (!w || w.status === 'archived') return null;
+        if (!w || w.status === 'archived' || w.deletedAt) return null;
         const [run] = await tx
           .insert(agentRuns)
           .values({

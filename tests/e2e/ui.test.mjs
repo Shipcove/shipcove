@@ -207,6 +207,20 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     assert.ok(overflow.scroll <= overflow.client && overflow.wider === 0, `débordement horizontal : ${JSON.stringify(overflow)}`);
     await page.screenshot({ path: new URL('long-text.png', OUT).pathname });
 
+    // Suppression depuis la barre latérale : corbeille visible au survol seulement, confirmation, retour à l'accueil.
+    const item = page.locator('nav[aria-label="Conversations"] div.group\\/item', { hasText: 'Conversation UI' });
+    const trash = item.locator('button[aria-label^="Supprimer"]');
+    assert.equal(await trash.isVisible(), false, 'corbeille masquée hors survol');
+    await item.hover();
+    await trash.waitFor({ state: 'visible' });
+    await page.screenshot({ path: new URL('sidebar-delete.png', OUT).pathname, clip: { x: 0, y: 0, width: 300, height: 260 } });
+    page.once('dialog', (d) => d.accept());
+    await trash.click();
+    await page.waitForURL(`${BASE}/`);
+    await page.waitForSelector('text=Conversation supprimée');
+    assert.equal(await page.locator('nav[aria-label="Conversations"] a:has-text("Conversation UI")').count(), 0);
+    await page.waitForTimeout(1500); // aucune requête résiduelle vers la conversation supprimée (404 relevé sinon)
+
     assert.deepEqual(issues, [], `erreurs/violations CSP :\n${issues.join('\n')}`);
   } finally {
     await browser.close();

@@ -5,6 +5,7 @@ import { test, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { BASE, Client, adminClient, uid } from './client.mjs';
 
 const STATE_FILE = new URL('./.e2e-state.json', import.meta.url);
@@ -932,4 +933,61 @@ test('questions de Pi (plugin ask) : formulaire dans la conversation, réponse r
   const msg = reloaded.body.messages.find((m) => m.meta?.kind === 'answers');
   assert.equal(msg.meta.toolCallId, done.data.toolCallId);
   assert.match(msg.text, /Équipes internes/);
+});
+
+/** Objets S3 restants sous un préfixe (identifiants lus dans Vault, environnement de développement). */
+async function s3Count(bucket, prefix) {
+  const { S3Client, ListObjectsV2Command } = createRequire(new URL('../../packages/storage/package.json', import.meta.url))('@aws-sdk/client-s3');
+  const init = JSON.parse(readFileSync(new URL('../../infrastructure/docker/.secrets/vault-init.json', import.meta.url), 'utf8'));
+  const creds = JSON.parse(execFileSync('docker', ['exec', '-e', `VAULT_TOKEN=${init.root_token}`, '-e', 'VAULT_ADDR=http://127.0.0.1:8200', 'cap-vault-1', 'vault', 'kv', 'get', '-format=json', 'cap/infra/s3'], { encoding: 'utf8' })).data.data;
+  const s3 = new S3Client({ endpoint: process.env.CAP_E2E_S3_URL ?? 'http://127.0.0.1:3900', region: 'garage', forcePathStyle: true, credentials: creds });
+  const r = await s3.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix }));
+  return r.KeyCount ?? 0;
+}
+
+test('suppression d’une conversation pendant un run : tout est effacé (sandbox, volumes, sauvegardes S3, pièces jointes, historique)', async () => {
+  const user = await newUser();
+  const ws = await workspace(user, 'À supprimer');
+  await run(user, ws.id, 'Écris. [[tool:bash {"command":"echo contenu > a.txt && mkdir -p d && echo b > d/b.txt"}]]');
+  const up = await upload(user, ws.id, [{ name: 'image.png', type: 'image/png', data: PNG_1PX }]);
+  assert.equal(up.status, 201, JSON.stringify(up.body));
+  const attKey = sql(`select storage_key from attachments where workspace_id = '${ws.id}' limit 1`);
+  assert.ok(attKey);
+  assert.ok((await s3Count('cap-workspaces', `workspaces/${ws.id}/`)) > 0, 'sauvegardes présentes avant');
+  const sandbox = sql(`select external_id from sandbox_instances where workspace_id = '${ws.id}' and status = 'running'`);
+  assert.ok(sandbox, 'sandbox active');
+  const volumes = () => execFileSync('docker', ['inspect', '-f', '{{range .Mounts}}{{.Name}} {{end}}', sandbox], { encoding: 'utf8' }).trim().split(' ').filter(Boolean);
+  const vols = volumes();
+  assert.equal(vols.length, 3);
+
+  // Pi travaille, un message attend dans la file : la suppression interrompt et annule tout.
+  const conv = await user.get(`/workspaces/${ws.id}/conversation`);
+  const long = await user.post(`/workspaces/${ws.id}/messages`, { text: 'Longue tâche. [[sleep:30000]]' }, { 'Idempotency-Key': `f-${uid()}` });
+  await user.events(ws.id, conv.body.lastEventId, (e) => e.type === 'run.started' && e.runId === long.body.runId, 120_000);
+  await user.post(`/workspaces/${ws.id}/messages`, { text: 'En attente', delivery: 'follow_up' }, { 'Idempotency-Key': `f-${uid()}` });
+  const other = await newUser();
+  assert.equal((await other.del(`/workspaces/${ws.id}`)).status, 404, 'seul le propriétaire supprime');
+  assert.equal((await user.del(`/workspaces/${ws.id}`)).status, 204);
+  // Effet immédiat pour l'utilisateur.
+  assert.ok(!(await user.get('/workspaces')).body.some((w) => w.id === ws.id));
+  assert.equal((await user.get(`/workspaces/${ws.id}`)).status, 404);
+  assert.equal((await user.del(`/workspaces/${ws.id}`)).status, 404);
+
+  // Purge définitive par le worker.
+  let gone = false;
+  for (let i = 0; i < 90 && !gone; i++) {
+    gone = sql(`select count(*) from workspaces where id = '${ws.id}'`) === '0';
+    if (!gone) await new Promise((r) => setTimeout(r, 1000));
+  }
+  assert.ok(gone, 'conversation effacée de la base');
+  for (const table of ['conversations', 'agent_runs', 'agent_events', 'attachments', 'sandbox_instances', 'workspace_snapshots', 'preview_ports']) {
+    assert.equal(sql(`select count(*) from ${table} where workspace_id = '${ws.id}'`), '0', `${table} vidée`);
+  }
+  assert.equal(execFileSync('docker', ['ps', '-aq', '--filter', `label=cap.workspace=${ws.id}`], { encoding: 'utf8' }).trim(), '', 'conteneur de sandbox détruit');
+  const leftVols = execFileSync('docker', ['volume', 'ls', '-q'], { encoding: 'utf8' }).split('\n');
+  assert.ok(!vols.some((v) => leftVols.includes(v)), 'volumes de la sandbox détruits');
+  assert.equal(await s3Count('cap-workspaces', `workspaces/${ws.id}/`), 0, 'sauvegardes S3 effacées');
+  assert.equal(await s3Count('cap-attachments', attKey), 0, 'pièce jointe effacée');
+  // La consommation reste comptée (quota personnel), sans référence à un contenu.
+  assert.ok(Number(sql(`select count(*) from llm_requests where workspace_id = '${ws.id}'`)) > 0);
 });

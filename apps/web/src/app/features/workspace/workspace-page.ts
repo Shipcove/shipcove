@@ -228,7 +228,7 @@ export class WorkspacePage implements OnDestroy {
 
   protected async remove(): Promise<void> {
     const ws = this.store.workspace();
-    if (!ws || !confirm(`Supprimer définitivement « ${ws.name} » ? Les fichiers de la sandbox et l’historique seront effacés.`)) return;
+    if (!ws || !confirm(`Supprimer définitivement « ${ws.name} » ?\n\nLa sandbox, ses sauvegardes, les fichiers, pièces jointes et tout l’historique seront effacés.${this.store.activeRun() ? '\nPi est en train de travailler : sa tâche sera interrompue.' : ''}`)) return;
     try {
       await this.api.delete(`/workspaces/${ws.id}`);
       this.conversations.remove(ws.id);
