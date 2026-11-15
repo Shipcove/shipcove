@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RepositoryRefSchema, type RepositoryDto } from './repositories.js';
 
 /**
  * Cycle de vie logique d'un workspace (indépendant de la sandbox, éphémère).
@@ -39,12 +40,14 @@ export type ThinkingLevel = z.infer<typeof ThinkingLevelSchema>;
 export const AgentModeSchema = z.enum(['autonomous', 'plan']);
 export type AgentMode = z.infer<typeof AgentModeSchema>;
 
+/** Nouvelle conversation, éventuellement associée à un dépôt Git. */
 export const CreateWorkspaceSchema = z.object({
-  projectId: z.uuid(),
-  name: z.string().min(1).max(120),
-  /** Branche à cloner si le projet a un dépôt (défaut : branche par défaut). */
-  branch: z.string().min(1).max(255).optional(),
+  repository: RepositoryRefSchema.optional(),
+  /** Titre initial (sinon généré à partir du premier message). */
+  name: z.string().min(1).max(120).optional(),
   modelId: z.uuid().optional(),
+  agentMode: AgentModeSchema.optional(),
+  thinkingLevel: ThinkingLevelSchema.optional(),
 });
 export type CreateWorkspace = z.infer<typeof CreateWorkspaceSchema>;
 
@@ -57,11 +60,12 @@ export const UpdateWorkspaceSchema = z.object({
 
 export interface WorkspaceDto {
   id: string;
-  projectId: string;
-  projectName: string;
-  teamId: string;
   ownerId: string;
+  /** Titre de la conversation. */
   name: string;
+  titleSource: 'auto' | 'user';
+  /** Dépôt associé (facultatif). */
+  repository: RepositoryDto | null;
   status: WorkspaceStatus;
   syncState: SyncState;
   branch: string | null;

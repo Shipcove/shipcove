@@ -12,7 +12,7 @@
 
       <div class="cards">
         <a class="card-link" href="/quickstart.html"><strong>Démarrage rapide →</strong><span>Lancer la plateforme en quelques minutes à partir des images publiées.</span></a>
-        <a class="card-link" href="/guide.html"><strong>Guide utilisateur →</strong><span>Workspaces, conversation, modifications, Git, previews.</span></a>
+        <a class="card-link" href="/guide.html"><strong>Guide utilisateur →</strong><span>Conversations, dépôts, modifications, Git, previews.</span></a>
         <a class="card-link" href="/administration.html"><strong>Administration →</strong><span>Modèles, quotas, identité, forges Git, sandboxes et services.</span></a>
         <a class="card-link" href="/securite.html"><strong>Sécurité →</strong><span>Isolation des sandboxes, secrets, approbations, confidentialité.</span></a>
       </div>
@@ -29,8 +29,8 @@
 
       <h2>Comment ça marche</h2>
       <ol>
-        <li>Vous écrivez une demande dans la conversation d’un workspace.</li>
-        <li>La plateforme démarre (ou réutilise) la sandbox du workspace, restaure ses fichiers et l’état de Pi.</li>
+        <li>Vous écrivez une demande dans une conversation, liée ou non à un dépôt Git.</li>
+        <li>La plateforme démarre (ou réutilise) la sandbox de la conversation, restaure ses fichiers et l’état de Pi.</li>
         <li>Pi travaille : chaque appel d’outil (commande, lecture, écriture) s’affiche en direct ; chaque écriture déclenche un checkpoint.</li>
         <li>Vous suivez les fichiers modifiés dans le panneau <em>Modifications</em> (diff de type Git), testez l’application via une <em>preview</em>, et approuvez la publication Git proposée par Pi.</li>
         <li>Après une période d’inactivité, la sandbox est détruite ; tout est conservé sur S3 et repart au message suivant.</li>
@@ -45,8 +45,8 @@
           <tr><td>Pi (mode RPC)</td><td>Agent de code exécuté dans chaque sandbox</td></tr>
           <tr><td>LiteLLM</td><td>Accès unifié aux fournisseurs de modèles</td></tr>
           <tr><td>PostgreSQL</td><td>Données, files de travaux, notifications entre instances</td></tr>
-          <tr><td>Vault</td><td>Tous les secrets (clés LLM, OAuth, jetons Git, secrets de projet…)</td></tr>
-          <tr><td>Stockage S3 (Garage par défaut)</td><td>Checkpoints des workspaces et pièces jointes</td></tr>
+          <tr><td>Vault</td><td>Tous les secrets (clés LLM, OAuth, jetons Git, secrets de dépôt…)</td></tr>
+          <tr><td>Stockage S3 (Garage par défaut)</td><td>Checkpoints des conversations et pièces jointes</td></tr>
           <tr><td>Docker</td><td>Sandboxes isolées et services d’appui</td></tr>
         </tbody>
       </table>

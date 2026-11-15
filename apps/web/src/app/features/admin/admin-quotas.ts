@@ -24,7 +24,7 @@ interface Policy {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h1 class="text-xl font-semibold">Quotas & crédits</h1>
-    <p class="text-sm text-stone-500">Fenêtres glissantes 5 h et 7 jours appliquées simultanément. Le plafond d’équipe (optionnel) s’applique à l’équipe propriétaire du projet. Distinct des limites CPU/RAM/disque.</p>
+    <p class="text-sm text-stone-500">Fenêtres glissantes 5 h et 7 jours appliquées simultanément. Quotas strictement personnels : un compteur par utilisateur, toutes conversations confondues. Distinct des limites CPU/RAM/disque.</p>
     <div class="mt-4"><cap-settings-section section="quotas" title="Activation et réservation" /></div>
     <h2 class="mt-6 mb-2 text-sm font-semibold text-stone-500 uppercase">Politiques actives</h2>
     <div class="card overflow-x-auto"><table class="table">
@@ -64,21 +64,19 @@ export class AdminQuotas implements OnInit {
   private readonly toast = inject(ToastService);
   protected readonly policies = signal<Policy[]>([]);
   protected readonly users = signal<AdminUserDto[]>([]);
-  protected readonly teams = signal<Array<Record<string, string>>>([]);
   protected readonly ledger = signal<Array<Record<string, never>>>([]);
   protected p = { scope: 'global_user_default', subjectId: '', limit5h: '', limit7d: '', exempt: false };
   protected a = { userId: '', amount: '', reason: '' };
 
   async ngOnInit() {
-    const [p, u, t, l] = await Promise.all([this.api.get<Policy[]>('/admin/quotas/policies'), this.api.get<AdminUserDto[]>('/admin/users'), this.api.get<Array<Record<string, string>>>('/admin/teams'), this.api.get<Array<Record<string, never>>>('/admin/quotas/ledger')]);
+    const [p, u, l] = await Promise.all([this.api.get<Policy[]>('/admin/quotas/policies'), this.api.get<AdminUserDto[]>('/admin/users'), this.api.get<Array<Record<string, never>>>('/admin/quotas/ledger')]);
     this.policies.set(p);
     this.users.set(u);
-    this.teams.set(t);
     this.ledger.set(l);
   }
   protected subjectName(p: Policy) {
     if (!p.subjectId) return '—';
-    return this.users().find((u) => u.id === p.subjectId)?.displayName ?? this.teams().find((t) => t['id'] === p.subjectId)?.['name'] ?? p.subjectId;
+    return this.users().find((u) => u.id === p.subjectId)?.displayName ?? p.subjectId;
   }
   protected userName(id: string) {
     return this.users().find((u) => u.id === id)?.displayName ?? id;
@@ -109,6 +107,6 @@ export class AdminQuotas implements OnInit {
     return this.act(() => this.api.delete(`/admin/quotas/policies/${p.id}`), 'Politique retirée');
   }
   protected adjust() {
-    return this.act(() => this.api.post('/admin/quotas/adjustments', { userId: this.a.userId, teamId: null, amount: String(Number(this.a.amount)), reason: this.a.reason }), 'Ajustement enregistré');
+    return this.act(() => this.api.post('/admin/quotas/adjustments', { userId: this.a.userId, amount: String(Number(this.a.amount)), reason: this.a.reason }), 'Ajustement enregistré');
   }
 }

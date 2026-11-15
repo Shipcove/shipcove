@@ -15,7 +15,7 @@ const ctx = {};
 
 const docker = (...args) => execFileSync('docker', args, { encoding: 'utf8' }).trim();
 
-test('administration : modèle LiteLLM (fournisseur factice), équipe, utilisateur', async () => {
+test('administration : modèle LiteLLM (fournisseur factice), utilisateur', async () => {
   ctx.admin = await adminClient(state);
   save();
   const models = await ctx.admin.get('/admin/models');
@@ -44,27 +44,22 @@ test('administration : modèle LiteLLM (fournisseur factice), équipe, utilisate
   const test1 = await ctx.admin.post(`/admin/models/${model.id}/test`);
   assert.equal(test1.body.ok, true, `test du modèle : ${JSON.stringify(test1.body)}`);
 
-  const slug = `e2e-${uid()}`;
-  const team = await ctx.admin.post('/teams', { name: `Équipe ${slug}`, slug });
-  assert.equal(team.status, 201);
-  ctx.teamId = team.body.id;
-
-  // Utilisateur standard (membre).
+  // Utilisateur standard.
   const username = `dev${uid()}`;
   const created = await ctx.admin.post('/admin/users', { email: `${username}@example.test`, username, displayName: `Dev ${username}`, platformRole: 'user', password: 'Dev-Password-123456' });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   ctx.userId = created.body.id;
-  await ctx.admin.post(`/teams/${ctx.teamId}/members`, { userId: ctx.userId, role: 'member' });
   ctx.dev = new Client();
   const login = await ctx.dev.post('/auth/login', { login: username, password: 'Dev-Password-123456' });
   assert.equal(login.body.status, 'authenticated');
 });
 
-test('workspace vierge : Pi écrit via shell et via outil, checkpoint après chaque écriture, SSE, panneau Modifications', async () => {
-  const p = await ctx.dev.post('/projects', { teamId: ctx.teamId, name: `Projet ${uid()}` });
-  assert.equal(p.status, 201, JSON.stringify(p.body));
-  const w = await ctx.dev.post('/workspaces', { projectId: p.body.id, name: 'Démo e2e' });
-  assert.equal(w.status, 201);
+test('conversation sans dépôt : Pi écrit via shell et via outil, checkpoint après chaque écriture, SSE, panneau Modifications, titre automatique', async () => {
+  const w = await ctx.dev.post('/workspaces', {});
+  assert.equal(w.status, 201, JSON.stringify(w.body));
+  assert.equal(w.body.name, 'Nouvelle conversation');
+  assert.equal(w.body.titleSource, 'auto');
+  assert.equal(w.body.repository, null);
   ctx.ws = w.body;
   const conv = await ctx.dev.get(`/workspaces/${ctx.ws.id}/conversation`);
   const prompt =
@@ -108,6 +103,26 @@ test('workspace vierge : Pi écrit via shell et via outil, checkpoint après cha
   assert.equal(replay[0].id, mid + 1);
   const runs = (await ctx.dev.get(`/workspaces/${ctx.ws.id}/conversation`)).body.runs;
   assert.equal(runs.filter((r) => r.id === ctx.run1).length, 1);
+
+  // Titre généré après le premier message (sans modèle de titre : début du message), diffusé en direct.
+  let renamed = null;
+  for (let i = 0; i < 20 && !renamed; i++) {
+    const cur = (await ctx.dev.get(`/workspaces/${ctx.ws.id}`)).body;
+    if (cur.name !== 'Nouvelle conversation') renamed = cur;
+    else await sleep(500);
+  }
+  assert.ok(renamed, 'titre non généré');
+  assert.match(renamed.name, /^Crée les fichiers/);
+  assert.ok(!renamed.name.includes('[[tool'), 'les directives ne font pas partie du titre');
+  assert.ok(events.some((e) => e.type === 'workspace.renamed') || renamed.titleSource === 'auto');
+  // Renommage par l'utilisateur : définitif (le titre automatique ne l'écrase plus).
+  assert.equal((await ctx.dev.patch(`/workspaces/${ctx.ws.id}`, { name: 'Démo e2e' })).status, 200);
+  const after = (await ctx.dev.get(`/workspaces/${ctx.ws.id}`)).body;
+  assert.equal(after.name, 'Démo e2e');
+  assert.equal(after.titleSource, 'user');
+  // Liste de la barre latérale : la conversation y figure, sans dépôt.
+  const list = (await ctx.dev.get('/workspaces')).body;
+  assert.ok(list.some((x) => x.id === ctx.ws.id && x.repository === null));
 });
 
 test('un seul run actif par workspace ; idempotence des envois', async () => {
@@ -127,16 +142,20 @@ test('un seul run actif par workspace ; idempotence des envois', async () => {
   await ctx.dev.events(ctx.ws.id, Math.max(0, conv.body.lastEventId - 30), (e) => (e.type === 'run.interrupted' || e.type === 'run.completed') && e.runId === slow.body.runId, 120_000);
 });
 
-test('confidentialité : un administrateur (équipe ou plateforme) ne lit pas une conversation privée ; partage nominatif révocable', async () => {
+test('confidentialité : un administrateur ne lit pas une conversation privée ; partage nominatif révocable avec tout utilisateur', async () => {
   const r1 = await ctx.admin.get(`/workspaces/${ctx.ws.id}/conversation`);
   assert.equal(r1.status, 404, 'admin plateforme sans partage → introuvable');
-  // Un autre membre de l'équipe.
+  // Un autre utilisateur de la plateforme, trouvé dans l'annuaire.
   const username = `peer${uid()}`;
   const created = await ctx.admin.post('/admin/users', { email: `${username}@example.test`, username, displayName: 'Pair', platformRole: 'user', password: 'Peer-Password-123456' });
-  await ctx.admin.post(`/teams/${ctx.teamId}/members`, { userId: created.body.id, role: 'team_admin' });
   const peer = new Client();
   await peer.post('/auth/login', { login: username, password: 'Peer-Password-123456' });
-  assert.equal((await peer.get(`/workspaces/${ctx.ws.id}/conversation`)).status, 404, 'admin d’équipe sans partage → introuvable');
+  const found = await ctx.dev.get(`/users/search?q=${username}`);
+  assert.equal(found.status, 200);
+  assert.deepEqual(found.body.map((u) => u.id), [created.body.id]);
+  assert.ok(!('email' in found.body[0]), 'l’annuaire n’expose pas les emails');
+  assert.equal((await peer.get(`/workspaces/${ctx.ws.id}/conversation`)).status, 404, 'autre utilisateur sans partage → introuvable');
+  assert.ok(!(await peer.get('/workspaces')).body.some((x) => x.id === ctx.ws.id));
   const share = await ctx.dev.post(`/conversations/${ctx.ws.conversationId}/shares`, { userId: created.body.id });
   assert.equal(share.status, 201);
   const read = await peer.get(`/workspaces/${ctx.ws.id}/conversation`);
@@ -145,8 +164,10 @@ test('confidentialité : un administrateur (équipe ou plateforme) ne lit pas un
   assert.equal((await peer.post(`/workspaces/${ctx.ws.id}/messages`, { text: 'hack' })).status, 404);
   assert.equal((await peer.post(`/workspaces/${ctx.ws.id}/previews`, { port: 3000 })).status, 404);
   assert.equal((await peer.post(`/conversations/${ctx.ws.conversationId}/shares`, { userId: ctx.userId })).status, 404, 'pas de transfert de partage');
-  // Retrait de l'équipe → accès effectif révoqué.
-  await ctx.admin.del(`/teams/${ctx.teamId}/members/${created.body.id}`);
+  // La conversation partagée apparaît dans la liste du destinataire, en lecture seule.
+  assert.equal((await peer.get('/workspaces')).body.find((x) => x.id === ctx.ws.id)?.access, 'shared_read');
+  // Révocation → accès effectif retiré.
+  assert.equal((await ctx.dev.del(`/conversations/${ctx.ws.conversationId}/shares/${share.body.id}`)).status, 204);
   assert.equal((await peer.get(`/workspaces/${ctx.ws.id}/conversation`)).status, 404);
 });
 

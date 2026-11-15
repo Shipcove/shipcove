@@ -2,7 +2,6 @@ import { sql } from 'drizzle-orm';
 import { boolean, index, integer, jsonb, pgTable, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { createdAt, pk, ts, updatedAt } from './_common.js';
 import { users } from './iam.js';
-import { teams } from './teams.js';
 
 export const skills = pgTable(
   'skills',
@@ -10,8 +9,7 @@ export const skills = pgTable(
     id: pk(),
     name: text().notNull(),
     description: text().notNull(),
-    scope: text({ enum: ['global', 'team', 'personal'] }).notNull(),
-    teamId: uuid().references(() => teams.id, { onDelete: 'cascade' }),
+    scope: text({ enum: ['global', 'personal'] }).notNull(),
     ownerId: uuid().references(() => users.id, { onDelete: 'cascade' }),
     status: text({ enum: ['draft', 'pending_review', 'published', 'disabled', 'revoked'] }).notNull().default('draft'),
     source: text(),
@@ -22,7 +20,6 @@ export const skills = pgTable(
   (t) => [
     uniqueIndex('skills_scope_name_uq').on(
       t.scope,
-      sql`coalesce(${t.teamId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
       sql`coalesce(${t.ownerId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
       t.name,
     ),
@@ -47,7 +44,7 @@ export const skillVersions = pgTable(
   (t) => [uniqueIndex('skill_versions_uq').on(t.skillId, t.version)],
 );
 
-/** Activation d'un skill pour un utilisateur ou une équipe. */
+/** Activation d'un skill pour un utilisateur (ou globalement). */
 export const skillInstallations = pgTable(
   'skill_installations',
   {
@@ -55,7 +52,7 @@ export const skillInstallations = pgTable(
     skillId: uuid()
       .notNull()
       .references(() => skills.id, { onDelete: 'cascade' }),
-    scope: text({ enum: ['global', 'team', 'personal'] }).notNull(),
+    scope: text({ enum: ['global', 'personal'] }).notNull(),
     subjectId: uuid(),
     pinnedVersion: integer(),
     enabled: boolean().notNull().default(true),
@@ -77,8 +74,7 @@ export const mcpServers = pgTable(
     id: pk(),
     name: text().notNull(),
     description: text().notNull().default(''),
-    scope: text({ enum: ['global', 'team', 'personal'] }).notNull(),
-    teamId: uuid().references(() => teams.id, { onDelete: 'cascade' }),
+    scope: text({ enum: ['global', 'personal'] }).notNull(),
     ownerId: uuid().references(() => users.id, { onDelete: 'cascade' }),
     transport: text({ enum: ['stdio', 'streamable_http'] }).notNull(),
     url: text(),
@@ -98,7 +94,6 @@ export const mcpServers = pgTable(
   (t) => [
     uniqueIndex('mcp_servers_scope_name_uq').on(
       t.scope,
-      sql`coalesce(${t.teamId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
       sql`coalesce(${t.ownerId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
       t.name,
     ),
@@ -127,7 +122,7 @@ export const mcpInstallations = pgTable(
     serverId: uuid()
       .notNull()
       .references(() => mcpServers.id, { onDelete: 'cascade' }),
-    scope: text({ enum: ['global', 'team', 'personal'] }).notNull(),
+    scope: text({ enum: ['global', 'personal'] }).notNull(),
     subjectId: uuid(),
     enabled: boolean().notNull().default(true),
     createdAt: createdAt(),
@@ -153,7 +148,7 @@ export const mcpPermissions = pgTable(
       .notNull()
       .references(() => mcpServers.id, { onDelete: 'cascade' }),
     toolName: text().notNull(),
-    scope: text({ enum: ['global', 'team', 'personal'] }).notNull(),
+    scope: text({ enum: ['global', 'personal'] }).notNull(),
     subjectId: uuid(),
     effect: text({ enum: ['allow', 'deny'] }).notNull(),
     createdBy: uuid().references(() => users.id, { onDelete: 'set null' }),

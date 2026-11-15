@@ -3,7 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { CreateSkillSchema, SkillScopeSchema, type CreateSkill, type SkillDto } from '@cap/contracts';
-import { skillInstallations, skillVersions, skills, teamMembers, type Database } from '@cap/database';
+import { skillInstallations, skillVersions, skills, type Database } from '@cap/database';
 import { AppError, AuditService, DB, SettingsService, canonicalJson, sha256Hex } from '@cap/server-core';
 import { isUniqueViolation } from '@cap/server-core';
 import { CurrentUser, ReqCtx, type RequestContext } from '../common/decorators.js';
@@ -44,38 +44,30 @@ export class SkillsController {
     private readonly audit: AuditService,
   ) {}
 
-  private async myTeams(userId: string): Promise<string[]> {
-    return (await this.db.select({ t: teamMembers.teamId }).from(teamMembers).where(eq(teamMembers.userId, userId))).map((r) => r.t);
-  }
-
-  /** Autorité sur un skill selon sa portée (global : admin plateforme ; équipe : admin d'équipe ; personnel : propriétaire). */
-  private async assertManage(user: AuthUser, s: { scope: string; teamId: string | null; ownerId: string | null }) {
+  /** Autorité sur un skill selon sa portée (global : admin plateforme ; personnel : propriétaire). */
+  private async assertManage(user: AuthUser, s: { scope: string; ownerId: string | null }) {
     if (s.scope === 'global' && user.platformRole !== 'platform_admin') throw new AppError('forbidden', 'Réservé aux administrateurs plateforme');
-    if (s.scope === 'team') await this.access.requireTeamAdmin(user, s.teamId!);
     if (s.scope === 'personal' && s.ownerId !== user.id) throw new AppError('forbidden', 'Skill personnel d’un autre utilisateur');
   }
 
   @Get()
   async list(@CurrentUser() user: AuthUser): Promise<SkillDto[]> {
-    const teams = await this.myTeams(user.id);
-    const rows = await this.db
+    const visible = await this.db
       .select()
       .from(skills)
-      .where(or(eq(skills.scope, 'global'), and(eq(skills.scope, 'team'), teams.length ? inArray(skills.teamId, teams) : eq(skills.id, skills.id)), and(eq(skills.scope, 'personal'), eq(skills.ownerId, user.id))))
+      .where(or(eq(skills.scope, 'global'), and(eq(skills.scope, 'personal'), eq(skills.ownerId, user.id))))
       .orderBy(skills.name);
-    const visible = rows.filter((s) => s.scope !== 'team' || (s.teamId && teams.includes(s.teamId)));
     const installs = visible.length ? await this.db.select().from(skillInstallations).where(inArray(skillInstallations.skillId, visible.map((s) => s.id))) : [];
     const out: SkillDto[] = [];
     for (const s of visible) {
       if (s.status !== 'published' && !(await this.canManage(user, s))) continue;
       const [v] = await this.db.select().from(skillVersions).where(and(eq(skillVersions.skillId, s.id), eq(skillVersions.version, s.latestVersion)));
-      const mine = installs.filter((i) => i.skillId === s.id && (i.scope === 'global' || (i.scope === 'team' && teams.includes(i.subjectId ?? '')) || (i.scope === 'personal' && i.subjectId === user.id)));
+      const mine = installs.filter((i) => i.skillId === s.id && (i.scope === 'global' || (i.scope === 'personal' && i.subjectId === user.id)));
       out.push({
         id: s.id,
         name: s.name,
         description: s.description,
         scope: s.scope,
-        teamId: s.teamId,
         ownerId: s.ownerId,
         status: s.status,
         latestVersion: s.latestVersion,
@@ -89,7 +81,7 @@ export class SkillsController {
     return out;
   }
 
-  private async canManage(user: AuthUser, s: { scope: string; teamId: string | null; ownerId: string | null }) {
+  private async canManage(user: AuthUser, s: { scope: string; ownerId: string | null }) {
     try {
       await this.assertManage(user, s);
       return true;
@@ -102,8 +94,7 @@ export class SkillsController {
   async get(@Param('skillId', uuid) id: string, @CurrentUser() user: AuthUser) {
     const [s] = await this.db.select().from(skills).where(eq(skills.id, id));
     if (!s) throw new AppError('not_found', 'Skill introuvable');
-    const teams = await this.myTeams(user.id);
-    if ((s.scope === 'team' && !teams.includes(s.teamId!)) || (s.scope === 'personal' && s.ownerId !== user.id)) throw new AppError('not_found', 'Skill introuvable');
+    if (s.scope === 'personal' && s.ownerId !== user.id) throw new AppError('not_found', 'Skill introuvable');
     const versions = await this.db.select().from(skillVersions).where(eq(skillVersions.skillId, id)).orderBy(desc(skillVersions.version));
     return { skill: s, versions: versions.map((v) => ({ version: v.version, digest: v.digest, findings: v.analysis.findings, createdAt: v.createdAt, files: v.files })) };
   }
@@ -112,8 +103,7 @@ export class SkillsController {
   async create(@Body({ schema: CreateSkillSchema }) body: CreateSkill, @CurrentUser() user: AuthUser, @ReqCtx() ctx: RequestContext) {
     const cfg = await this.settings.section('skills');
     if (body.scope === 'personal' && !cfg.personalSkillsAllowed) throw new AppError('forbidden', 'Les skills personnels sont désactivés');
-    if (body.scope === 'team' && !body.teamId) throw new AppError('validation_failed', 'teamId requis');
-    const meta = { scope: body.scope, teamId: body.scope === 'team' ? body.teamId : null, ownerId: body.scope === 'personal' ? user.id : null };
+    const meta = { scope: body.scope, ownerId: body.scope === 'personal' ? user.id : null };
     await this.assertManage(user, meta);
     const findings = analyzeSkill(body.files);
     // Skill personnel : publié directement sauf revue imposée ; autres portées : brouillon puis publication explicite.
@@ -164,24 +154,19 @@ export class SkillsController {
     return { status: body.status };
   }
 
-  /** Activation / désactivation pour soi, pour son équipe (admin d'équipe) ou globalement (admin). */
+  /** Activation / désactivation pour soi ou globalement (admin). */
   @Put(':skillId/installation')
   async install(
     @Param('skillId', uuid) id: string,
-    @Body({ schema: z.object({ scope: SkillScopeSchema, teamId: z.uuid().optional(), enabled: z.boolean(), pinnedVersion: z.number().int().positive().nullable().optional() }) })
-    body: { scope: 'global' | 'team' | 'personal'; teamId?: string; enabled: boolean; pinnedVersion?: number | null },
+    @Body({ schema: z.object({ scope: SkillScopeSchema, enabled: z.boolean(), pinnedVersion: z.number().int().positive().nullable().optional() }) })
+    body: { scope: 'global' | 'personal'; enabled: boolean; pinnedVersion?: number | null },
     @CurrentUser() user: AuthUser,
   ) {
     const [s] = await this.db.select().from(skills).where(eq(skills.id, id));
-    const teams = await this.myTeams(user.id);
-    const visible = s && (user.platformRole === 'platform_admin' || s.scope === 'global' || (s.scope === 'team' && teams.includes(s.teamId!)) || (s.scope === 'personal' && s.ownerId === user.id));
+    const visible = s && (user.platformRole === 'platform_admin' || s.scope === 'global' || (s.scope === 'personal' && s.ownerId === user.id));
     if (!visible) throw new AppError('not_found', 'Skill introuvable');
     if (body.scope === 'global' && user.platformRole !== 'platform_admin') throw new AppError('forbidden', 'Réservé aux administrateurs');
-    if (body.scope === 'team') {
-      if (!body.teamId) throw new AppError('validation_failed', 'teamId requis');
-      await this.access.requireTeamAdmin(user, body.teamId);
-    }
-    const subjectId = body.scope === 'global' ? null : body.scope === 'team' ? body.teamId! : user.id;
+    const subjectId = body.scope === 'global' ? null : user.id;
     const [existing] = await this.db
       .select({ id: skillInstallations.id })
       .from(skillInstallations)

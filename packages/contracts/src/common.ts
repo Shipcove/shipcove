@@ -74,5 +74,3 @@ export interface ApiErrorBody {
 export const PlatformRoleSchema = z.enum(['platform_admin', 'user']);
 export type PlatformRole = z.infer<typeof PlatformRoleSchema>;
 
-export const TeamRoleSchema = z.enum(['team_admin', 'member']);
-export type TeamRole = z.infer<typeof TeamRoleSchema>;

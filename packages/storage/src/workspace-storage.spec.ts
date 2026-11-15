@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { projects, teams, users, workspaces, type Database } from '@cap/database';
+import { users, workspaces, type Database } from '@cap/database';
 import { DockerSandboxProvider, execCollect, type SandboxHandle } from '@cap/sandbox';
 import { createTestDatabase, truncateAll } from '@cap/server-core';
 import { FencingError, LeaseService, WorkspaceStorage, type BlobStore } from './index.js';
@@ -78,9 +78,7 @@ beforeAll(async () => {
   storage = new WorkspaceStorage(db, blobs);
   leases = new LeaseService(db);
   const [u] = await db.insert(users).values({ email: 's@x.io', username: 's', displayName: 'S' }).returning();
-  const [t] = await db.insert(teams).values({ name: 'T', slug: 't-storage' }).returning();
-  const [p] = await db.insert(projects).values({ teamId: t.id, name: 'P' }).returning();
-  const [w] = await db.insert(workspaces).values({ projectId: p.id, teamId: t.id, ownerId: u.id, name: 'W' }).returning();
+  const [w] = await db.insert(workspaces).values({ ownerId: u.id, name: 'W' }).returning();
   workspaceId = w.id;
 });
 

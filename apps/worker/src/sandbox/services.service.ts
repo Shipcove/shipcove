@@ -14,7 +14,7 @@ export interface StartRequest {
   service: string;
   /** Nom de l'instance (défaut : la clé) — permet deux instances du même service. */
   name?: string;
-  /** Variables du conteneur ; `${NOM}` reprend une variable ou un secret du projet. */
+  /** Variables du conteneur ; `${NOM}` reprend une variable ou un secret du dépôt. */
   env?: Record<string, string>;
   memoryMb?: number;
 }
@@ -73,7 +73,7 @@ export class ServicesService {
         return env.vars[n] ?? '';
       });
     }
-    if (missing.length) throw new Error(`Variables du projet non définies : ${missing.join(', ')}`);
+    if (missing.length) throw new Error(`Variables du dépôt non définies : ${missing.join(', ')}`);
     const memoryMb = Math.min(Math.max(64, Math.round(req.memoryMb ?? c.defaultMemoryMb)), c.maxMemoryMb);
     const specHash = createHash('sha256').update(JSON.stringify([c.image, resolved, memoryMb])).digest('hex');
     // Même configuration déjà lancée : rien à faire (idempotent).

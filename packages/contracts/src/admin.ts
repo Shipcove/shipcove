@@ -91,7 +91,6 @@ export const PlatformSettingsSchema = z.object({
   mcp: z
     .object({
       personalServersAllowed: z.boolean().default(true),
-      teamServersAllowed: z.boolean().default(true),
       allowedRemoteHosts: z.array(z.string().max(255)).default([]),
     })
     .prefault({}),
@@ -106,6 +105,12 @@ export const PlatformSettingsSchema = z.object({
       allowPersonalTokens: z.boolean().default(false),
     })
     .prefault({}),
+  conversations: z
+    .object({
+      /** Modèle qui génère les titres des conversations (non décompté des quotas) ; vide : premier message tronqué. */
+      titleModelId: z.uuid().nullable().default(null),
+    })
+    .prefault({}),
   notifications: z
     .object({
       emailEnabled: z.boolean().default(true),
@@ -116,7 +121,7 @@ export const PlatformSettingsSchema = z.object({
 export type PlatformSettings = z.infer<typeof PlatformSettingsSchema>;
 
 export const PlatformSettingsPatchSchema = z.object({
-  section: z.enum(['auth', 'editor', 'sandbox', 'previews', 'quotas', 'attachments', 'skills', 'mcp', 'git', 'notifications']),
+  section: z.enum(['auth', 'editor', 'sandbox', 'previews', 'quotas', 'attachments', 'skills', 'mcp', 'git', 'conversations', 'notifications']),
   values: z.record(z.string(), z.unknown()),
 });
 
@@ -322,7 +327,8 @@ export const AdminCreateUserSchema = z.object({
 
 export interface AdminOverviewDto {
   users: { total: number; active: number; suspended: number };
-  teams: number;
+  /** Dépôts utilisés par au moins une conversation. */
+  repositories: number;
   workspaces: { total: number; running: number };
   sandboxes: { active: number };
   llm: { requests24h: number; errors24h: number; credits24h: string; costUsd24h: string; p95LatencyMs: number | null };

@@ -7,8 +7,6 @@ import {
   localCredentials,
   mfaFactors,
   oneTimeTokens,
-  teamMembers,
-  teams,
   users,
   type Database,
 } from '@cap/database';
@@ -255,9 +253,6 @@ export class AuthService implements OnApplicationBootstrap {
       await tx.insert(localCredentials).values({ userId: u.id, passwordHash: hash });
       if (invitation) {
         await tx.update(invitations).set({ acceptedAt: new Date(), acceptedBy: u.id }).where(eq(invitations.id, invitation.id));
-        if (invitation.teamId) {
-          await tx.insert(teamMembers).values({ teamId: invitation.teamId, userId: u.id, role: invitation.role }).onConflictDoNothing();
-        }
       }
       await this.audit.record({ actorId: u.id, action: 'user.register', targetType: 'user', targetId: u.id, ip: ctx.ip, metadata: { invited: !!invitation } }, tx);
       return u.id;
@@ -385,11 +380,6 @@ export class AuthService implements OnApplicationBootstrap {
 
   async me(userId: string): Promise<MeResponse> {
     const [u] = await this.db.select().from(users).where(eq(users.id, userId));
-    const memberships = await this.db
-      .select({ id: teams.id, name: teams.name, slug: teams.slug, role: teamMembers.role })
-      .from(teamMembers)
-      .innerJoin(teams, eq(teams.id, teamMembers.teamId))
-      .where(and(eq(teamMembers.userId, userId), isNull(teams.deletedAt)));
     const [mfa] = await this.db
       .select({ id: mfaFactors.id })
       .from(mfaFactors)
@@ -403,7 +393,6 @@ export class AuthService implements OnApplicationBootstrap {
       emailVerified: !!u.emailVerifiedAt,
       mfaEnabled: !!mfa,
       createdAt: u.createdAt.toISOString(),
-      teams: memberships,
     };
   }
 

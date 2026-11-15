@@ -1,12 +1,12 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import type { McpServerDto, SkillDto, TeamDto } from '@cap/contracts';
+import type { McpServerDto, SkillDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
 import { AuthStore } from '../../core/auth.store';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
 
-/** Skills et serveurs MCP visibles par l'utilisateur (global, équipe, personnel). */
+/** Skills et serveurs MCP visibles par l'utilisateur (global, personnel). */
 @Component({
   selector: 'cap-extensions',
   imports: [FormsModule, Icon],
@@ -14,7 +14,7 @@ import { Icon } from '../../shared/icon';
   template: `
     <div class="h-full overflow-y-auto"><div class="mx-auto max-w-5xl px-6 py-8">
       <h1 class="text-2xl font-semibold">Skills & MCP</h1>
-      <p class="mt-1 text-sm text-stone-500">Les skills sont des instructions chargées par Pi ; ils ne confèrent aucun privilège. Les outils MCP sont filtrés par les politiques globales, d’équipe et personnelles.</p>
+      <p class="mt-1 text-sm text-stone-500">Les skills sont des instructions chargées par Pi ; ils ne confèrent aucun privilège. Les outils MCP sont filtrés par les politiques globales et personnelles.</p>
 
       <h2 class="mt-6 mb-2 text-sm font-semibold text-stone-500 uppercase">Skills</h2>
       <div class="card divide-y divide-stone-100 dark:divide-stone-800">
@@ -38,8 +38,7 @@ import { Icon } from '../../shared/icon';
         <div class="grid gap-2 md:grid-cols-3">
           <input class="input" name="sn" placeholder="nom-du-skill" [(ngModel)]="skillName" pattern="[a-z0-9-]+" required />
           <input class="input md:col-span-2" name="sd" placeholder="Description (quand l’utiliser)" [(ngModel)]="skillDesc" required />
-          <select class="input" name="ss" [(ngModel)]="skillScope"><option value="personal">Personnel</option>@if (adminTeams().length) { <option value="team">Équipe</option> }@if (auth.isAdmin()) { <option value="global">Global</option> }</select>
-          @if (skillScope === 'team') { <select class="input" name="st" [(ngModel)]="skillTeam">@for (t of adminTeams(); track t.id) { <option [value]="t.id">{{ t.name }}</option> }</select> }
+          <select class="input" name="ss" [(ngModel)]="skillScope"><option value="personal">Personnel</option>@if (auth.isAdmin()) { <option value="global">Global</option> }</select>
         </div>
         <textarea class="input font-mono text-xs" rows="8" name="sb" [(ngModel)]="skillBody" placeholder="Contenu de SKILL.md (instructions)"></textarea>
         <button class="btn-primary">Créer</button>
@@ -75,8 +74,7 @@ import { Icon } from '../../shared/icon';
         <div class="font-medium md:col-span-3">Ajouter un serveur MCP</div>
         <input class="input" name="mn" placeholder="nom" [(ngModel)]="mcp.name" required />
         <select class="input" name="mt" [(ngModel)]="mcp.transport"><option value="streamable_http">Streamable HTTP</option><option value="stdio">stdio</option></select>
-        <select class="input" name="ms" [(ngModel)]="mcp.scope"><option value="personal">Personnel</option>@if (adminTeams().length) { <option value="team">Équipe</option> }@if (auth.isAdmin()) { <option value="global">Global</option> }</select>
-        @if (mcp.scope === 'team') { <select class="input" name="mteam" [(ngModel)]="mcp.teamId">@for (t of adminTeams(); track t.id) { <option [value]="t.id">{{ t.name }}</option> }</select> }
+        <select class="input" name="ms" [(ngModel)]="mcp.scope"><option value="personal">Personnel</option>@if (auth.isAdmin()) { <option value="global">Global</option> }</select>
         @if (mcp.transport === 'streamable_http') { <input class="input md:col-span-2" name="mu" placeholder="https://mcp.exemple.com/mcp" [(ngModel)]="mcp.url" /> <input class="input" type="password" name="mauth" placeholder="Authorization (facultatif, stocké dans Vault)" [(ngModel)]="mcp.auth" /> }
         @else { <input class="input md:col-span-2" name="mc" placeholder="commande (ex. npx)" [(ngModel)]="mcp.command" /> <input class="input" name="ma" placeholder="arguments séparés par des espaces" [(ngModel)]="mcp.args" /> }
         <button class="btn-primary md:col-span-3 md:w-fit">Ajouter</button>
@@ -91,20 +89,16 @@ export class ExtensionsPage implements OnInit {
   private readonly toast = inject(ToastService);
   protected readonly skills = signal<SkillDto[]>([]);
   protected readonly servers = signal<McpServerDto[]>([]);
-  protected readonly adminTeams = signal<TeamDto[]>([]);
   protected skillName = '';
   protected skillDesc = '';
-  protected skillScope: 'personal' | 'team' | 'global' = 'personal';
-  protected skillTeam = '';
+  protected skillScope: 'personal' | 'global' = 'personal';
   protected skillBody = '';
-  protected mcp = { name: '', transport: 'streamable_http', scope: 'personal', teamId: '', url: '', auth: '', command: '', args: '' };
+  protected mcp = { name: '', transport: 'streamable_http', scope: 'personal', url: '', auth: '', command: '', args: '' };
 
   async ngOnInit() {
-    const [s, m, t] = await Promise.all([this.api.get<SkillDto[]>('/skills'), this.api.get<McpServerDto[]>('/mcp-servers'), this.api.get<TeamDto[]>('/teams')]);
+    const [s, m] = await Promise.all([this.api.get<SkillDto[]>('/skills'), this.api.get<McpServerDto[]>('/mcp-servers')]);
     this.skills.set(s);
     this.servers.set(m);
-    this.adminTeams.set(t.filter((x) => x.myRole === 'team_admin'));
-    if (!this.skillTeam && this.adminTeams()[0]) this.skillTeam = this.mcp.teamId = this.adminTeams()[0].id;
   }
 
   private async act(fn: () => Promise<unknown>, ok?: string) {
@@ -118,7 +112,7 @@ export class ExtensionsPage implements OnInit {
   }
 
   protected canManage(m: McpServerDto) {
-    return (m.scope === 'personal' && m.ownerId === this.auth.me()?.id) || (m.scope === 'global' && this.auth.isAdmin()) || (m.scope === 'team' && this.adminTeams().some((t) => t.id === m.teamId));
+    return (m.scope === 'personal' && m.ownerId === this.auth.me()?.id) || (m.scope === 'global' && this.auth.isAdmin());
   }
 
   protected toggleSkill(s: SkillDto, e: Event) {
@@ -130,7 +124,7 @@ export class ExtensionsPage implements OnInit {
   protected createSkill() {
     const md = `---\nname: ${this.skillName}\ndescription: ${this.skillDesc.replace(/\n/g, ' ')}\n---\n\n${this.skillBody}`;
     return this.act(
-      () => this.api.post('/skills', { name: this.skillName, description: this.skillDesc, scope: this.skillScope, teamId: this.skillScope === 'team' ? this.skillTeam : null, files: [{ path: 'SKILL.md', content: md }] }),
+      () => this.api.post('/skills', { name: this.skillName, description: this.skillDesc, scope: this.skillScope, files: [{ path: 'SKILL.md', content: md }] }),
       'Skill créé',
     );
   }
@@ -142,7 +136,6 @@ export class ExtensionsPage implements OnInit {
           name: m.name,
           transport: m.transport,
           scope: m.scope,
-          teamId: m.scope === 'team' ? m.teamId : null,
           url: m.transport === 'streamable_http' ? m.url : undefined,
           command: m.transport === 'stdio' ? m.command : undefined,
           args: m.transport === 'stdio' && m.args ? m.args.split(/\s+/) : [],

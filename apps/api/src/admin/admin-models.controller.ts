@@ -26,10 +26,10 @@ export class AdminModelsController {
   ) {}
 
   @Get()
-  async list(): Promise<Array<ModelDto & { allowedTeamIds: string[]; litellmParams: Record<string, unknown>; lastSyncError: string | null; secretConfigured: boolean }>> {
+  async list(): Promise<Array<ModelDto & { litellmParams: Record<string, unknown>; lastSyncError: string | null; secretConfigured: boolean }>> {
     const rows = await this.db.select().from(llmModels).where(isNull(llmModels.deletedAt)).orderBy(llmModels.displayName);
     const dtos = await modelDtos(this.db, rows);
-    return dtos.map((d, i) => ({ ...d, allowedTeamIds: rows[i].allowedTeamIds, litellmParams: rows[i].litellmParams, lastSyncError: rows[i].lastSyncError, secretConfigured: !!rows[i].secretRef }));
+    return dtos.map((d, i) => ({ ...d, litellmParams: rows[i].litellmParams, lastSyncError: rows[i].lastSyncError, secretConfigured: !!rows[i].secretRef }));
   }
 
   @Post()
@@ -47,7 +47,6 @@ export class AdminModelsController {
         supportsReasoning: body.supportsReasoning,
         enabled: body.enabled,
         isDefault: false,
-        allowedTeamIds: body.allowedTeamIds,
       })
       .returning()
       .catch((err: unknown) => {
@@ -77,7 +76,6 @@ export class AdminModelsController {
         supportsImages: body.supportsImages,
         supportsReasoning: body.supportsReasoning,
         enabled: body.enabled,
-        allowedTeamIds: body.allowedTeamIds,
         updatedAt: new Date(),
       })
       .where(eq(llmModels.id, id));

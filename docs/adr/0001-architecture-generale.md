@@ -29,7 +29,7 @@ Monorepo pnpm unique (un seul `pnpm-lock.yaml`), tout en TypeScript ESM.
 | `packages/secrets` | `SecretProvider` + `VaultSecretProvider` | serveur |
 | `packages/sandbox-image` | Image officielle de sandbox + extension Pi « platform bridge » | image |
 
-Le découpage logique (IAM, équipes, projets, workspaces, orchestrateur, quotas, checkpoints, Git
+Le découpage logique (IAM, conversations et dépôts, orchestrateur, quotas, checkpoints, Git
 Broker, approbations, skills, MCP, notifications, previews, admin, audit) est réalisé par **modules
 NestJS** dans `apps/api`/`apps/worker`, pas par microservices.
 

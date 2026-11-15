@@ -30,7 +30,6 @@ type Tab = 'profile' | 'security' | 'git';
             <div><span class="text-stone-500">Identifiant :</span> {{ auth.me()?.username }}</div>
             <div><span class="text-stone-500">Email :</span> {{ auth.me()?.email }} @if (!auth.me()?.emailVerified) { <span class="text-amber-600">(non vérifié)</span> }</div>
             <div><span class="text-stone-500">Rôle :</span> {{ auth.me()?.platformRole === 'platform_admin' ? 'Administrateur plateforme' : 'Utilisateur' }}</div>
-            <div><span class="text-stone-500">Équipes :</span> @for (t of auth.me()?.teams ?? []; track t.id) { <a [routerLink]="['/teams', t.id]" class="mr-2 underline">{{ t.name }}</a> }</div>
           </div>
         }
         @case ('security') {

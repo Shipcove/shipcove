@@ -62,6 +62,8 @@ export interface AgentEventDataMap {
   /** Pourcentages uniquement : remplissage du contexte (les quotas se relisent via GET /usage). */
   'usage.updated': { contextPercent?: number | null };
   'workspace.status': { status: string; syncState: string; detail: string | null };
+  /** Nouveau titre de la conversation (génération automatique ou renommage). */
+  'workspace.renamed': { name: string; titleSource: 'auto' | 'user' };
   'compaction.started': { reason: string };
   'compaction.completed': Record<string, never>;
   'model.changed': { modelId: string; modelName: string };
@@ -103,6 +105,7 @@ export const AGENT_EVENT_TYPES = [
   'quota.resumed',
   'usage.updated',
   'workspace.status',
+  'workspace.renamed',
   'compaction.started',
   'compaction.completed',
   'model.changed',

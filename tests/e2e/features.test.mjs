@@ -11,13 +11,12 @@ const STATE_FILE = new URL('./.e2e-state.json', import.meta.url);
 const state = existsSync(STATE_FILE) ? JSON.parse(readFileSync(STATE_FILE, 'utf8')) : {};
 const ctx = {};
 
-/** Utilisateur connecté, membre de l'équipe de test. */
-async function newUser(role = 'member') {
+/** Utilisateur connecté. */
+async function newUser() {
   const username = `f${uid()}`;
   const password = 'Feature-Password-123456';
   const r = await ctx.admin.post('/admin/users', { email: `${username}@example.test`, username, displayName: `F ${username}`, platformRole: 'user', password });
   assert.equal(r.status, 201, JSON.stringify(r.body));
-  await ctx.admin.post(`/teams/${ctx.teamId}/members`, { userId: r.body.id, role });
   const c = new Client();
   const login = await c.post('/auth/login', { login: username, password });
   assert.equal(login.body.status, 'authenticated');
@@ -39,12 +38,27 @@ async function run(client, wsId, text) {
 
 const opened = [];
 async function workspace(client, name) {
-  const p = await client.post('/projects', { teamId: ctx.teamId, name: `${name} ${uid()}` });
-  assert.equal(p.status, 201, JSON.stringify(p.body));
-  const w = await client.post('/workspaces', { projectId: p.body.id, name });
+  const w = await client.post('/workspaces', { name });
   assert.equal(w.status, 201, JSON.stringify(w.body));
   opened.push({ client, id: w.body.id });
   return w.body;
+}
+
+/**
+ * Dépôt de test sans forge : ligne du catalogue créée directement en base et rattachée à une
+ * conversation déjà « initialisée » (pas de clonage). Suffit pour l'environnement par dépôt
+ * (variables, secrets, script de préparation, image), qui ne dépend pas du contenu Git.
+ */
+function fakeRepository(label) {
+  const name = `e2e/${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${uid().toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+  return sql(
+    `insert into repositories (provider, host, full_name, clone_url, web_url, default_branch) values ('gitlab_self_managed', 'forge.e2e.test', '${name}', 'https://forge.e2e.test/${name}.git', 'https://forge.e2e.test/${name}', 'main') returning id`,
+  ).split('\n')[0];
+}
+async function repoWorkspace(client, name, repositoryId) {
+  const ws = await workspace(client, name);
+  sql(`update workspaces set repository_id = '${repositoryId}', initialized = true where id = '${ws.id}'`);
+  return (await client.get(`/workspaces/${ws.id}`)).body;
 }
 
 // Libère les sandboxes entre scénarios (limite par défaut : 3 sandboxes actives par utilisateur).
@@ -60,10 +74,6 @@ const setEditing = (enabled) => ctx.admin.req('PATCH', '/admin/settings', { sect
 before(async () => {
   ctx.admin = await adminClient(state);
   writeFileSync(STATE_FILE, JSON.stringify(state));
-  const slug = `feat-${uid()}`;
-  const team = await ctx.admin.post('/teams', { name: `Fonctionnel ${slug}`, slug });
-  assert.equal(team.status, 201);
-  ctx.teamId = team.body.id;
   ctx.dev = await newUser();
 });
 
@@ -147,27 +157,23 @@ async function bashViaPi(client, wsId, command) {
 
 const skillFiles = (name) => [{ path: 'SKILL.md', content: `---\nname: ${name}\ndescription: Skill de test ${name}\n---\n\nUtilise des tests.\n` }];
 
-test('skills : portées (global / équipe / personnel), désactivation et révocation appliquées au run suivant', async () => {
+test('skills : portées (global / personnel), désactivation et révocation appliquées au run suivant', async () => {
   const ws = await workspace(ctx.dev, 'Skills');
   const id = uid().toLowerCase().replace(/[^a-z0-9]/g, '');
-  const names = { global: `glob-${id}`, team: `team-${id}`, personal: `perso-${id}`, otherTeam: `autre-${id}`, otherUser: `voisin-${id}` };
+  const names = { global: `glob-${id}`, global2: `glob2-${id}`, personal: `perso-${id}`, otherUser: `voisin-${id}` };
 
   // Global : brouillon puis publication par l'administrateur.
   const g = await ctx.admin.post('/skills', { name: names.global, description: 'global', scope: 'global', files: skillFiles(names.global) });
   assert.equal(g.status, 201, JSON.stringify(g.body));
   assert.equal(g.body.status, 'draft');
   assert.equal((await ctx.admin.post(`/skills/${g.body.id}/status`, { status: 'published' })).status, 200);
-  // Équipe du workspace (publié par l'admin, administrateur d'équipe implicite).
-  const t = await ctx.admin.post('/skills', { name: names.team, description: 'équipe', scope: 'team', teamId: ctx.teamId, files: skillFiles(names.team) });
-  await ctx.admin.post(`/skills/${t.body.id}/status`, { status: 'published' });
+  const g2 = await ctx.admin.post('/skills', { name: names.global2, description: 'global 2', scope: 'global', files: skillFiles(names.global2) });
+  await ctx.admin.post(`/skills/${g2.body.id}/status`, { status: 'published' });
   // Personnel (publié directement).
   const p = await ctx.dev.post('/skills', { name: names.personal, description: 'perso', scope: 'personal', files: skillFiles(names.personal) });
   assert.equal(p.body.status, 'published', JSON.stringify(p.body));
-  // Hors périmètre : autre équipe, autre utilisateur.
-  const slug = `autre-${uid()}`;
-  const otherTeam = await ctx.admin.post('/teams', { name: `Autre ${slug}`, slug });
-  const ot = await ctx.admin.post('/skills', { name: names.otherTeam, description: 'x', scope: 'team', teamId: otherTeam.body.id, files: skillFiles(names.otherTeam) });
-  await ctx.admin.post(`/skills/${ot.body.id}/status`, { status: 'published' });
+  // Hors périmètre : skill personnel d'un autre utilisateur ; la portée « équipe » n'existe plus.
+  assert.equal((await ctx.admin.post('/skills', { name: `t-${id}`, description: 'x', scope: 'team', files: skillFiles(`t-${id}`) })).status, 400);
   const neighbour = await newUser();
   const nb = await neighbour.post('/skills', { name: names.otherUser, description: 'x', scope: 'personal', files: skillFiles(names.otherUser) });
   assert.equal(nb.status, 201);
@@ -178,8 +184,8 @@ test('skills : portées (global / équipe / personnel), désactivation et révoc
 
   const ls = () => bashViaPi(ctx.dev, ws.id, 'ls -1 /home/agent/.pi/agent/skills');
   let out = await ls();
-  for (const n of [names.global, names.team, names.personal]) assert.ok(out.includes(n), `${n} présent :\n${out}`);
-  for (const n of [names.otherTeam, names.otherUser]) assert.ok(!out.includes(n), `${n} absent :\n${out}`);
+  for (const n of [names.global, names.global2, names.personal]) assert.ok(out.includes(n), `${n} présent :\n${out}`);
+  assert.ok(!out.includes(names.otherUser), `${names.otherUser} absent :\n${out}`);
 
   // Désactivation personnelle + révocation globale : effectives au run suivant, sandbox toujours active.
   assert.equal((await ctx.dev.put(`/skills/${p.body.id}/installation`, { scope: 'personal', enabled: false })).status, 200);
@@ -187,7 +193,7 @@ test('skills : portées (global / équipe / personnel), désactivation et révoc
   // Une fois révoqué, un skill ne peut pas être republié.
   assert.equal((await ctx.admin.post(`/skills/${g.body.id}/status`, { status: 'published' })).status, 409);
   out = await ls();
-  assert.ok(out.includes(names.team), out);
+  assert.ok(out.includes(names.global2), out);
   assert.ok(!out.includes(names.personal), `skill désactivé encore présent :\n${out}`);
   assert.ok(!out.includes(names.global), `skill révoqué encore présent :\n${out}`);
   // Un membre ne publie pas de skill global.
@@ -207,7 +213,7 @@ rl.on('line', (l) => {
   send({ jsonrpc: '2.0', id: m.id, error: { code: -32601, message: 'inconnu' } });
 });`;
 
-test('MCP : outil stdio exécuté dans la sandbox, secret injecté depuis Vault, permission d’équipe, cloisonnement', async () => {
+test('MCP : outil stdio exécuté dans la sandbox, secret injecté depuis Vault, permissions globale et personnelle, cloisonnement', async () => {
   const ws = await workspace(ctx.dev, 'MCP');
   // Script du serveur déposé dans le workspace (les arguments sont limités à 500 caractères).
   const b64 = Buffer.from(ECHO_SERVER).toString('base64');
@@ -235,21 +241,27 @@ test('MCP : outil stdio exécuté dans la sandbox, secret injecté depuis Vault,
   assert.equal(done.data.isError, false, JSON.stringify(done.data));
   assert.match(done.data.output, /echo:bonjour:secret-ok/);
 
-  // Interdiction pour l'équipe : l'outil n'est plus proposé à Pi et l'appel est refusé.
-  assert.equal((await ctx.admin.put(`/mcp-servers/${srv}/permissions`, { toolName: 'echo', scope: 'team', teamId: ctx.teamId, effect: 'deny' })).status, 200);
+  const effective = async () => (await ctx.dev.get('/mcp-servers')).body.find((s) => s.id === srv).tools[0].effective;
+  // Interdiction personnelle : l'outil n'est plus proposé à Pi et l'appel est refusé.
+  assert.equal((await ctx.dev.put(`/mcp-servers/${srv}/permissions`, { toolName: 'echo', scope: 'personal', effect: 'deny' })).status, 200);
   done = await callEcho();
   assert.equal(done.data.isError, true, JSON.stringify(done.data));
   assert.doesNotMatch(done.data.output, /echo:bonjour/);
-  const effective = (await ctx.dev.get(`/mcp-servers?teamId=${ctx.teamId}`)).body.find((s) => s.id === srv).tools[0].effective;
-  assert.equal(effective, 'denied');
-  // Un membre ne peut pas lever l'interdiction d'équipe ni poser une règle globale.
-  assert.equal((await ctx.dev.put(`/mcp-servers/${srv}/permissions`, { toolName: 'echo', scope: 'team', teamId: ctx.teamId, effect: 'allow' })).status, 403);
+  assert.equal(await effective(), 'denied');
+  // Levée personnelle, puis interdiction globale : la règle globale l'emporte.
+  assert.equal((await ctx.dev.put(`/mcp-servers/${srv}/permissions`, { toolName: 'echo', scope: 'personal', effect: 'allow' })).status, 200);
+  assert.equal(await effective(), 'allowed');
+  assert.equal((await ctx.admin.put(`/mcp-servers/${srv}/permissions`, { toolName: 'echo', scope: 'global', effect: 'deny' })).status, 200);
+  assert.equal(await effective(), 'denied');
+  done = await callEcho();
+  assert.equal(done.data.isError, true, JSON.stringify(done.data));
+  // Un utilisateur ne pose pas de règle globale ; la portée « équipe » n'existe plus.
   assert.equal((await ctx.dev.put(`/mcp-servers/${srv}/permissions`, { toolName: 'echo', scope: 'global', effect: 'allow' })).status, 403);
+  assert.equal((await ctx.dev.put(`/mcp-servers/${srv}/permissions`, { toolName: 'echo', scope: 'team', effect: 'allow' })).status, 400);
 
-  // Serveur d'une autre équipe : invisible (liste, règles, permissions).
-  const slug = `mcp-${uid()}`;
-  const otherTeam = await ctx.admin.post('/teams', { name: `MCP ${slug}`, slug });
-  const hidden = await ctx.admin.post('/mcp-servers', { name: `${name}_x`, scope: 'team', teamId: otherTeam.body.id, transport: 'stdio', command: 'node', args: ['/workspace/mcp-echo.cjs'] });
+  // Serveur personnel d'un autre utilisateur : invisible (liste, règles, permissions).
+  const neighbour = await newUser();
+  const hidden = await neighbour.post('/mcp-servers', { name: `${name}_x`, scope: 'personal', transport: 'stdio', command: 'node', args: ['/workspace/mcp-echo.cjs'] });
   assert.equal(hidden.status, 201, JSON.stringify(hidden.body));
   assert.ok(!(await ctx.dev.get('/mcp-servers')).body.some((s) => s.id === hidden.body.id));
   assert.equal((await ctx.dev.get(`/mcp-servers/${hidden.body.id}/permissions`)).status, 404);
@@ -517,42 +529,18 @@ test('appels LLM concurrents : plafond jamais dépassé, une seule facturation p
   }
 });
 
-test('utilisateur de plusieurs équipes : quota strictement personnel (un compteur par personne, aucun plafond d’équipe), rôles distincts par équipe', async () => {
-  const mk = async (label) => {
-    const slug = `${label}-${uid()}`;
-    const t = await ctx.admin.post('/teams', { name: `${label} ${slug}`, slug });
-    assert.equal(t.status, 201);
-    return t.body.id;
-  };
-  const teamA = await mk('equipe-a');
-  const teamB = await mk('equipe-b');
-  const teamC = await mk('equipe-c');
-  const user = await newUser(); // membre de l'équipe de test
-  assert.equal((await ctx.admin.post(`/teams/${teamA}/members`, { userId: user.id, role: 'member' })).status, 204);
-  assert.equal((await ctx.admin.post(`/teams/${teamB}/members`, { userId: user.id, role: 'team_admin' })).status, 204);
-  const project = async (teamId) => {
-    const p = await user.post('/projects', { teamId, name: `P ${uid()}` });
-    assert.equal(p.status, 201, JSON.stringify(p.body));
-    const w = await user.post('/workspaces', { projectId: p.body.id, name: 'Multi-équipes' });
-    opened.push({ client: user, id: w.body.id });
-    return { project: p.body, ws: w.body };
-  };
-  const a = await project(teamA);
-  const b = await project(teamB);
-  // Équipe hors appartenance : ni création ni lecture.
-  // 404 : l'existence d'une équipe dont on n'est pas membre n'est pas révélée.
-  assert.ok([403, 404].includes((await user.post('/projects', { teamId: teamC, name: 'Interdit' })).status));
-  assert.ok(!(await user.get('/projects')).body.some((p) => p.teamId === teamC));
-  // Rôles par équipe : administrateur de B (gère les membres), simple membre de A.
+test('quota strictement personnel : un compteur par personne, partagé par toutes ses conversations (avec ou sans dépôt), aucun plafond collectif', async () => {
+  const user = await newUser();
   const other = await newUser();
-  assert.equal((await user.post(`/teams/${teamB}/members`, { userId: other.id, role: 'member' })).status, 204);
-  assert.equal((await user.post(`/teams/${teamA}/members`, { userId: other.id, role: 'member' })).status, 403);
+  const a = { ws: await workspace(user, 'Quota A') };
+  const b = { ws: await repoWorkspace(user, 'Quota B', fakeRepository('quota')) };
+  assert.ok(b.ws.repository, 'conversation rattachée au dépôt de test');
 
   // Aucun plafond d'équipe : refusé par l'API.
-  assert.equal((await ctx.admin.put('/admin/quotas/policies', { scope: 'team', subjectId: teamA, limit5h: '1', limit7d: null, exempt: false })).status, 400);
+  assert.equal((await ctx.admin.put('/admin/quotas/policies', { scope: 'team', subjectId: other.id, limit5h: '1', limit7d: null, exempt: false })).status, 400);
   assert.ok(!('teams' in (await user.get('/usage')).body), 'aucun quota d’équipe exposé');
 
-  // Quota personnel épuisé : suspendu sur ses projets de A comme de B (un seul compteur personnel)…
+  // Quota personnel épuisé : suspendu dans ses deux conversations (un seul compteur personnel)…
   assert.equal((await ctx.admin.put('/admin/quotas/policies', { scope: 'user', subjectId: user.id, limit5h: '0.001', limit7d: null, exempt: false })).status, 200);
   try {
     for (const target of [a, b]) {
@@ -567,11 +555,9 @@ test('utilisateur de plusieurs équipes : quota strictement personnel (un compte
         assert.equal(sent.body.error.code, 'quota_exceeded', JSON.stringify(sent.body));
       }
     }
-    // … sans toucher aux autres membres de ses équipes : leur quota est le leur.
-    const p = await other.post('/projects', { teamId: teamB, name: `P ${uid()}` });
-    const w = await other.post('/workspaces', { projectId: p.body.id, name: 'Coéquipier' });
-    opened.push({ client: other, id: w.body.id });
-    await run(other, w.body.id, 'Projet B, autre membre');
+    // … sans toucher aux autres utilisateurs, même sur le même dépôt : leur quota est le leur.
+    const w = await repoWorkspace(other, 'Même dépôt', b.ws.repository.id);
+    await run(other, w.id, 'Même dépôt, autre utilisateur');
   } finally {
     await ctx.admin.put('/admin/quotas/policies', { scope: 'user', subjectId: user.id, limit5h: null, limit7d: null, exempt: false });
   }
@@ -638,47 +624,43 @@ test('retour en arrière : fichiers d’avant un run restaurés, exclusions inta
 
 const SECRET = 'S3cret-Valeur-Tres-Longue-42';
 
-test('variables et secrets : portées équipe / projet, injectés dans l’agent, jamais exposés ni écrits', async () => {
-  const lead = await newUser('team_admin');
+test('variables et secrets : par dépôt (administrateur), injectés dans l’agent de toute conversation sur le dépôt, jamais exposés ni écrits', async () => {
+  const lead = ctx.admin;
   const dev = await newUser();
-  const p = await lead.post('/projects', { teamId: ctx.teamId, name: `Env ${uid()}` });
-  assert.equal(p.status, 201, JSON.stringify(p.body));
-  const pid = p.body.id;
-  const envUrl = `/projects/${pid}/environment/variables`;
-  const teamUrl = `/teams/${ctx.teamId}/environment/variables`;
-  for (const [url, body] of [
-    [teamUrl, { name: 'TEAM_ONLY', value: 'valeur-equipe' }],
-    [teamUrl, { name: 'TEAM_OVERRIDE', value: 'equipe' }],
-    [envUrl, { name: 'PROJECT_VAR', value: 'projet' }],
-    [envUrl, { name: 'TEAM_OVERRIDE', value: 'projet' }],
-    [envUrl, { name: 'DB_PASSWORD', value: SECRET, secret: true }],
+  const pid = fakeRepository('env');
+  const envUrl = `/admin/repositories/${pid}/environment/variables`;
+  for (const body of [
+    { name: 'PROJECT_VAR', value: 'depot' },
+    { name: 'OTHER_VAR', value: 'autre' },
+    { name: 'DB_PASSWORD', value: SECRET, secret: true },
   ]) {
-    const r = await lead.put(url, body);
-    assert.equal(r.status, 200, `${url} ${JSON.stringify(r.body)}`);
+    const r = await lead.put(envUrl, body);
+    assert.equal(r.status, 200, `${envUrl} ${JSON.stringify(r.body)}`);
   }
-  // Validation : noms réservés, secret trop court ; un membre ne gère pas l'environnement.
+  // Validation : noms réservés, secret trop court ; un utilisateur ne gère pas l'environnement.
   assert.equal((await lead.put(envUrl, { name: 'PATH', value: '/tmp' })).status, 400);
   assert.equal((await lead.put(envUrl, { name: 'https_proxy', value: 'http://x' })).status, 400);
   assert.equal((await lead.put(envUrl, { name: 'LD_PRELOAD', value: '/tmp/x.so' })).status, 400);
   assert.equal((await lead.put(envUrl, { name: 'COURT', value: 'abc', secret: true })).status, 400);
   assert.equal((await dev.put(envUrl, { name: 'X', value: 'y' })).status, 403);
-  assert.equal((await dev.put(teamUrl, { name: 'X', value: 'y' })).status, 403);
-  // Lecture par un membre : valeurs simples visibles, secret jamais renvoyé.
-  const env = await dev.get(`/projects/${pid}/environment`);
+  assert.equal((await dev.get(`/admin/repositories/${pid}/environment`)).status, 403);
+  // Lecture par l'administrateur : valeurs simples visibles, secret jamais renvoyé.
+  const env = await lead.get(`/admin/repositories/${pid}/environment`);
   assert.equal(env.status, 200);
-  assert.equal(env.body.canManage, false);
   assert.ok(!JSON.stringify(env.body).includes(SECRET), 'secret jamais renvoyé');
   assert.equal(env.body.variables.find((v) => v.name === 'DB_PASSWORD').value, null);
+  const listed = (await lead.get('/admin/repositories')).body.find((r) => r.id === pid);
+  assert.equal(listed.variableCount, 3);
 
-  const w = await dev.post('/workspaces', { projectId: pid, name: 'Env' });
+  const w = { body: await repoWorkspace(dev, 'Env', pid) };
   opened.push({ client: dev, id: w.body.id });
   const conv = await dev.get(`/workspaces/${w.body.id}/conversation`);
-  const cmd = 'echo "$TEAM_ONLY|$PROJECT_VAR|$TEAM_OVERRIDE|$DB_PASSWORD"; printf %s "$DB_PASSWORD" | sha256sum; grep -rl "$DB_PASSWORD" /workspace /workspace-state 2>/dev/null | wc -l';
+  const cmd = 'echo "$PROJECT_VAR|$OTHER_VAR|$DB_PASSWORD"; printf %s "$DB_PASSWORD" | sha256sum; grep -rl "$DB_PASSWORD" /workspace /workspace-state 2>/dev/null | wc -l';
   const sent = await dev.post(`/workspaces/${w.body.id}/messages`, { text: `Env. [[tool:bash ${JSON.stringify({ command: cmd })}]]` }, { 'Idempotency-Key': `f-${uid()}` });
   const evs = await dev.events(w.body.id, conv.body.lastEventId, (e) => e.type === 'run.completed' && e.runId === sent.body.runId, 300_000);
   const out = evs.find((e) => e.type === 'tool.completed').data.output;
   const { createHash } = await import('node:crypto');
-  assert.match(out, /valeur-equipe\|projet\|projet\|\*\*\*/, out);
+  assert.match(out, /depot\|autre\|\*\*\*/, out);
   assert.ok(out.includes(createHash('sha256').update(SECRET).digest('hex')), 'valeur réelle injectée (empreinte)');
   assert.match(out, /^0$/m, 'secret jamais écrit sur disque par la plateforme');
 
@@ -693,28 +675,22 @@ test('variables et secrets : portées équipe / projet, injectés dans l’agent
   assert.equal(sql(`select count(*) from messages m join conversations c on c.id = m.conversation_id where c.workspace_id = '${w.body.id}' and m.role <> 'user' and m.text like '%${SECRET}%'`), '0');
 
   // Suppression : la variable disparaît au run suivant.
-  const dbVar = (await lead.get(`/projects/${pid}/environment`)).body.variables.find((v) => v.name === 'DB_PASSWORD');
+  const dbVar = (await lead.get(`/admin/repositories/${pid}/environment`)).body.variables.find((v) => v.name === 'DB_PASSWORD');
   assert.equal((await lead.req('DELETE', `${envUrl}/${dbVar.id}`)).status, 204);
   const conv3 = await dev.get(`/workspaces/${w.body.id}/conversation`);
   const after = await dev.post(`/workspaces/${w.body.id}/messages`, { text: 'Env. [[tool:bash {"command":"echo \\"[${DB_PASSWORD:-absent}]\\""}]]' }, { 'Idempotency-Key': `f-${uid()}` });
   const evs3 = await dev.events(w.body.id, conv3.body.lastEventId, (e) => e.type === 'run.completed' && e.runId === after.body.runId, 300_000);
   assert.match(evs3.find((e) => e.type === 'tool.completed').data.output, /\[absent\]/);
   ctx.envProject = { pid, lead, dev, workspaceId: w.body.id };
-  for (const name of ['TEAM_ONLY', 'TEAM_OVERRIDE']) {
-    const v = (await lead.get(teamUrl)).body.find((x) => x.name === name);
-    await lead.req('DELETE', `${teamUrl}/${v.id}`);
-  }
 });
 
-test('préparation de l’environnement : script par projet, une fois par sandbox, rejoué si modifié, échec signalé ; image par projet', async () => {
+test('préparation de l’environnement : script par dépôt, une fois par sandbox, rejoué si modifié, échec signalé ; image par dépôt', async () => {
   const { pid, lead, dev } = ctx.envProject;
-  await lead.put(`/projects/${pid}/environment/variables`, { name: 'SETUP_TOKEN', value: 'Jeton-De-Preparation-99', secret: true });
+  await lead.put(`/admin/repositories/${pid}/environment/variables`, { name: 'SETUP_TOKEN', value: 'Jeton-De-Preparation-99', secret: true });
   const script = 'echo "préparation $PROJECT_VAR jeton=$SETUP_TOKEN"\nmkdir -p .deps && date +%s%N > .deps/stamp\necho present > /home/agent/outil-global';
-  assert.equal((await lead.put(`/projects/${pid}/environment`, { sandboxImageId: null, setupScript: script })).status, 200);
-  assert.equal((await dev.put(`/projects/${pid}/environment`, { sandboxImageId: null, setupScript: 'id' })).status, 403);
-  const w = await dev.post('/workspaces', { projectId: pid, name: 'Préparation' });
-  const wsId = w.body.id;
-  opened.push({ client: dev, id: wsId });
+  assert.equal((await lead.put(`/admin/repositories/${pid}/environment`, { sandboxImageId: null, setupScript: script })).status, 200);
+  assert.equal((await dev.put(`/admin/repositories/${pid}/environment`, { sandboxImageId: null, setupScript: 'id' })).status, 403);
+  const wsId = (await repoWorkspace(dev, 'Préparation', pid)).id;
 
   const runCollect = async (text) => {
     const conv = await dev.get(`/workspaces/${wsId}/conversation`);
@@ -730,7 +706,7 @@ test('préparation de l’environnement : script par projet, une fois par sandbo
   let setup = setupMessages(evs);
   assert.equal(setup.length, 2, 'début + fin de préparation');
   assert.equal(setup[1].data.meta.status, 'succeeded', JSON.stringify(setup[1].data));
-  assert.match(setup[1].data.meta.output, /préparation projet jeton=\*\*\*/);
+  assert.match(setup[1].data.meta.output, /préparation depot jeton=\*\*\*/);
   assert.ok(!JSON.stringify(setup).includes('Jeton-De-Preparation-99'));
   assert.match(evs.find((e) => e.type === 'tool.completed').data.output, /present[\s\S]*stamp/);
   const stamp1 = (await dev.get(`/workspaces/${wsId}/files/content?path=.deps/stamp`)).body.content;
@@ -748,44 +724,41 @@ test('préparation de l’environnement : script par projet, une fois par sandbo
   assert.match(evs.find((e) => e.type === 'tool.completed').data.output, /present/);
 
   // Script modifié en échec : signalé dans la conversation et à Pi, le run continue.
-  await lead.put(`/projects/${pid}/environment`, { sandboxImageId: null, setupScript: 'echo "étape 1"\necho "dépendance introuvable" >&2\nexit 3' });
+  await lead.put(`/admin/repositories/${pid}/environment`, { sandboxImageId: null, setupScript: 'echo "étape 1"\necho "dépendance introuvable" >&2\nexit 3' });
   evs = await runCollect('Où en est-on ?');
   setup = setupMessages(evs);
   assert.equal(setup.at(-1).data.meta.status, 'failed');
   assert.equal(setup.at(-1).data.meta.exitCode, 3);
   assert.match(setup.at(-1).data.meta.output, /dépendance introuvable/);
-  assert.ok(evs.some((e) => e.type === 'message.completed' && /script de préparation du projet a échoué/.test(e.data.text)), 'Pi informé de l’échec');
+  assert.ok(evs.some((e) => e.type === 'message.completed' && /script de préparation du dépôt a échoué/.test(e.data.text)), 'Pi informé de l’échec');
 
-  // Image par projet : choisie parmi les images actives ; changement → sandbox recréée.
+  // Image par dépôt : choisie parmi les images actives ; changement → sandbox recréée.
   const imageId = sql(`insert into sandbox_images (name, version, reference, pi_version, status, is_default) values ('cap-sandbox-e2e', '${uid()}', 'shipcove-sandbox:0.1.0', '0.73.1', 'active', false) returning id`).split('\n')[0];
   try {
-    assert.equal((await lead.put(`/projects/${pid}/environment`, { sandboxImageId: '00000000-0000-4000-8000-000000000000', setupScript: null })).status, 400);
-    const env = await lead.put(`/projects/${pid}/environment`, { sandboxImageId: imageId, setupScript: null });
+    assert.equal((await lead.put(`/admin/repositories/${pid}/environment`, { sandboxImageId: '00000000-0000-4000-8000-000000000000', setupScript: null })).status, 400);
+    const env = await lead.put(`/admin/repositories/${pid}/environment`, { sandboxImageId: imageId, setupScript: null });
     assert.equal(env.status, 200, JSON.stringify(env.body));
     assert.ok(env.body.images.some((i) => i.id === imageId));
     await runCollect('Avec la nouvelle image');
-    assert.equal(sql(`select image_id from sandbox_instances where workspace_id = '${wsId}' and status = 'running'`), imageId, 'sandbox recréée avec l’image du projet');
+    assert.equal(sql(`select image_id from sandbox_instances where workspace_id = '${wsId}' and status = 'running'`), imageId, 'sandbox recréée avec l’image du dépôt');
   } finally {
-    await lead.put(`/projects/${pid}/environment`, { sandboxImageId: null, setupScript: null });
+    await lead.put(`/admin/repositories/${pid}/environment`, { sandboxImageId: null, setupScript: null });
     await dev.post(`/workspaces/${wsId}/stop`).catch(() => undefined);
     await new Promise((r) => setTimeout(r, 3000));
     sql(`update sandbox_images set status = 'revoked' where id = '${imageId}'`);
   }
 });
 
-test('services lancés par l’agent : rien sans demande, démarrage à la demande sur localhost, secret du projet, limites, isolation', async () => {
-  const lead = await newUser('team_admin');
-  const p = await lead.post('/projects', { teamId: ctx.teamId, name: `Services ${uid()}` });
-  const pid = p.body.id;
-  await lead.put(`/projects/${pid}/environment/variables`, { name: 'PG_SECRET', value: 'Mot-De-Passe-Pg-2026', secret: true });
+test('services lancés par l’agent : rien sans demande, démarrage à la demande sur localhost, secret du dépôt, limites, isolation', async () => {
+  const lead = await newUser();
+  const pid = fakeRepository('services');
+  await ctx.admin.put(`/admin/repositories/${pid}/environment/variables`, { name: 'PG_SECRET', value: 'Mot-De-Passe-Pg-2026', secret: true });
   // Catalogue : géré par l'administrateur seulement.
   assert.equal((await lead.get('/admin/service-catalog')).status, 403);
   const catalog = (await ctx.admin.get('/admin/service-catalog')).body;
   assert.ok(['postgres', 'redis', 'rabbitmq'].every((k) => catalog.some((c) => c.key === k && c.enabled)));
 
-  const w = await lead.post('/workspaces', { projectId: pid, name: 'Services' });
-  const wsId = w.body.id;
-  opened.push({ client: lead, id: wsId });
+  const wsId = (await repoWorkspace(lead, 'Services', pid)).id;
   const tools = async (text) => {
     const conv = await lead.get(`/workspaces/${wsId}/conversation`);
     const sent = await lead.post(`/workspaces/${wsId}/messages`, { text }, { 'Idempotency-Key': `f-${uid()}` });
@@ -809,7 +782,7 @@ test('services lancés par l’agent : rien sans demande, démarrage à la deman
   assert.match(out[0].output, /prêt/);
   assert.match(out[1].output, /\+PONG/);
 
-  // PostgreSQL avec un secret du projet référencé sans être connu de l'agent.
+  // PostgreSQL avec un secret du dépôt référencé sans être connu de l'agent.
   out = await tools(`Postgres. ${svc({ action: 'start', service: 'postgres', env: { POSTGRES_PASSWORD: '${PG_SECRET}' } })} ${svc({ action: 'logs', name: 'postgres', lines: 50 })} [[tool:bash {"command":"exec 3<>/dev/tcp/127.0.0.1/5432 && echo port-ouvert"}]]`);
   assert.equal(out[0].isError, false, out[0].output);
   assert.match(out[1].output, /ready to accept connections/);
@@ -837,9 +810,7 @@ test('services lancés par l’agent : rien sans demande, démarrage à la deman
 
   // Isolation : la sandbox d'un autre utilisateur ne voit pas ces services.
   const other = await newUser();
-  const p2 = await other.post('/projects', { teamId: ctx.teamId, name: `Autre ${uid()}` });
-  const w2 = await other.post('/workspaces', { projectId: p2.body.id, name: 'Autre' });
-  opened.push({ client: other, id: w2.body.id });
+  const w2 = { body: await workspace(other, 'Autre') };
   const conv2 = await other.get(`/workspaces/${w2.body.id}/conversation`);
   const sent2 = await other.post(`/workspaces/${w2.body.id}/messages`, { text: 'Isolation [[tool:bash {"command":"(exec 3<>/dev/tcp/127.0.0.1/6379) 2>/dev/null && echo joignable || echo injoignable"}]]' }, { 'Idempotency-Key': `f-${uid()}` });
   const evs2 = await other.events(w2.body.id, conv2.body.lastEventId, (e) => e.type === 'run.completed' && e.runId === sent2.body.runId, 300_000);

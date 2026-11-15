@@ -13,7 +13,7 @@ import {
   type NotificationPreferenceDto,
   type UsageSummaryDto,
 } from '@cap/contracts';
-import { llmModels, llmRequests, modelCoefficients, notificationPreferences, notifications, teamMembers, teams, type Database } from '@cap/database';
+import { llmModels, llmRequests, modelCoefficients, notificationPreferences, notifications, type Database } from '@cap/database';
 import { DB, NotificationService, QuotaService, SettingsService } from '@cap/server-core';
 import { CurrentUser } from '../common/decorators.js';
 import type { AuthUser } from '../common/request.js';
@@ -50,15 +50,12 @@ export async function modelDtos(db: Database, rows: Array<typeof llmModels.$infe
 export class ModelsController {
   constructor(@Inject(DB) private readonly db: Database) {}
 
-  /** Modèles autorisés pour au moins une équipe de l'utilisateur (ou une équipe donnée). */
+  /** Modèles activés (ouverts à tous les utilisateurs). */
   @Get()
-  async list(@CurrentUser() user: AuthUser, @Query('teamId', { schema: z.uuid().optional() }) teamId?: string): Promise<ModelDto[]> {
-    const mine = (await this.db.select({ t: teamMembers.teamId }).from(teamMembers).where(eq(teamMembers.userId, user.id))).map((r) => r.t);
-    const teamsToCheck = teamId ? mine.filter((t) => t === teamId) : mine;
+  async list(): Promise<ModelDto[]> {
     const rows = await this.db.select().from(llmModels).where(and(eq(llmModels.enabled, true), isNull(llmModels.deletedAt)));
-    const allowed = rows.filter((m) => m.allowedTeamIds.length === 0 || m.allowedTeamIds.some((t) => teamsToCheck.includes(t)));
     // Les coefficients (crédits par 1 000 tokens) sont réservés à l'administration.
-    return (await modelDtos(this.db, allowed)).map((m) => ({ ...m, coefficients: null }));
+    return (await modelDtos(this.db, rows)).map((m) => ({ ...m, coefficients: null }));
   }
 }
 

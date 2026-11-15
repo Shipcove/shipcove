@@ -2,7 +2,6 @@ import { sql } from 'drizzle-orm';
 import { boolean, index, integer, jsonb, numeric, pgTable, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { createdAt, pk, ts, updatedAt } from './_common.js';
 import { users } from './iam.js';
-import { teams } from './teams.js';
 
 /** Montants de crédits : décimal exact, 8 décimales. */
 const credits = () => numeric({ precision: 20, scale: 8 });
@@ -22,7 +21,6 @@ export const llmModels = pgTable(
     supportsReasoning: boolean().notNull().default(false),
     enabled: boolean().notNull().default(true),
     isDefault: boolean().notNull().default(false),
-    allowedTeamIds: jsonb().$type<string[]>().notNull().default([]),
     available: boolean().notNull().default(true),
     lastSyncAt: ts(),
     lastSyncError: text(),
@@ -93,7 +91,6 @@ export const llmRequests = pgTable(
     userId: uuid()
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
-    teamId: uuid().references(() => teams.id, { onDelete: 'restrict' }),
     workspaceId: uuid(),
     runId: uuid(),
     modelId: uuid().references(() => llmModels.id),
@@ -129,7 +126,6 @@ export const creditReservations = pgTable(
       .notNull()
       .references(() => llmRequests.id, { onDelete: 'cascade' }),
     userId: uuid().notNull(),
-    teamId: uuid(),
     amount: credits().notNull(),
     status: text({ enum: ['open', 'settled', 'released', 'expired'] }).notNull().default('open'),
     expiresAt: ts().notNull(),
@@ -139,7 +135,6 @@ export const creditReservations = pgTable(
   (t) => [
     uniqueIndex('credit_reservations_request_uq').on(t.llmRequestId),
     index('credit_reservations_open_user_idx').on(t.userId).where(sql`${t.status} = 'open'`),
-    index('credit_reservations_open_team_idx').on(t.teamId).where(sql`${t.status} = 'open'`),
   ],
 );
 
@@ -153,7 +148,6 @@ export const creditLedger = pgTable(
     id: pk(),
     idempotencyKey: text().notNull(),
     userId: uuid().notNull(),
-    teamId: uuid(),
     kind: text({ enum: ['usage', 'adjustment', 'reconciliation'] }).notNull(),
     amount: credits().notNull(),
     llmRequestId: uuid(),
@@ -170,7 +164,6 @@ export const creditLedger = pgTable(
   (t) => [
     uniqueIndex('credit_ledger_idem_uq').on(t.idempotencyKey),
     index().on(t.userId, t.occurredAt),
-    index().on(t.teamId, t.occurredAt),
   ],
 );
 
@@ -182,7 +175,6 @@ export const runTokens = pgTable(
     tokenHash: text().notNull(),
     workspaceId: uuid().notNull(),
     userId: uuid().notNull(),
-    teamId: uuid().notNull(),
     sandboxInstanceId: uuid(),
     expiresAt: ts().notNull(),
     revokedAt: ts(),

@@ -34,7 +34,7 @@ disponibles. Actions :
 | `logs` | Dernières lignes du journal d'un service, secrets masqués. |
 | `catalog` | Catalogue complet. |
 
-Dans `env`, `${NOM}` est remplacé côté plateforme par une variable ou un secret du projet. L'agent
+Dans `env`, `${NOM}` est remplacé côté plateforme par une variable ou un secret du dépôt. L'agent
 peut donc configurer `POSTGRES_PASSWORD=${DB_PASSWORD}` sans jamais voir la valeur.
 
 ## Isolation et cycle de vie

@@ -1,9 +1,11 @@
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NgTemplateOutlet } from '@angular/common';
 import { filter } from 'rxjs';
 import type { WorkspaceDto } from '@cap/contracts';
 import { Api } from '../core/api.service';
 import { AuthStore } from '../core/auth.store';
+import { ConversationsService } from '../core/conversations.service';
 import { ThemeService } from '../core/theme.service';
 import { Icon } from '../shared/icon';
 
@@ -11,47 +13,71 @@ interface NavItem {
   path: string;
   label: string;
   icon: string;
-  exact?: boolean;
 }
 
-/** Disposition principale : navigation latérale + workspaces récents groupés par projet. */
+const COLLAPSED_KEY = 'cap.sidebar.collapsedRepos';
+
+/**
+ * Disposition principale : nouvelle conversation, conversations regroupées par dépôt Git puis
+ * celles sans dépôt par date, liens secondaires et compte en bas.
+ */
 @Component({
   selector: 'cap-shell',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, Icon],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, NgTemplateOutlet, Icon],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex h-screen overflow-hidden">
       @if (!collapsed()) {
-        <aside class="flex w-64 shrink-0 flex-col border-r border-stone-200 bg-stone-100/60 dark:border-stone-800 dark:bg-stone-900/60" aria-label="Navigation principale">
+        <aside class="flex w-72 shrink-0 flex-col border-r border-stone-200 bg-stone-100/60 dark:border-stone-800 dark:bg-stone-900/60" aria-label="Navigation principale">
           <div class="flex items-center gap-2 px-4 py-3">
             <div class="flex h-7 w-7 items-center justify-center rounded-md bg-accent-600 font-mono text-sm font-bold text-white">π</div>
             <span class="text-sm font-semibold">Shipcove</span>
             <button class="btn-ghost ml-auto !p-1" (click)="collapsed.set(true)" aria-label="Masquer la navigation"><cap-icon name="sidebar" /></button>
           </div>
-          <nav class="space-y-0.5 px-2">
-            @for (item of nav(); track item.path) {
-              <a [routerLink]="item.path" routerLinkActive="bg-stone-200 dark:bg-stone-800 font-medium" [routerLinkActiveOptions]="{ exact: !!item.exact }"
-                class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm text-stone-700 hover:bg-stone-200/70 dark:text-stone-300 dark:hover:bg-stone-800">
-                <cap-icon [name]="item.icon" />
-                <span class="flex-1">{{ item.label }}</span>
-                @if (item.path === '/notifications' && unread() > 0) {
-                  <span class="badge bg-accent-600 text-white">{{ unread() }}</span>
+          <div class="px-2">
+            <a routerLink="/" [queryParams]="{ new: 1 }" class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium text-stone-800 hover:bg-stone-200/70 dark:text-stone-200 dark:hover:bg-stone-800">
+              <cap-icon name="plus" /> Nouvelle conversation
+            </a>
+          </div>
+
+          <nav class="mt-2 flex-1 overflow-y-auto px-2 pb-3" aria-label="Conversations">
+            @for (g of conversations.byRepository(); track g.key) {
+              <div class="mt-3">
+                <div class="group flex items-center rounded-md pr-1">
+                  <button class="flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-1 text-left text-xs font-semibold text-stone-500 hover:text-stone-800 dark:hover:text-stone-200" (click)="toggleRepo(g.key)" [attr.aria-expanded]="!isCollapsed(g.key)" [title]="g.host + '/' + g.fullName">
+                    <cap-icon name="git" [size]="13" />
+                    <span class="truncate">{{ g.name }}</span>
+                    <cap-icon [name]="isCollapsed(g.key) ? 'chevronRight' : 'chevronDown'" [size]="12" class="opacity-60" />
+                    <span class="ml-auto font-normal opacity-0 group-hover:opacity-100">{{ g.items.length }}</span>
+                  </button>
+                  <a [routerLink]="['/']" [queryParams]="{ repo: g.key }" class="rounded p-0.5 text-stone-500 opacity-0 group-hover:opacity-100 hover:bg-stone-200 focus:opacity-100 dark:hover:bg-stone-700"
+                    [attr.aria-label]="'Nouvelle conversation dans ' + g.fullName" title="Nouvelle conversation dans ce dépôt"><cap-icon name="plus" [size]="12" /></a>
+                </div>
+                @if (!isCollapsed(g.key)) {
+                  @for (w of g.items; track w.id) { <ng-container *ngTemplateOutlet="item; context: { $implicit: w }" /> }
                 }
-              </a>
+              </div>
+            }
+            @if (conversations.withoutRepository().length) {
+              <div class="mt-4 px-2.5 text-xs font-semibold text-stone-500">Conversations</div>
+              @for (g of conversations.withoutRepository(); track g.label) {
+                <div class="mt-2 px-2.5 text-[11px] text-stone-400">{{ g.label }}</div>
+                @for (w of g.items; track w.id) { <ng-container *ngTemplateOutlet="item; context: { $implicit: w }" /> }
+              }
+            }
+            @if (!conversations.all().length) {
+              <p class="mt-4 px-2.5 text-xs text-stone-500">Vos conversations apparaîtront ici.</p>
             }
           </nav>
-          <div class="mt-4 flex-1 overflow-y-auto px-2 pb-2">
-            @for (group of groups(); track group.project) {
-              <div class="mt-3 px-2.5 text-[11px] font-medium tracking-wide text-stone-500 uppercase">{{ group.project }}</div>
-              @for (w of group.items; track w.id) {
-                <a [routerLink]="['/workspaces', w.id]" routerLinkActive="bg-stone-200 dark:bg-stone-800"
-                  class="flex items-center gap-2 truncate rounded-md px-2.5 py-1.5 text-sm text-stone-700 hover:bg-stone-200/70 dark:text-stone-300 dark:hover:bg-stone-800">
-                  <span class="h-1.5 w-1.5 shrink-0 rounded-full" [class]="w.status === 'running' ? 'bg-emerald-500' : w.status === 'error' ? 'bg-red-500' : 'bg-stone-400'"></span>
-                  <span class="truncate">{{ w.name }}</span>
-                  @if (w.access === 'shared_read') { <cap-icon name="share" [size]="12" class="text-stone-400" /> }
-                  @if (w.activeRunStatus === 'running') { <span class="ml-auto h-2 w-2 animate-pulse rounded-full bg-accent-500" title="Pi travaille"></span> }
-                </a>
-              }
+
+          <div class="border-t border-stone-200 px-2 py-2 dark:border-stone-800">
+            @for (item of nav(); track item.path) {
+              <a [routerLink]="item.path" routerLinkActive="bg-stone-200 dark:bg-stone-800 font-medium"
+                class="flex items-center gap-2.5 rounded-md px-2.5 py-1 text-sm text-stone-600 hover:bg-stone-200/70 dark:text-stone-400 dark:hover:bg-stone-800">
+                <cap-icon [name]="item.icon" [size]="15" />
+                <span class="flex-1">{{ item.label }}</span>
+                @if (item.path === '/notifications' && unread() > 0) { <span class="badge bg-accent-600 text-white">{{ unread() }}</span> }
+              </a>
             }
           </div>
           <div class="flex items-center gap-2 border-t border-stone-200 px-3 py-2.5 dark:border-stone-800">
@@ -71,37 +97,35 @@ interface NavItem {
         <router-outlet />
       </main>
     </div>
+
+    <ng-template #item let-w>
+      <a [routerLink]="['/workspaces', w.id]" routerLinkActive="bg-stone-200 font-medium text-stone-900 dark:bg-stone-800 dark:text-stone-100"
+        class="flex items-center gap-2 rounded-md py-1.5 pr-2 pl-6 text-sm text-stone-700 hover:bg-stone-200/70 dark:text-stone-300 dark:hover:bg-stone-800" [title]="w.name">
+        <span class="truncate">{{ w.name }}</span>
+        @if (w.access === 'shared_read') { <cap-icon name="share" [size]="12" class="shrink-0 text-stone-400" /> }
+        @if (w.activeRunStatus === 'running' || w.activeRunStatus === 'queued') { <span class="ml-auto h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent-500" title="Pi travaille"></span> }
+      </a>
+    </ng-template>
   `,
 })
 export class Shell implements OnInit, OnDestroy {
   protected readonly auth = inject(AuthStore);
   protected readonly theme = inject(ThemeService);
+  protected readonly conversations = inject(ConversationsService);
   private readonly api = inject(Api);
   private readonly router = inject(Router);
   protected readonly collapsed = signal(false);
-  protected readonly workspaces = signal<WorkspaceDto[]>([]);
   protected readonly unread = signal(0);
+  private readonly collapsedRepos = signal<Set<string>>(readCollapsed());
   private timer: ReturnType<typeof setInterval> | null = null;
 
   protected readonly nav = computed<NavItem[]>(() => [
-    { path: '/', label: 'Accueil', icon: 'home', exact: true },
-    { path: '/projects', label: 'Projets', icon: 'folder' },
-    { path: '/teams', label: 'Équipes', icon: 'users' },
     { path: '/usage', label: 'Consommation', icon: 'chart' },
     { path: '/extensions', label: 'Skills & MCP', icon: 'puzzle' },
     { path: '/notifications', label: 'Notifications', icon: 'bell' },
     { path: '/settings', label: 'Paramètres', icon: 'settings' },
     ...(this.auth.isAdmin() ? [{ path: '/admin', label: 'Administration', icon: 'shield' }] : []),
   ]);
-
-  protected readonly groups = computed(() => {
-    const map = new Map<string, WorkspaceDto[]>();
-    for (const w of this.workspaces()) {
-      if (w.archivedAt) continue;
-      map.set(w.projectName, [...(map.get(w.projectName) ?? []), w]);
-    }
-    return [...map.entries()].map(([project, items]) => ({ project, items }));
-  });
 
   protected readonly initials = computed(() =>
     (this.auth.me()?.displayName ?? '?')
@@ -111,6 +135,22 @@ export class Shell implements OnInit, OnDestroy {
       .join('')
       .toUpperCase(),
   );
+
+  protected isCollapsed(key: string): boolean {
+    return this.collapsedRepos().has(key);
+  }
+
+  protected toggleRepo(key: string): void {
+    const next = new Set(this.collapsedRepos());
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    this.collapsedRepos.set(next);
+    try {
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
+    } catch {
+      /* stockage indisponible : préférence non conservée */
+    }
+  }
 
   ngOnInit(): void {
     void this.refresh();
@@ -127,8 +167,8 @@ export class Shell implements OnInit, OnDestroy {
   }
 
   private async refresh(): Promise<void> {
+    await this.conversations.refresh();
     try {
-      this.workspaces.set(await this.api.get<WorkspaceDto[]>('/workspaces'));
       const n = await this.api.get<{ unreadCount: number }>('/notifications', { unread: 'true' });
       this.unread.set(n.unreadCount);
     } catch {
@@ -136,3 +176,13 @@ export class Shell implements OnInit, OnDestroy {
     }
   }
 }
+
+function readCollapsed(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]') as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+export type { WorkspaceDto };

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
-import { projects, workspaces, type Database } from '@cap/database';
+import { repositories, workspaces, type Database } from '@cap/database';
 import { execCollect } from '@cap/sandbox';
 import { DB, SettingsService, scrubSecrets, type ResolvedEnvironment } from '@cap/server-core';
 import { CheckpointService } from './checkpoint.service.js';
@@ -19,8 +19,8 @@ export interface SetupResult {
 const OUTPUT_LIMIT = 20_000;
 
 /**
- * Script de préparation du projet (dépendances, outils) : exécuté dans `/workspace` avec les
- * variables du projet, une fois par sandbox et à chaque modification du script (il doit donc
+ * Script de préparation du dépôt (dépendances, outils) : exécuté dans `/workspace` avec les
+ * variables du dépôt, une fois par sandbox et à chaque modification du script (il doit donc
  * être idempotent, comme une étape de CI). Ce qu'il produit dans `/workspace` est conservé par
  * le checkpoint qui suit ; le reste vit avec la sandbox.
  */
@@ -38,9 +38,9 @@ export class SetupService {
   /** Empreinte de la préparation attendue (script + image), `null` sans script. */
   async expected(workspaceId: string): Promise<{ hash: string; script: string } | null> {
     const [row] = await this.db
-      .select({ script: projects.setupScript, imageId: projects.sandboxImageId })
+      .select({ script: repositories.setupScript, imageId: repositories.sandboxImageId })
       .from(workspaces)
-      .innerJoin(projects, eq(projects.id, workspaces.projectId))
+      .innerJoin(repositories, eq(repositories.id, workspaces.repositoryId))
       .where(eq(workspaces.id, workspaceId));
     if (!row?.script?.trim()) return null;
     return { script: row.script, hash: createHash('sha256').update(`${row.imageId ?? 'default'}\n${row.script}`).digest('hex') };

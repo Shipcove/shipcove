@@ -12,7 +12,6 @@ import {
   gitOperations,
   messages,
   conversations,
-  projects,
   repositories,
   workspaces,
   type Database,
@@ -92,11 +91,10 @@ export class GitBrokerService implements OnApplicationBootstrap {
     const [row] = await this.db
       .select({ w: workspaces, repo: repositories })
       .from(workspaces)
-      .innerJoin(projects, eq(projects.id, workspaces.projectId))
-      .leftJoin(repositories, eq(repositories.id, projects.repositoryId))
+      .leftJoin(repositories, eq(repositories.id, workspaces.repositoryId))
       .where(eq(workspaces.id, workspaceId));
-    if (!row) throw new AppError('not_found', 'Workspace introuvable');
-    if (!row.repo) throw new AppError('conflict', 'Ce projet n’a pas de dépôt distant : ajoutez-en un au projet');
+    if (!row) throw new AppError('not_found', 'Conversation introuvable');
+    if (!row.repo) throw new AppError('conflict', 'Cette conversation n’est associée à aucun dépôt Git');
     const [conn] = await this.db
       .select()
       .from(gitConnections)

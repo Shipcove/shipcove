@@ -44,7 +44,10 @@ supprimer exige une **approbation humaine**.
   éditeur Monaco.
 - **Revenir en arrière** : restaure les fichiers à l'état d'avant un message, à partir des
   checkpoints, et peut s'annuler.
-- **Environnement par projet** :
+- **Conversations** au centre : l'accueil est une nouvelle conversation, le dépôt Git est
+  facultatif (choisi sous la zone de saisie), le titre est généré automatiquement, la barre latérale
+  regroupe les conversations par dépôt puis par date.
+- **Environnement par dépôt** (partagé par toutes les conversations sur le dépôt) :
   - variables et **secrets** (Vault, masqués partout, y compris vers le LLM) ;
   - **script de préparation** ;
   - **image de sandbox** au choix.
@@ -67,16 +70,16 @@ supprimer exige une **approbation humaine**.
   - antivirus ClamAV (si configuré), en échec fermé.
 - **Partage** nominatif en lecture seule, révocable.
 - **Notifications** dans l'application et par email.
-- **Skills** et serveurs **MCP**, sur trois portées : globale, équipe, personnelle.
+- **Skills** et serveurs **MCP**, sur deux portées : globale et personnelle.
 
 **Pour les administrateurs**
 
 - **IAM intégrée** : comptes locaux, MFA TOTP, sessions révocables. Également :
   - **OIDC / Keycloak**, **SAML 2.0**, **LDAP / Active Directory** ;
   - **OAuth GitHub / GitLab**, sans jamais fusionner deux comptes par leur email.
-- **Modèles LiteLLM** : droits par équipe et coefficients versionnés.
-- **Quotas personnels** : fenêtres glissantes de 5 h et 7 j, un compteur par personne (aucun plafond
-  d'équipe). Ils sont présentés en **pourcentage** aux utilisateurs, et une réservation est faite
+- **Modèles LiteLLM** : coefficients versionnés, modèle dédié aux titres automatiques.
+- **Quotas personnels** : fenêtres glissantes de 5 h et 7 j, un compteur par personne pour toutes
+  ses conversations. Ils sont présentés en **pourcentage** aux utilisateurs, et une réservation est faite
   avant chaque appel.
 - **Forges Git** (applications OAuth), **catalogue d'images** et **catalogue de services**.
 - **Rétention** des données avec gel légal, **audit** exportable, console d'administration complète.
@@ -103,7 +106,7 @@ Navigateur ── nginx (web) ──► API NestJS (×N) ──► PostgreSQL (�
 | `apps/preview` | Accès aux ports des sandboxes sur un domaine séparé, avec jeton. |
 | `packages/*` | Contrats Zod partagés, schéma Drizzle, sandbox (Docker / Kubernetes), stockage des checkpoints, secrets (Vault), runtime Pi, image de sandbox. |
 
-Les décisions structurantes sont décrites dans [`docs/adr`](docs/adr) (ADR 0001 à 0014), et le
+Les décisions structurantes sont décrites dans [`docs/adr`](docs/adr) (ADR 0001 à 0015), et le
 cahier des charges dans [`SPEC.md`](SPEC.md).
 
 ## Démarrage rapide
@@ -149,10 +152,10 @@ MFA (TOTP) est demandée aux administrateurs dès la première connexion. Ensuit
 1. **Administration → Modèles** : déclarez un modèle LiteLLM, par exemple `anthropic/claude-…` ou
    `openai/…`, avec sa clé d'API (stockée dans Vault). Pour essayer sans fournisseur, utilisez
    `openai/mock-model` avec `api_base` = `http://mock-llm:4010/v1` (profil `dev`).
-2. **Équipes** : créez une équipe et ajoutez-y des membres.
-3. **Projets** : créez un projet vierge, ou lié à un dépôt après avoir configuré une forge dans
-   **Administration → Forges Git**.
-4. **Créez un workspace** et écrivez à Pi.
+2. **Invitations** : invitez vos collègues par email, ou créez leurs comptes dans **Utilisateurs**.
+3. **Accueil** : écrivez votre demande à Pi. Pour travailler sur un dépôt, configurez une forge dans
+   **Administration → Forges Git**, rattachez votre compte (**Paramètres → Git**), puis choisissez
+   le dépôt sous la zone de saisie.
 
 Mailpit, qui reçoit les emails en développement, est accessible sur <http://localhost:8025>.
 
@@ -162,7 +165,7 @@ Mailpit, qui reçoit les emails en développement, est accessible sur <http://lo
 |---|---|
 | `infrastructure/docker/.env` | URL publique, ports, domaine des previews, image de sandbox, nombre de répliques API, administrateur initial. |
 | `infrastructure/docker/.secrets/` | Secrets d'amorçage (PostgreSQL, Garage, LiteLLM, AppRole Vault), générés par `init-secrets.sh`. |
-| **Vault** (`cap/…`) | Secrets applicatifs : clés LLM, SMTP, OAuth, MCP, secrets de projet, jetons Git… |
+| **Vault** (`cap/…`) | Secrets applicatifs : clés LLM, SMTP, OAuth, MCP, secrets de dépôt, jetons Git… |
 | **Console d'administration** | Tout le reste : connexion et MFA, fournisseurs d'identité, forges Git, modèles, quotas, sandboxes, images, services, skills et MCP, notifications, rétention. |
 
 **Avant une exposition sur un réseau** :
@@ -245,7 +248,7 @@ Sans eux, les suites concernées s'ignorent.
   - Docker Compose ;
   - SSO ;
   - forges Git ;
-  - environnement des projets ;
+  - environnement des dépôts ;
   - services.
 - **Décisions d'architecture** : [`docs/adr`](docs/adr).
 - **Avancement** : [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md).

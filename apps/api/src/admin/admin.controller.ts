@@ -33,8 +33,6 @@ import {
   sandboxInstances,
   secretRefs,
   serviceInstances,
-  teamMembers,
-  teams,
   users,
   workspaces,
   type Database,
@@ -83,7 +81,7 @@ export class AdminController {
     const u = await q<{ total: number; active: number; suspended: number }>(
       sql`select count(*)::int total, count(*) filter (where status='active')::int active, count(*) filter (where status='suspended')::int suspended from users where deleted_at is null`,
     );
-    const t = await q<{ n: number }>(sql`select count(*)::int n from teams where deleted_at is null`);
+    const r = await q<{ n: number }>(sql`select count(distinct repository_id)::int n from workspaces where deleted_at is null and repository_id is not null`);
     const w = await q<{ total: number; running: number }>(sql`select count(*)::int total, count(*) filter (where status='running')::int running from workspaces where deleted_at is null`);
     const sb = await q<{ n: number }>(sql`select count(*)::int n from sandbox_instances where status in ('creating','restoring','running')`);
     const llm = await q<{ requests: number; errors: number; credits: string; cost: string; p95: number | null }>(sql`
@@ -100,7 +98,7 @@ export class AdminController {
     const workers = await q<{ n: number }>(sql`select count(*)::int n from service_instances where kind='worker' and heartbeat_at > now() - interval '1 minute'`);
     return {
       users: u,
-      teams: t.n,
+      repositories: r.n,
       workspaces: w,
       sandboxes: { active: sb.n },
       llm: { requests24h: llm.requests, errors24h: llm.errors, credits24h: llm.credits, costUsd24h: llm.cost, p95LatencyMs: llm.p95 },
@@ -171,11 +169,11 @@ export class AdminController {
   }
 
   @Get('quotas/ledger')
-  async ledger(@Query('userId', { schema: z.uuid().optional() }) userId?: string, @Query('teamId', { schema: z.uuid().optional() }) teamId?: string) {
+  async ledger(@Query('userId', { schema: z.uuid().optional() }) userId?: string) {
     return this.db
       .select()
       .from(creditLedger)
-      .where(and(...(userId ? [eq(creditLedger.userId, userId)] : []), ...(teamId ? [eq(creditLedger.teamId, teamId)] : [])))
+      .where(and(...(userId ? [eq(creditLedger.userId, userId)] : [])))
       .orderBy(desc(creditLedger.occurredAt))
       .limit(500);
   }
@@ -285,7 +283,6 @@ export class AdminController {
         .where(eq(users.id, id));
       await tx.delete(authIdentities).where(eq(authIdentities.userId, id));
       await tx.delete(localCredentials).where(eq(localCredentials.userId, id));
-      await tx.delete(teamMembers).where(eq(teamMembers.userId, id));
       await this.sessions.revokeAll(id, undefined, tx);
       await this.audit.record({ actorId: user.id, action: 'admin.user_delete', targetType: 'user', targetId: id, ip: ctx.ip }, tx);
     });
@@ -295,27 +292,6 @@ export class AdminController {
       await this.db.update(workspaces).set({ deletedAt: new Date() }).where(eq(workspaces.id, w.id));
       await this.rpc.fire({ op: 'workspace.delete', workspaceId: w.id });
     }
-  }
-
-  /* ---------------------------------- Équipes ---------------------------------- */
-
-  @Get('teams')
-  async teams() {
-    const rows = await this.db.execute(sql`
-      select t.id, t.name, t.slug, t.created_at,
-        (select count(*)::int from team_members m where m.team_id = t.id) as members,
-        (select count(*)::int from projects p where p.team_id = t.id and p.deleted_at is null) as projects
-      from teams t where t.deleted_at is null order by t.name`);
-    return rows.rows;
-  }
-
-  @Delete('teams/:teamId')
-  @HttpCode(204)
-  async deleteTeam(@Param('teamId', uuid) id: string, @CurrentUser() user: AuthUser) {
-    const [{ n }] = (await this.db.execute<{ n: number }>(sql`select count(*)::int n from projects where team_id = ${id} and deleted_at is null`)).rows;
-    if (n > 0) throw new AppError('conflict', 'L’équipe possède encore des projets');
-    await this.db.update(teams).set({ deletedAt: new Date() }).where(eq(teams.id, id));
-    await this.audit.record({ actorId: user.id, action: 'admin.team_delete', targetType: 'team', targetId: id });
   }
 
   /* ------------------------------- Audit & rétention ------------------------------- */
@@ -424,7 +400,7 @@ export class AdminController {
   }
 
   /**
-   * Activation contrôlée (image verrouillée par digest) : proposée aux projets, et image par
+   * Activation contrôlée (image verrouillée par digest) : proposée aux dépôts, et image par
    * défaut des nouvelles sandboxes si `makeDefault` (comportement par défaut).
    */
   @Post('sandbox-images/:imageId/activate')
@@ -444,7 +420,7 @@ export class AdminController {
     return { ok: true };
   }
 
-  /** Retrait : une image dépréciée ou révoquée n'est plus proposée (les projets reviennent au défaut). */
+  /** Retrait : une image dépréciée ou révoquée n'est plus proposée (les dépôts reviennent au défaut). */
   @Post('sandbox-images/:imageId/status')
   @HttpCode(200)
   async imageStatus(@Param('imageId', uuid) id: string, @Body({ schema: z.object({ status: z.enum(['deprecated', 'revoked']) }) }) body: { status: 'deprecated' | 'revoked' }, @CurrentUser() user: AuthUser) {

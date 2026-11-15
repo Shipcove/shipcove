@@ -23,7 +23,8 @@ export class AdminLayout {
   protected readonly links = [
     { path: '/admin', label: 'Vue d’ensemble' },
     { path: '/admin/users', label: 'Utilisateurs' },
-    { path: '/admin/teams', label: 'Équipes' },
+    { path: '/admin/invitations', label: 'Invitations' },
+    { path: '/admin/repositories', label: 'Dépôts & environnements' },
     { path: '/admin/iam', label: 'IAM & connexion' },
     { path: '/admin/git', label: 'Forges Git' },
     { path: '/admin/models', label: 'Modèles (LiteLLM)' },

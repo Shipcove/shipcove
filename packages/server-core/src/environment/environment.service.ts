@@ -1,11 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import type { SecretProvider } from '@cap/secrets';
-import { environmentVariables, projects, workspaces, type Database } from '@cap/database';
+import { environmentVariables, workspaces, type Database } from '@cap/database';
 import { DB, SECRETS } from '../tokens.js';
 
 export interface ResolvedEnvironment {
-  /** Variables effectives (équipe puis projet, le projet l'emportant). */
+  /** Variables effectives du dépôt de la conversation. */
   vars: Record<string, string>;
   /** Valeurs secrètes à masquer, des plus longues aux plus courtes. */
   secretValues: string[];
@@ -15,7 +15,7 @@ export interface ResolvedEnvironment {
 export const MIN_SECRET_LENGTH = 6;
 
 /**
- * Environnement d'un workspace (SPEC : variables et secrets de projet). Résolu à chaque run ;
+ * Environnement d'une conversation : variables et secrets du dépôt associé. Résolu à chaque run ;
  * un court cache évite de relire Vault pour chaque requête LLM de la passerelle.
  */
 @Injectable()
@@ -30,17 +30,15 @@ export class EnvironmentService {
   async forWorkspace(workspaceId: string, opts: { fresh?: boolean } = {}): Promise<ResolvedEnvironment> {
     const hit = this.cache.get(workspaceId);
     if (!opts.fresh && hit && Date.now() - hit.at < 15_000) return hit.value;
-    const [row] = await this.db
-      .select({ projectId: workspaces.projectId, teamId: projects.teamId })
-      .from(workspaces)
-      .innerJoin(projects, eq(projects.id, workspaces.projectId))
-      .where(eq(workspaces.id, workspaceId));
+    const [row] = await this.db.select({ repositoryId: workspaces.repositoryId }).from(workspaces).where(eq(workspaces.id, workspaceId));
     const value: ResolvedEnvironment = { vars: {}, secretValues: [] };
-    if (row) {
-      const team = await this.db.select().from(environmentVariables).where(and(eq(environmentVariables.scope, 'team'), eq(environmentVariables.subjectId, row.teamId)));
-      const project = await this.db.select().from(environmentVariables).where(and(eq(environmentVariables.scope, 'project'), eq(environmentVariables.subjectId, row.projectId)));
+    if (row?.repositoryId) {
+      const vars = await this.db
+        .select()
+        .from(environmentVariables)
+        .where(and(eq(environmentVariables.scope, 'repository'), eq(environmentVariables.subjectId, row.repositoryId)));
       const secrets = new Set<string>();
-      for (const v of [...team, ...project]) {
+      for (const v of vars) {
         if (v.secret && v.secretRef) {
           const s = await this.secrets.readKey(v.secretRef, 'value');
           if (s === undefined) continue;

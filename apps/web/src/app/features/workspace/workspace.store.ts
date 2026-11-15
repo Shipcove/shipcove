@@ -13,6 +13,7 @@ import type {
 import { Api, ApiError, idempotencyKey } from '../../core/api.service';
 import { SseService, type SseHandle } from '../../core/sse.service';
 import { ToastService } from '../../core/toast.service';
+import { ConversationsService } from '../../core/conversations.service';
 
 export interface PlatformConfig {
   editor: { manualEditingEnabled: boolean };
@@ -31,6 +32,7 @@ export class WorkspaceStore {
   private readonly api = inject(Api);
   private readonly sse = inject(SseService);
   private readonly toast = inject(ToastService);
+  private readonly conversations = inject(ConversationsService);
 
   readonly workspace = signal<WorkspaceDto | null>(null);
   readonly messages = signal<MessageDto[]>([]);
@@ -66,7 +68,7 @@ export class WorkspaceStore {
     const ws = await this.api.get<WorkspaceDto>(`/workspaces/${workspaceId}`);
     this.workspace.set(ws);
     await this.loadConversation();
-    void this.api.get<ModelDto[]>('/models', { teamId: ws.teamId }).then((m) => this.models.set(m));
+    void this.api.get<ModelDto[]>('/models').then((m) => this.models.set(m));
     void this.api.get<PlatformConfig>('/platform/config').then((c) => this.config.set(c));
     if (ws.access === 'owner') {
       void this.loadApprovals();
@@ -296,6 +298,12 @@ export class WorkspaceStore {
         this.workspace.update((w) => (w ? { ...w, status: d['status'] as WorkspaceDto['status'], syncState: d['syncState'] as WorkspaceDto['syncState'] } : w));
         this.statusDetail.set((d['detail'] as string) ?? null);
         return;
+      case 'workspace.renamed': {
+        const changes = { name: d['name'] as string, titleSource: d['titleSource'] as WorkspaceDto['titleSource'] };
+        this.workspace.update((w) => (w ? { ...w, ...changes } : w));
+        this.conversations.patch(this.workspace()!.id, changes);
+        return;
+      }
       case 'model.changed':
         this.workspace.update((w) => (w ? { ...w, modelId: d['modelId'] as string } : w));
         return;

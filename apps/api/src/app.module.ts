@@ -15,9 +15,8 @@ import { FederationService } from './auth/providers/federation.service.js';
 import { AdminGitForgesController, GitForgesService, GitOAuthController } from './git/git-forges.controller.js';
 import { AdminAuthProvidersController, SsoController } from './auth/providers/sso.controller.js';
 import { AccessService } from './access/access.service.js';
-import { TeamsController, UsersDirectoryController } from './teams/teams.controller.js';
-import { ProjectsController } from './projects/projects.controller.js';
-import { AdminServiceCatalogController, EnvironmentController } from './projects/environment.controller.js';
+import { AdminInvitationsController, UsersDirectoryController } from './users/users.controller.js';
+import { AdminRepositoriesController, AdminServiceCatalogController } from './repositories/repositories.controller.js';
 import { HealthController } from './health/health.controller.js';
 import { PlatformConfigController } from './health/platform-config.controller.js';
 import { WorkspacesController } from './workspaces/workspaces.controller.js';
@@ -48,10 +47,9 @@ export class AppModule {
         PlatformConfigController,
         AuthController,
         MeController,
-        TeamsController,
         UsersDirectoryController,
-        ProjectsController,
-        EnvironmentController,
+        AdminInvitationsController,
+        AdminRepositoriesController,
         AdminServiceCatalogController,
         WorkspacesController,
         ConversationController,

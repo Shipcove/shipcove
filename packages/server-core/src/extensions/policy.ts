@@ -1,9 +1,9 @@
 /**
  * Évaluation des politiques skills / MCP (SPEC §14–§15).
- * Portées : global > équipe > personnel. Une règle `deny` d'une portée supérieure ne peut jamais
+ * Portées : global > personnel. Une règle `deny` de la portée globale ne peut jamais
  * être contournée par une portée inférieure ; une portée inférieure peut seulement restreindre.
  */
-export type Scope = 'global' | 'team' | 'personal';
+export type Scope = 'global' | 'personal';
 
 export interface PermissionRule {
   serverId: string;
@@ -15,14 +15,12 @@ export interface PermissionRule {
 
 export interface Subject {
   userId: string;
-  teamId: string;
 }
 
-const RANK: Record<Scope, number> = { global: 0, team: 1, personal: 2 };
+const RANK: Record<Scope, number> = { global: 0, personal: 1 };
 
 function applies(rule: PermissionRule, subject: Subject): boolean {
   if (rule.scope === 'global') return true;
-  if (rule.scope === 'team') return rule.subjectId === subject.teamId;
   return rule.subjectId === subject.userId;
 }
 
@@ -44,8 +42,7 @@ export function effectiveToolPermission(serverId: string, toolName: string, rule
 }
 
 /** Un serveur / skill d'une portée est-il visible pour ce sujet ? */
-export function scopeVisible(scope: Scope, teamId: string | null, ownerId: string | null, subject: Subject): boolean {
+export function scopeVisible(scope: Scope, ownerId: string | null, subject: Subject): boolean {
   if (scope === 'global') return true;
-  if (scope === 'team') return teamId === subject.teamId;
   return ownerId === subject.userId;
 }

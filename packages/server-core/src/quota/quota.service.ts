@@ -33,8 +33,6 @@ export class QuotaExceededError extends Error {
 
 export interface ReserveInput {
   userId: string;
-  /** Équipe propriétaire du projet (imputation). */
-  teamId: string | null;
   workspaceId: string | null;
   runId: string | null;
   modelId: string;
@@ -62,7 +60,7 @@ const RESERVATION_TTL_MS = 30 * 60_000;
 /**
  * Service de quotas en crédits pondérés (SPEC §9, ADR 0005).
  * Toutes les décisions sont prises dans des transactions PostgreSQL verrouillant les sujets
- * concernés (utilisateur puis équipe, ordre déterministe) : cohérent sur toutes les instances.
+ * concernés (ordre déterministe) : cohérent sur toutes les instances.
  */
 @Injectable()
 export class QuotaService {
@@ -124,7 +122,6 @@ export class QuotaService {
         .insert(llmRequests)
         .values({
           userId: input.userId,
-          teamId: input.teamId,
           workspaceId: input.workspaceId,
           runId: input.runId,
           modelId: input.modelId,
@@ -139,7 +136,6 @@ export class QuotaService {
         .values({
           llmRequestId: req.id,
           userId: input.userId,
-          teamId: input.teamId,
           amount: toFixed8(amount),
           expiresAt: new Date(Date.now() + RESERVATION_TTL_MS),
         })
@@ -157,7 +153,6 @@ export class QuotaService {
       // Trace durable du refus (hors de la transaction de réservation).
       await this.db.insert(llmRequests).values({
         userId: input.userId,
-        teamId: input.teamId,
         workspaceId: input.workspaceId,
         runId: input.runId,
         modelId: input.modelId,
@@ -193,7 +188,6 @@ export class QuotaService {
         .values({
           idempotencyKey: `usage:${requestId}`,
           userId: req.userId,
-          teamId: req.teamId,
           kind: 'usage',
           amount: toFixed8(credits),
           llmRequestId: requestId,
@@ -255,13 +249,12 @@ export class QuotaService {
   }
 
   /** Ajustement administratif (ledger, idempotent par clé fournie). */
-  async adjust(input: { userId: string; teamId: string | null; amount: string; reason: string; actorId: string; idempotencyKey: string }) {
+  async adjust(input: { userId: string; amount: string; reason: string; actorId: string; idempotencyKey: string }) {
     await this.db
       .insert(creditLedger)
       .values({
         idempotencyKey: `adjust:${input.idempotencyKey}`,
         userId: input.userId,
-        teamId: input.teamId,
         kind: 'adjustment',
         amount: toFixed8(input.amount),
         reason: input.reason,
@@ -289,7 +282,7 @@ export class QuotaService {
     return { ok: true };
   }
 
-  private async windowsFor(kind: 'user' | 'team', id: string, limits: Limits): Promise<WindowUsageDto[]> {
+  private async windowsFor(kind: 'user', id: string, limits: Limits): Promise<WindowUsageDto[]> {
     const out: WindowUsageDto[] = [];
     for (const w of WINDOWS) {
       const used = await this.sumLedger(this.db, kind, id, w.ms);
@@ -335,13 +328,14 @@ export class QuotaService {
     return { limit5h: p.limit5h, limit7d: p.limit7d, exempt: p.exempt };
   }
 
-  private async usedInWindow(tx: Tx, kind: 'user' | 'team', id: string, ms: number): Promise<Decimal> {
+  private async usedInWindow(tx: Tx, kind: 'user', id: string, ms: number): Promise<Decimal> {
     const [ledger, open] = await Promise.all([this.sumLedger(tx, kind, id, ms), this.sumOpenReservations(tx, kind, id)]);
     return ledger.add(open);
   }
 
-  private async sumLedger(tx: Tx | Database, kind: 'user' | 'team', id: string, ms: number): Promise<Decimal> {
-    const col = kind === 'user' ? creditLedger.userId : creditLedger.teamId;
+  private async sumLedger(tx: Tx | Database, kind: 'user', id: string, ms: number): Promise<Decimal> {
+    const col = creditLedger.userId;
+    void kind;
     const [r] = await tx
       .select({ s: sql<string>`coalesce(sum(${creditLedger.amount}), 0)::text` })
       .from(creditLedger)
@@ -349,8 +343,9 @@ export class QuotaService {
     return new Decimal(r.s);
   }
 
-  private async sumOpenReservations(tx: Tx | Database, kind: 'user' | 'team', id: string): Promise<Decimal> {
-    const col = kind === 'user' ? creditReservations.userId : creditReservations.teamId;
+  private async sumOpenReservations(tx: Tx | Database, kind: 'user', id: string): Promise<Decimal> {
+    const col = creditReservations.userId;
+    void kind;
     const [r] = await tx
       .select({ s: sql<string>`coalesce(sum(${creditReservations.amount}), 0)::text` })
       .from(creditReservations)
@@ -359,8 +354,9 @@ export class QuotaService {
   }
 
   /** Instant où la plus ancienne consommation de la fenêtre en sortira. */
-  private async resetsAt(tx: Tx | Database, kind: 'user' | 'team', id: string, ms: number): Promise<Date | null> {
-    const col = kind === 'user' ? creditLedger.userId : creditLedger.teamId;
+  private async resetsAt(tx: Tx | Database, kind: 'user', id: string, ms: number): Promise<Date | null> {
+    const col = creditLedger.userId;
+    void kind;
     const [r] = await tx
       .select({ t: sql<Date | null>`min(${creditLedger.occurredAt})` })
       .from(creditLedger)

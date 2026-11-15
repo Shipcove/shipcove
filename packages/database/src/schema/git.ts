@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { index, jsonb, pgTable, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { createdAt, pk, ts, updatedAt } from './_common.js';
 import { gitConnections, users } from './iam.js';
-import { repositories } from './teams.js';
+import { repositories } from './repositories.js';
 import { workspaces } from './workspaces.js';
 
 /**

@@ -2,19 +2,21 @@
 <html lang="fr">
   <head>
     <title>Guide utilisateur</title>
-    <meta name="description" content="Travailler avec Pi : workspaces, conversation, file d'attente, mode Plan, modifications, retour en arrière, pièces jointes, Git, previews, partage et quotas." />
+    <meta name="description" content="Travailler avec Pi : conversations, dépôts Git, file d'attente, mode Plan, modifications, retour en arrière, pièces jointes, Git, previews, partage et quotas." />
   </head>
   <body>
     <main>
       <h1>Guide utilisateur</h1>
       <p class="lead">Tout ce qu’il faut savoir pour confier des tâches à Pi et garder la main sur le résultat.</p>
 
-      <h2>Projets et workspaces</h2>
-      <p>Un <strong>projet</strong> appartient à une équipe ; il est lié à un dépôt Git ou <em>vierge</em>. Dans un projet, chaque membre crée ses <strong>workspaces</strong> personnels : un workspace = une tâche, avec ses fichiers, sa conversation unique et sa sandbox. Le partage du code entre workspaces passe par Git.</p>
+      <h2>Conversations</h2>
+      <p>Tout part d’une <strong>conversation</strong>. La page d’accueil est une nouvelle conversation : écrivez votre demande et envoyez-la. Chaque conversation a ses fichiers, sa sandbox et son historique ; le partage du code entre conversations passe par Git.</p>
       <ul>
-        <li>À la création, un workspace lié à un dépôt est cloné (via la passerelle de la plateforme : aucun jeton n’entre dans la sandbox) sur la branche choisie.</li>
+        <li><strong>Dépôt Git facultatif</strong> : sous la zone de saisie, <em>Aucun dépôt</em> ouvre la liste des dépôts accessibles avec vos <a href="/git.html">connexions Git</a> (recherche incluse). Le dépôt est cloné sur sa branche par défaut, via la passerelle de la plateforme : aucun jeton n’entre dans la sandbox. Sans dépôt, Pi dispose d’une sandbox vide.</li>
+        <li><strong>Titre automatique</strong> : généré à partir du premier message (par le modèle choisi par l’administrateur, sinon le début du message). Renommez-le depuis l’en-tête (icône crayon ou double-clic) : votre titre n’est plus jamais remplacé.</li>
+        <li><strong>Barre latérale</strong> : les conversations sont regroupées par dépôt Git (groupes repliables, <em>+</em> pour démarrer une conversation dans ce dépôt), puis celles sans dépôt, classées par date (aujourd’hui, hier, 7 et 30 derniers jours, plus ancien).</li>
         <li>La sandbox démarre au premier message et s’arrête après une période d’inactivité (15 minutes par défaut). Ses fichiers et l’état de Pi sont restaurés au message suivant.</li>
-        <li>Un workspace peut être <strong>mis en veille</strong>, <strong>archivé</strong> ou <strong>supprimé</strong> depuis la page du projet.</li>
+        <li>Une conversation peut être <strong>mise en veille</strong> ou <strong>supprimée</strong> depuis son en-tête.</li>
       </ul>
 
       <h2>La conversation</h2>
@@ -30,7 +32,7 @@
         <thead><tr><th>Élément</th><th>Usage</th></tr></thead>
         <tbody>
           <tr><td><strong>+</strong></td><td>Ajouter des fichiers ou des photos (<kbd>Ctrl</kbd>+<kbd>U</kbd>), commandes slash, connecteurs (MCP).</td></tr>
-          <tr><td><strong>Modèle · effort</strong></td><td>Choix du modèle (parmi ceux autorisés pour votre équipe) et du niveau de raisonnement.</td></tr>
+          <tr><td><strong>Modèle · effort</strong></td><td>Choix du modèle (parmi les modèles activés par l’administrateur) et du niveau de raisonnement.</td></tr>
           <tr><td><strong>Mode</strong></td><td><em>Autonome</em> (par défaut) ou <em>Plan</em> : Pi n’a alors que des outils de lecture et propose un plan sans rien modifier.</td></tr>
           <tr><td><strong>Anneau</strong></td><td>Utilisation de vos quotas en pourcentage (orange à partir de 70 %, rouge à partir de 90 %).</td></tr>
         </tbody>
@@ -42,13 +44,13 @@
       <h3>Explorateur de fichiers</h3>
       <p>L’icône de fichier ouvre l’explorateur (recherche, arborescence, onglets). L’édition manuelle est désactivée par défaut ; si l’administrateur l’active, une sauvegarde est refusée si Pi a modifié le fichier entre-temps (aucun écrasement silencieux).</p>
       <h3>Revenir en arrière</h3>
-      <p>Au survol d’un de vos messages, <strong>Revenir avant ce message</strong> restaure les fichiers du workspace dans leur état d’avant ce run. La conversation est conservée, Pi en est informé au message suivant, et le message « Fichiers restaurés… » propose <strong>Annuler</strong>. Indisponible pendant que Pi travaille.</p>
+      <p>Au survol d’un de vos messages, <strong>Revenir avant ce message</strong> restaure les fichiers de la conversation dans leur état d’avant ce run. La conversation est conservée, Pi en est informé au message suivant, et le message « Fichiers restaurés… » propose <strong>Annuler</strong>. Indisponible pendant que Pi travaille.</p>
 
       <h2>Pièces jointes</h2>
       <p>Glissez-déposez, collez ou ajoutez des fichiers (20 Mo et 10 fichiers par message par défaut). Les images sont transmises au modèle s’il les accepte ; les autres fichiers sont déposés dans la sandbox (<code>/workspace/.cap/attachments/…</code>, hors Git). Les exécutables, les archives dangereuses ou trop volumineuses une fois décompressées et les types incohérents sont refusés.</p>
 
       <h2>Services, environnement et dépendances</h2>
-      <p>Pi lance lui-même, quand il en a besoin, les services approuvés par l’administrateur (PostgreSQL, Redis, RabbitMQ…), joignables sur <code>localhost</code> dans la sandbox. Les variables, secrets et le script de préparation du projet sont gérés par ses administrateurs : voir <a href="/environnement.html">Environnement et services</a>.</p>
+      <p>Pi lance lui-même, quand il en a besoin, les services approuvés par l’administrateur (PostgreSQL, Redis, RabbitMQ…), joignables sur <code>localhost</code> dans la sandbox. Les variables, secrets et le script de préparation d’un dépôt sont gérés par l’administrateur de la plateforme : voir <a href="/environnement.html">Environnement et services</a>.</p>
 
       <h2>Git : publier le travail</h2>
       <ol>
@@ -65,13 +67,13 @@
       <p>Quand Pi travaille sur une interface web, il lance le projet dans la sandbox et en prend des captures avec le Chromium de la sandbox (bureau, mobile, thème sombre, après un clic ou une saisie). Elles s’affichent en <strong>miniatures</strong> sous l’appel d’outil ; cliquez pour les <strong>agrandir</strong> (flèches pour passer de l’une à l’autre, Échap pour fermer). Si le modèle accepte les images, Pi examine lui-même ses captures pour corriger le rendu. Les personnes avec qui la conversation est partagée les voient aussi.</p>
 
       <h2>Previews</h2>
-      <p>Lorsque Pi lance un serveur (port 3000, 5173…), ouvrez-le depuis l’onglet <strong>Previews</strong> : il est servi sur un domaine distinct, protégé par un jeton. Trois ports par workspace par défaut.</p>
+      <p>Lorsque Pi lance un serveur (port 3000, 5173…), ouvrez-le depuis l’onglet <strong>Previews</strong> : il est servi sur un domaine distinct, protégé par un jeton. Trois ports par conversation par défaut.</p>
 
       <h2>Partage</h2>
-      <p>Le bouton de partage donne un accès <strong>en lecture seule</strong> à la conversation et aux fichiers à des membres nommés de l’équipe ; il est révocable à tout moment. Personne d’autre — administrateurs compris — ne peut lire une conversation privée.</p>
+      <p>Le bouton de partage donne un accès <strong>en lecture seule</strong> à la conversation et aux fichiers à des utilisateurs nommés de la plateforme (recherche par nom ou identifiant) ; il est révocable à tout moment. Personne d’autre — administrateurs compris — ne peut lire une conversation privée.</p>
 
       <h2>Quotas</h2>
-      <p>La consommation est limitée sur deux fenêtres glissantes, <strong>5 heures</strong> et <strong>7 jours</strong>, sur votre quota personnel : un seul compteur par personne, que le projet appartienne à l’une ou l’autre de vos équipes, et que personne d’autre ne consomme. La page <strong>Consommation</strong> et l’anneau de la zone de saisie l’indiquent en pourcentage. À 100 %, Pi est suspendu proprement et reprend dès que le quota le permet (bouton <em>Reprendre</em>).</p>
+      <p>La consommation est limitée sur deux fenêtres glissantes, <strong>5 heures</strong> et <strong>7 jours</strong>, sur votre quota personnel : un seul compteur par personne, pour toutes vos conversations, que personne d’autre ne consomme. La page <strong>Consommation</strong> et l’anneau de la zone de saisie l’indiquent en pourcentage. À 100 %, Pi est suspendu proprement et reprend dès que le quota le permet (bouton <em>Reprendre</em>).</p>
 
       <h2>Notifications et sécurité du compte</h2>
       <ul>

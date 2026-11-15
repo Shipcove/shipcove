@@ -35,7 +35,6 @@ interface RunContext {
   workspaceId: string;
   conversationId: string;
   userId: string;
-  teamId: string;
   sandbox: ActiveSandbox;
   runtime: PiAgentRuntime;
   /** messageKey Pi → id du message en base. */
@@ -150,7 +149,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
 
     let sandbox: ActiveSandbox;
     try {
-      // Image du projet modifiée depuis le démarrage de la sandbox : recréation (après checkpoint).
+      // Image du dépôt modifiée depuis le démarrage de la sandbox : recréation (après checkpoint).
       await this.sandboxes.ensureImage(ws.id);
       sandbox = await this.sandboxes.ensureRunning(ws.id);
       await this.sandboxes.refreshAgentConfig(sandbox);
@@ -161,9 +160,9 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     let setupNote: string | null = null;
     // Catalogue des services d'appui que Pi peut lancer lui-même (rien ne démarre sans sa demande).
     await this.services.writeCatalog(sandbox).catch((e: Error) => this.logger.warn(`Catalogue des services : ${e.message}`));
-    // Script de préparation du projet : nouvelle sandbox ou script modifié.
+    // Script de préparation du dépôt : nouvelle sandbox ou script modifié.
     if (await this.setup.needed(sandbox)) {
-      await this.systemMessage(ws.id, conv.id, runId, 'Préparation de l’environnement du projet…', { kind: 'setup', status: 'running' });
+      await this.systemMessage(ws.id, conv.id, runId, 'Préparation de l’environnement du dépôt…', { kind: 'setup', status: 'running' });
       const r = await this.setup.run(sandbox, await this.environment.forWorkspace(ws.id, { fresh: true }));
       const seconds = Math.round(r.durationMs / 1000);
       await this.systemMessage(
@@ -173,7 +172,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
         r.ok ? `Environnement préparé (${seconds} s)` : `La préparation de l’environnement a échoué (code ${r.exitCode ?? 'inconnu'}, ${seconds} s)`,
         { kind: 'setup', status: r.ok ? 'succeeded' : 'failed', exitCode: r.exitCode, durationMs: r.durationMs, output: r.output },
       );
-      if (!r.ok) setupNote = `[Note de la plateforme : le script de préparation du projet a échoué (code ${r.exitCode ?? 'inconnu'}). Fin de sa sortie :\n${r.output.slice(-3000)}\nTiens-en compte : des dépendances peuvent manquer.]`;
+      if (!r.ok) setupNote = `[Note de la plateforme : le script de préparation du dépôt a échoué (code ${r.exitCode ?? 'inconnu'}). Fin de sa sortie :\n${r.output.slice(-3000)}\nTiens-en compte : des dépendances peuvent manquer.]`;
     }
     const startGen = await this.checkpoints.storage.currentGeneration(ws.id);
     await this.db.update(agentRuns).set({ startGeneration: startGen }).where(eq(agentRuns.id, runId));
@@ -198,7 +197,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       plugins: await this.sandboxes.availablePlugins(sandbox),
       ...(planMode ? { tools: PLAN_MODE_TOOLS, appendSystemPrompt: PLAN_MODE_PROMPT } : {}),
     });
-    // Variables et secrets du projet / de l'équipe : processus de Pi (donc ses commandes) uniquement,
+    // Variables et secrets du dépôt : processus de Pi (donc ses commandes) uniquement,
     // jamais écrits sur disque par la plateforme. Les variables de la plateforme l'emportent.
     const environment = await this.environment.forWorkspace(ws.id, { fresh: true });
     const proc = await this.sandboxes.provider.exec(sandbox.handle, command, {
@@ -214,7 +213,6 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       workspaceId: ws.id,
       conversationId: conv.id,
       userId: run.userId,
-      teamId: ws.teamId,
       sandbox,
       runtime,
       messageIds: new Map(),

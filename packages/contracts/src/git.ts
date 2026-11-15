@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { GitActionKind } from './events.js';
-import { GitProviderKindSchema, type GitProviderKind } from './projects.js';
+import { GitProviderKindSchema, type GitProviderKind } from './repositories.js';
 
 export interface GitConnectionDto {
   id: string;

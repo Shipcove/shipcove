@@ -1,6 +1,8 @@
-import { ChangeDetectionStrategy, Component, OnDestroy, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, computed, effect, inject, input, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
+import { Api } from '../../core/api.service';
+import { ConversationsService } from '../../core/conversations.service';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
 import { ApprovalsPanel } from './approvals-panel';
@@ -23,21 +25,32 @@ type RightPane = 'panel' | 'files' | null;
  */
 @Component({
   selector: 'cap-workspace-page',
-  imports: [FormsModule, RouterLink, Icon, Conversation, Composer, FilesPane, ChangesPanel, GitPanel, ApprovalsPanel, PreviewsPanel, ShareDialog],
+  imports: [FormsModule, Icon, Conversation, Composer, FilesPane, ChangesPanel, GitPanel, ApprovalsPanel, PreviewsPanel, ShareDialog],
   providers: [WorkspaceStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (store.workspace(); as ws) {
       <div class="flex h-full flex-col">
         <header class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-stone-200 px-4 py-2 dark:border-stone-800">
-          <div class="min-w-0">
+          <div class="min-w-0 pl-8">
             <div class="flex items-center gap-2">
-              <h1 class="truncate font-semibold">{{ ws.name }}</h1>
+              @if (renaming()) {
+                <input #title class="input !py-0.5 font-semibold" [value]="ws.name" aria-label="Titre de la conversation" maxlength="120"
+                  (keydown.enter)="rename(title.value)" (keydown.escape)="renaming.set(false)" (blur)="rename(title.value)" />
+              } @else {
+                <h1 class="truncate font-semibold" [class.cursor-text]="ws.access === 'owner'" (dblclick)="startRename()" [title]="ws.access === 'owner' ? 'Double-cliquez pour renommer' : ws.name">{{ ws.name }}</h1>
+                @if (ws.access === 'owner') { <button class="btn-ghost !p-1 text-stone-400" (click)="startRename()" aria-label="Renommer la conversation"><cap-icon name="edit" [size]="13" /></button> }
+              }
               <span class="badge" [class]="statusClass()">{{ statusLabel() }}</span>
               @if (ws.access === 'shared_read') { <span class="badge bg-sky-100 text-sky-800">Lecture seule (partagé)</span> }
             </div>
-            <a [routerLink]="['/projects', ws.projectId]" class="text-xs text-stone-500 hover:underline">{{ ws.projectName }}</a>
-            @if (ws.branch) { <span class="ml-1 font-mono text-xs text-stone-400">· {{ ws.branch }}</span> }
+            @if (ws.repository; as r) {
+              <a [href]="r.webUrl" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-xs text-stone-500 hover:underline" [title]="r.host + '/' + r.fullName">
+                <cap-icon name="git" [size]="12" />{{ r.fullName }}</a>
+              @if (ws.branch) { <span class="ml-1 font-mono text-xs text-stone-400">· {{ ws.branch }}</span> }
+            } @else {
+              <span class="text-xs text-stone-400">Sans dépôt Git</span>
+            }
           </div>
           <span class="flex items-center gap-1 text-xs" [title]="syncTitle()" [class.text-red-600]="ws.syncState === 'unsynced'" [class.text-stone-500]="ws.syncState !== 'unsynced'">
             <cap-icon [name]="ws.syncState === 'unsynced' ? 'cloudOff' : 'cloud'" [size]="14" />{{ ws.syncState === 'syncing' ? 'Sauvegarde…' : ws.syncState === 'unsynced' ? 'Non synchronisé' : 'Sauvegardé' }}
@@ -55,6 +68,7 @@ type RightPane = 'panel' | 'files' | null;
               @if (ws.status === 'running') { <button class="btn-secondary !py-1 text-xs" (click)="stop()" [disabled]="!!store.activeRun()" title="Sauvegarde puis veille de la sandbox">Mettre en veille</button> }
               @else if (ws.status === 'ready' || ws.status === 'error') { <button class="btn-secondary !py-1 text-xs" (click)="start()"><cap-icon name="play" [size]="12" /> Démarrer</button> }
               <button class="btn-ghost !p-1.5" (click)="sharing.set(true)" aria-label="Partager"><cap-icon name="share" /></button>
+              <button class="btn-ghost !p-1.5 text-stone-500 hover:text-red-600" (click)="remove()" aria-label="Supprimer la conversation" title="Supprimer la conversation"><cap-icon name="trash" /></button>
             }
             <div class="flex items-center gap-0.5 rounded-md border border-stone-200 p-0.5 dark:border-stone-700" role="group" aria-label="Volet de droite">
               <button class="btn-ghost !p-1.5" [class.bg-stone-200]="pane() === 'files'" [class.dark:bg-stone-700]="pane() === 'files'" (click)="toggle('files')"
@@ -102,7 +116,7 @@ type RightPane = 'panel' | 'files' | null;
       </div>
       @if (sharing()) { <cap-share-dialog (closed)="sharing.set(false)" /> }
     } @else {
-      <div class="p-8 text-stone-500">{{ error() || 'Chargement du workspace…' }}</div>
+      <div class="p-8 text-stone-500">{{ error() || 'Chargement de la conversation…' }}</div>
     }
   `,
   host: { class: 'block h-full' },
@@ -118,7 +132,12 @@ export class WorkspacePage implements OnDestroy {
   protected readonly filePath = signal<string | null>(null);
   protected readonly openFiles = signal<string[]>([]);
   protected readonly sharing = signal(false);
+  protected readonly renaming = signal(false);
   protected readonly error = signal('');
+  private readonly api = inject(Api);
+  private readonly router = inject(Router);
+  private readonly conversations = inject(ConversationsService);
+  private readonly titleInput = viewChild<ElementRef<HTMLInputElement>>('title');
 
   protected readonly tabs = computed(() => {
     const owner = this.store.isOwner();
@@ -158,7 +177,7 @@ export class WorkspacePage implements OnDestroy {
   constructor() {
     effect(() => {
       const id = this.workspaceId();
-      untracked(() => void this.store.open(id).catch((err) => this.error.set(err?.message ?? 'Workspace introuvable')));
+      untracked(() => void this.store.open(id).catch((err) => this.error.set(err?.message ?? 'Conversation introuvable')));
     });
     effect(() => {
       if (this.approval()) {
@@ -183,6 +202,40 @@ export class WorkspacePage implements OnDestroy {
   protected toggle(p: Exclude<RightPane, null>): void {
     this.pane.set(this.pane() === p ? null : p);
     if (this.pane() !== 'files') this.filesExpanded.set(false);
+  }
+
+  protected startRename(): void {
+    if (this.store.workspace()?.access !== 'owner') return;
+    this.renaming.set(true);
+    setTimeout(() => this.titleInput()?.nativeElement.select());
+  }
+
+  /** Titre choisi par l'utilisateur : il ne sera plus remplacé par le titre automatique. */
+  protected async rename(value: string): Promise<void> {
+    if (!this.renaming()) return;
+    this.renaming.set(false);
+    const ws = this.store.workspace();
+    const name = value.trim();
+    if (!ws || !name || name === ws.name) return;
+    try {
+      await this.api.patch(`/workspaces/${ws.id}`, { name });
+      this.store.workspace.update((w) => (w ? { ...w, name, titleSource: 'user' } : w));
+      this.conversations.patch(ws.id, { name, titleSource: 'user' });
+    } catch (e) {
+      this.toast.error(e);
+    }
+  }
+
+  protected async remove(): Promise<void> {
+    const ws = this.store.workspace();
+    if (!ws || !confirm(`Supprimer définitivement « ${ws.name} » ? Les fichiers de la sandbox et l’historique seront effacés.`)) return;
+    try {
+      await this.api.delete(`/workspaces/${ws.id}`);
+      this.conversations.remove(ws.id);
+      await this.router.navigateByUrl('/');
+    } catch (e) {
+      this.toast.error(e);
+    }
   }
 
   protected async setModel(id: string) {

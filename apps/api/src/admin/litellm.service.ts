@@ -44,6 +44,12 @@ export class LiteLlmAdminService {
     for (const id of await this.findIds(modelName)) await this.call('POST', '/model/delete', { id });
   }
 
+  /** Complétion courte (titres de conversation) : appel direct à LiteLLM, hors quotas des utilisateurs. */
+  async complete(model: string, messages: Array<{ role: 'system' | 'user'; content: string }>, maxTokens: number): Promise<string> {
+    const r = await this.call<{ choices?: Array<{ message?: { content?: string } }> }>('POST', '/v1/chat/completions', { model, messages, max_tokens: maxTokens, temperature: 0.2 });
+    return r.choices?.[0]?.message?.content ?? '';
+  }
+
   /** Test réel d'un modèle (appel minimal). */
   async test(modelName: string): Promise<{ ok: boolean; latencyMs: number; detail: string }> {
     const t0 = Date.now();

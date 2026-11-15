@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
-import type { AdminUserDto } from '@cap/contracts';
+import type { AdminUserDto, InvitationDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
 import { ToastService } from '../../core/toast.service';
 import { AgoPipe } from '../../shared/pipes';
@@ -78,32 +77,54 @@ export class AdminUsers implements OnInit {
   }
 }
 
+/** Invitations à rejoindre la plateforme : lien d'inscription envoyé par email, valable 7 jours. */
 @Component({
-  selector: 'cap-admin-teams',
-  imports: [FormsModule, RouterLink],
+  selector: 'cap-admin-invitations',
+  imports: [FormsModule, AgoPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <h1 class="text-xl font-semibold">Équipes</h1>
-    <p class="text-sm text-stone-500">Les administrateurs d’équipe gèrent les membres. Le contenu des conversations privées n’est jamais accessible depuis l’administration.</p>
+    <h1 class="text-xl font-semibold">Invitations</h1>
+    <p class="text-sm text-stone-500">La personne invitée reçoit un lien d’inscription valable 7 jours, même si l’inscription libre est désactivée.</p>
+    <form class="mt-3 flex gap-2" (ngSubmit)="invite()">
+      <input class="input !w-80" type="email" name="email" placeholder="adresse@exemple.com" [(ngModel)]="email" required aria-label="Email à inviter" />
+      <button class="btn-primary" [disabled]="!email.trim()">Inviter</button>
+    </form>
     <div class="card mt-3 overflow-x-auto"><table class="table">
-      <thead><tr><th>Équipe</th><th>Membres</th><th>Projets</th><th></th></tr></thead>
-      <tbody>@for (t of teams(); track t['id']) {
-        <tr><td><a [routerLink]="['/teams', t['id']]" class="font-medium hover:underline">{{ t['name'] }}</a> <span class="text-xs text-stone-500">{{ t['slug'] }}</span></td><td>{{ t['members'] }}</td><td>{{ t['projects'] }}</td>
-        <td class="text-right"><button class="btn-ghost !py-0.5 text-xs text-red-600" (click)="remove(t['id'])">Supprimer</button></td></tr>
-      }</tbody>
+      <thead><tr><th>Email</th><th>Envoyée</th><th>État</th><th></th></tr></thead>
+      <tbody>@for (i of invitations(); track i.id) {
+        <tr>
+          <td>{{ i.email }}</td>
+          <td class="text-xs">{{ i.createdAt | ago }}</td>
+          <td class="text-xs">{{ i.acceptedAt ? 'acceptée' : expired(i.expiresAt) ? 'expirée' : 'en attente' }}</td>
+          <td class="text-right">@if (!i.acceptedAt) { <button class="btn-ghost !py-0.5 text-xs text-red-600" (click)="revoke(i.id)">Révoquer</button> }</td>
+        </tr>
+      } @empty { <tr><td colspan="4" class="text-sm text-stone-500">Aucune invitation.</td></tr> }</tbody>
     </table></div>
   `,
 })
-export class AdminTeams implements OnInit {
+export class AdminInvitations implements OnInit {
   private readonly api = inject(Api);
   private readonly toast = inject(ToastService);
-  protected readonly teams = signal<Array<Record<string, string>>>([]);
+  protected readonly invitations = signal<InvitationDto[]>([]);
+  protected email = '';
   async ngOnInit() {
-    this.teams.set(await this.api.get('/admin/teams'));
+    this.invitations.set(await this.api.get<InvitationDto[]>('/admin/invitations'));
   }
-  protected async remove(id: string) {
-    if (!confirm('Supprimer cette équipe ?')) return;
-    await this.api.delete(`/admin/teams/${id}`).catch((e) => this.toast.error(e));
+  protected expired(at: string) {
+    return new Date(at).getTime() < Date.now();
+  }
+  protected async invite() {
+    try {
+      await this.api.post('/admin/invitations', { email: this.email.trim() });
+      this.toast.show('Invitation envoyée', 'success');
+      this.email = '';
+      await this.ngOnInit();
+    } catch (e) {
+      this.toast.error(e);
+    }
+  }
+  protected async revoke(id: string) {
+    await this.api.delete(`/admin/invitations/${id}`).catch((e) => this.toast.error(e));
     await this.ngOnInit();
   }
 }

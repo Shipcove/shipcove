@@ -21,7 +21,7 @@
       <ul>
         <li>La sandbox reçoit un <strong>jeton de run</strong> à durée limitée, utilisable seulement auprès de la gateway (LLM, lecture Git, outils de la plateforme).</li>
         <li>Clés de modèles, jetons Git, secrets SSO et MCP sont dans <strong>Vault</strong> ; l’API ne les renvoie jamais.</li>
-        <li>Les secrets de projet sont <strong>masqués</strong> dans les sorties, le flux temps réel, la base et retirés des requêtes vers le fournisseur LLM.</li>
+        <li>Les secrets de dépôt sont <strong>masqués</strong> dans les sorties, le flux temps réel, la base et retirés des requêtes vers le fournisseur LLM.</li>
         <li>Chaque service a sa propre identité Vault et une politique limitée à ses chemins.</li>
       </ul>
 
@@ -62,7 +62,7 @@
           <li><strong>Mode de Vault</strong> : le mode par défaut (<code>file</code>) garde clés et jeton root sur disque ; choisissez <code>manual</code> ou <code>auto</code> <em>avant</em> la première installation.</li>
           <li><strong>Garde Docker</strong> : il reste un composant de confiance (accès root effectif) ; dédiez l’hôte à la plateforme.</li>
           <li><strong>Trafic interne</strong> : les liaisons entre services Compose ne sont pas chiffrées (même hôte) ; à chiffrer pour un déploiement multi-hôte.</li>
-          <li><strong>Secrets de projet</strong> : utilisables par l’agent de tout membre du projet ; réservez-y des identifiants de développement.</li>
+          <li><strong>Secrets de dépôt</strong> : utilisables par l’agent de toute conversation sur le dépôt ; réservez-y des identifiants de développement.</li>
           <li><strong>Forges</strong> : pendant un run, l’agent agit sur <em>tous</em> les dépôts accessibles à l’utilisateur (pousser des branches, ouvrir des PR, commenter). Une injection de prompt peut l’y pousser ; elle ne peut ni fusionner, ni toucher la branche par défaut, ni emporter le jeton.</li>
         </ul>
       </div>

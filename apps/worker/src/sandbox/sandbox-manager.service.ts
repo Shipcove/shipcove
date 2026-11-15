@@ -6,7 +6,6 @@ import {
   gitConnections,
   gitForges,
   llmModels,
-  projects,
   repositories,
   runTokens,
   sandboxImages,
@@ -135,12 +134,12 @@ export class SandboxManager {
     return this.start(ws);
   }
 
-  /** Image du projet si elle est autorisée (active), sinon l'image par défaut de la plateforme. */
+  /** Image du dépôt de la conversation si elle est autorisée (active), sinon l'image par défaut. */
   async imageFor(workspaceId: string): Promise<typeof sandboxImages.$inferSelect | null> {
     const [p] = await this.db
-      .select({ imageId: projects.sandboxImageId })
+      .select({ imageId: repositories.sandboxImageId })
       .from(workspaces)
-      .innerJoin(projects, eq(projects.id, workspaces.projectId))
+      .innerJoin(repositories, eq(repositories.id, workspaces.repositoryId))
       .where(eq(workspaces.id, workspaceId));
     if (p?.imageId) {
       const [img] = await this.db.select().from(sandboxImages).where(and(eq(sandboxImages.id, p.imageId), eq(sandboxImages.status, 'active')));
@@ -151,7 +150,7 @@ export class SandboxManager {
   }
 
   /**
-   * Image du projet modifiée : la sandbox active (autre image) est arrêtée proprement (checkpoint)
+   * Image du dépôt modifiée : la sandbox active (autre image) est arrêtée proprement (checkpoint)
    * pour être recréée avec la bonne image au démarrage suivant.
    */
   async ensureImage(workspaceId: string): Promise<boolean> {
@@ -342,9 +341,8 @@ export class SandboxManager {
 
   /** Remote `origin` vers la vraie forge (et non plus le proxy de lecture), pour git, gh et glab. */
   private async alignOrigin(sb: ActiveSandbox, ws: typeof workspaces.$inferSelect): Promise<void> {
-    const [p] = await this.db.select().from(projects).where(eq(projects.id, ws.projectId));
-    if (!p?.repositoryId) return;
-    const [repo] = await this.db.select().from(repositories).where(eq(repositories.id, p.repositoryId));
+    if (!ws.repositoryId) return;
+    const [repo] = await this.db.select().from(repositories).where(eq(repositories.id, ws.repositoryId));
     if (!repo) return;
     const proxied = `${this.env.GATEWAY_INTERNAL_URL.replace(/\/$/, '')}/git/${repo.id}.git`;
     const cur = await execCollect(this.provider, sb.handle, ['git', '-C', '/workspace', 'remote', 'get-url', 'origin'], { timeoutMs: 15_000 });
@@ -372,7 +370,7 @@ export class SandboxManager {
       .select()
       .from(llmModels)
       .where(and(eq(llmModels.enabled, true), isNull(llmModels.deletedAt)));
-    const allowed = models.filter((m) => m.allowedTeamIds.length === 0 || m.allowedTeamIds.includes(ws.teamId));
+    const allowed = models;
     const def = allowed.find((m) => m.id === ws.modelId) ?? allowed.find((m) => m.isDefault) ?? allowed[0];
     const piModels: PiModelConfig[] = allowed.map((m) => ({
       id: m.litellmModel,
@@ -429,9 +427,8 @@ export class SandboxManager {
 
   /** Premier démarrage : clone via le proxy Git en lecture (credential côté serveur) ou répertoire vierge. */
   private async initialize(sb: ActiveSandbox, ws: typeof workspaces.$inferSelect): Promise<void> {
-    const [p] = await this.db.select().from(projects).where(eq(projects.id, ws.projectId));
-    if (!p.repositoryId) return; // projet vierge : répertoire vide
-    const [repo] = await this.db.select().from(repositories).where(eq(repositories.id, p.repositoryId));
+    if (!ws.repositoryId) return; // conversation sans dépôt : répertoire vide
+    const [repo] = await this.db.select().from(repositories).where(eq(repositories.id, ws.repositoryId));
     const url = `${this.env.GATEWAY_INTERNAL_URL.replace(/\/$/, '')}/git/${repo.id}.git`;
     const branch = ws.branch ?? repo.defaultBranch;
     const r = await execCollect(this.provider, sb.handle, ['git', 'clone', '--branch', branch, '--', url, '/workspace'], {
@@ -512,13 +509,12 @@ export class SandboxManager {
   }
 
   private async mintRunToken(workspaceId: string, instanceId: string): Promise<string> {
-    const [ws] = await this.db.select({ ownerId: workspaces.ownerId, teamId: workspaces.teamId }).from(workspaces).where(eq(workspaces.id, workspaceId));
+    const [ws] = await this.db.select({ ownerId: workspaces.ownerId }).from(workspaces).where(eq(workspaces.id, workspaceId));
     const token = `cap_rt_${randomToken(32)}`;
     await this.db.insert(runTokens).values({
       tokenHash: sha256Hex(token),
       workspaceId,
       userId: ws.ownerId,
-      teamId: ws.teamId,
       sandboxInstanceId: instanceId,
       expiresAt: new Date(Date.now() + RUN_TOKEN_TTL_MS),
     });

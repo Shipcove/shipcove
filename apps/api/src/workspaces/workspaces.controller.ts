@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { CreateWorkspaceSchema, UpdateWorkspaceSchema, type CreateWorkspace, type WorkspaceDto } from '@cap/contracts';
 import { agentRuns, conversationShares, conversations, workspaces, type Database } from '@cap/database';
@@ -9,7 +9,7 @@ import { CurrentUser, ReqCtx, type RequestContext } from '../common/decorators.j
 import type { AuthUser } from '../common/request.js';
 import { AccessService } from '../access/access.service.js';
 import { SandboxRpcClient } from './sandbox-rpc.client.js';
-import { WorkspacesService } from './workspaces.service.js';
+import { DEFAULT_TITLE, WorkspacesService } from './workspaces.service.js';
 
 const uuid = { schema: z.uuid() };
 
@@ -25,38 +25,49 @@ export class WorkspacesController {
     private readonly events: EventsService,
   ) {}
 
-  /** Mes workspaces (et, à part, ceux qui me sont partagés en lecture). */
+  /** Mes conversations, puis celles qui me sont partagées en lecture ; les plus récentes d'abord. */
   @Get()
-  async list(@CurrentUser() user: AuthUser, @Query('projectId', { schema: z.uuid().optional() }) projectId?: string): Promise<WorkspaceDto[]> {
+  async list(@CurrentUser() user: AuthUser): Promise<WorkspaceDto[]> {
     const own = await this.db
       .select()
       .from(workspaces)
-      .where(and(eq(workspaces.ownerId, user.id), isNull(workspaces.deletedAt), ...(projectId ? [eq(workspaces.projectId, projectId)] : [])))
-      .orderBy(desc(workspaces.updatedAt));
+      .where(and(eq(workspaces.ownerId, user.id), isNull(workspaces.deletedAt)))
+      .orderBy(desc(sql`coalesce(${workspaces.lastActivityAt}, ${workspaces.createdAt})`));
     const out: WorkspaceDto[] = [];
-    for (const w of own) if (await this.access.teamRole(user.id, w.teamId)) out.push(await this.service.toDto(w, 'owner'));
+    for (const w of own) out.push(await this.service.toDto(w, 'owner'));
     const shared = await this.db
       .select({ w: workspaces })
       .from(conversationShares)
       .innerJoin(conversations, eq(conversations.id, conversationShares.conversationId))
       .innerJoin(workspaces, eq(workspaces.id, conversations.workspaceId))
-      .where(and(eq(conversationShares.userId, user.id), isNull(conversationShares.revokedAt), isNull(workspaces.deletedAt), ...(projectId ? [eq(workspaces.projectId, projectId)] : [])));
-    for (const { w } of shared) if (await this.access.teamRole(user.id, w.teamId)) out.push(await this.service.toDto(w, 'shared_read'));
+      .where(and(eq(conversationShares.userId, user.id), isNull(conversationShares.revokedAt), isNull(workspaces.deletedAt)));
+    for (const { w } of shared) out.push(await this.service.toDto(w, 'shared_read'));
     return out;
   }
 
+  /** Nouvelle conversation, éventuellement sur un dépôt Git (lu avec la connexion de l'utilisateur). */
   @Post()
   async create(@Body({ schema: CreateWorkspaceSchema }) body: CreateWorkspace, @CurrentUser() user: AuthUser, @ReqCtx() ctx: RequestContext): Promise<WorkspaceDto> {
-    const p = await this.access.requireProject(user, body.projectId, 'write');
-    if (body.modelId) await this.service.assertModelAllowed(body.modelId, p.teamId);
+    if (body.modelId) await this.service.assertModelAllowed(body.modelId);
     const w = await this.db.transaction(async (tx) => {
+      const repo = body.repository ? await this.service.resolveRepository(tx, user, body.repository) : null;
       const [w] = await tx
         .insert(workspaces)
-        .values({ projectId: p.id, teamId: p.teamId, ownerId: user.id, name: body.name, branch: body.branch ?? null, modelId: body.modelId ?? null })
+        .values({
+          ownerId: user.id,
+          name: body.name ?? DEFAULT_TITLE,
+          titleSource: body.name ? 'user' : 'auto',
+          repositoryId: repo?.repositoryId ?? null,
+          gitConnectionId: repo?.gitConnectionId ?? null,
+          branch: repo?.branch ?? null,
+          modelId: body.modelId ?? null,
+          ...(body.agentMode ? { agentMode: body.agentMode } : {}),
+          ...(body.thinkingLevel ? { thinkingLevel: body.thinkingLevel } : {}),
+        })
         .returning();
       // Une seule conversation fonctionnelle par workspace (contrainte d'unicité en base).
       await tx.insert(conversations).values({ workspaceId: w.id, ownerId: user.id });
-      await this.audit.record({ actorId: user.id, action: 'workspace.create', targetType: 'workspace', targetId: w.id, ip: ctx.ip, metadata: { projectId: p.id } }, tx);
+      await this.audit.record({ actorId: user.id, action: 'workspace.create', targetType: 'workspace', targetId: w.id, ip: ctx.ip, metadata: { repository: body.repository?.fullName ?? null } }, tx);
       return w;
     });
     return this.service.toDto(w, 'owner');
@@ -70,12 +81,18 @@ export class WorkspacesController {
 
   @Patch(':id')
   async update(@Param('id', uuid) id: string, @Body({ schema: UpdateWorkspaceSchema }) body: z.infer<typeof UpdateWorkspaceSchema>, @CurrentUser() user: AuthUser): Promise<WorkspaceDto> {
-    const w = await this.access.requireWorkspaceOwner(user, id);
+    await this.access.requireWorkspaceOwner(user, id);
     if (body.modelId) {
-      const m = await this.service.assertModelAllowed(body.modelId, w.teamId);
+      const m = await this.service.assertModelAllowed(body.modelId);
       await this.events.emit(id, 'model.changed', { modelId: m.id, modelName: m.displayName });
     }
-    const [u] = await this.db.update(workspaces).set({ ...body, updatedAt: new Date() }).where(eq(workspaces.id, id)).returning();
+    // Un titre choisi par l'utilisateur n'est plus jamais remplacé automatiquement.
+    const [u] = await this.db
+      .update(workspaces)
+      .set({ ...body, ...(body.name ? { titleSource: 'user' as const } : {}), updatedAt: new Date() })
+      .where(eq(workspaces.id, id))
+      .returning();
+    if (body.name) await this.events.emit(id, 'workspace.renamed', { name: u.name, titleSource: 'user' });
     return this.service.toDto(u, 'owner');
   }
 

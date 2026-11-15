@@ -1,5 +1,5 @@
 export * from './iam.js';
-export * from './teams.js';
+export * from './repositories.js';
 export * from './workspaces.js';
 export * from './sandbox.js';
 export * from './llm.js';

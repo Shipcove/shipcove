@@ -12,10 +12,6 @@ export const routes: Routes = [
     loadComponent: () => import('./layout/shell').then((m) => m.Shell),
     children: [
       { path: '', loadComponent: () => import('./features/home/home').then((m) => m.HomePage) },
-      { path: 'teams', loadComponent: () => import('./features/teams/teams').then((m) => m.TeamsPage) },
-      { path: 'teams/:teamId', loadComponent: () => import('./features/teams/team-detail').then((m) => m.TeamDetailPage) },
-      { path: 'projects', loadComponent: () => import('./features/projects/projects').then((m) => m.ProjectsPage) },
-      { path: 'projects/:projectId', loadComponent: () => import('./features/projects/project-detail').then((m) => m.ProjectDetailPage) },
       { path: 'workspaces/:workspaceId', loadComponent: () => import('./features/workspace/workspace-page').then((m) => m.WorkspacePage) },
       { path: 'usage', loadComponent: () => import('./features/usage/usage').then((m) => m.UsagePage) },
       { path: 'notifications', loadComponent: () => import('./features/notifications/notifications').then((m) => m.NotificationsPage) },

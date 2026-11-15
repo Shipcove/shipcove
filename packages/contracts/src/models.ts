@@ -47,8 +47,6 @@ export const UpsertModelSchema = z.object({
   supportsReasoning: z.boolean().default(false),
   enabled: z.boolean().default(true),
   isDefault: z.boolean().default(false),
-  /** Restriction facultative à des équipes (vide = toutes). */
-  allowedTeamIds: z.array(z.uuid()).default([]),
   coefficients: CoefficientsInputSchema,
 });
 export type UpsertModel = z.infer<typeof UpsertModelSchema>;
@@ -134,7 +132,6 @@ export type QuotaPolicyInput = z.infer<typeof QuotaPolicyInputSchema>;
 
 export const CreditAdjustmentSchema = z.object({
   userId: z.uuid(),
-  teamId: z.uuid().nullable().default(null),
   /** Négatif = crédit rendu, positif = débit. */
   amount: DecimalStringSchema,
   reason: z.string().min(3).max(500),

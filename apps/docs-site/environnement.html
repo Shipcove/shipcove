@@ -2,24 +2,24 @@
 <html lang="fr">
   <head>
     <title>Environnement et services</title>
-    <meta name="description" content="Variables et secrets de projet, script de préparation, image de sandbox, services d'appui lancés par l'agent (PostgreSQL, Redis, RabbitMQ)." />
+    <meta name="description" content="Variables et secrets par dépôt, script de préparation, image de sandbox, services d'appui lancés par l'agent (PostgreSQL, Redis, RabbitMQ)." />
   </head>
   <body>
     <main>
       <h1>Environnement et services</h1>
-      <p class="lead">Ce dont l’agent a besoin pour installer, lancer et tester le code de vos projets : variables, secrets, préparation, image et services d’appui.</p>
+      <p class="lead">Ce dont l’agent a besoin pour installer, lancer et tester le code de vos dépôts : variables, secrets, préparation, image et services d’appui.</p>
 
       <h2>Variables et secrets</h2>
-      <p>Sur la page d’un <strong>projet</strong> (section <em>Environnement des sandboxes</em>) et d’une <strong>équipe</strong>, par leurs administrateurs. Une variable de projet remplace la variable d’équipe de même nom. Les changements s’appliquent au run suivant.</p>
+      <p>Par <strong>dépôt Git</strong>, dans <em>Administration → Dépôts &amp; environnements</em> (administrateur plateforme). Elles s’appliquent à toutes les conversations sur ce dépôt, quel que soit l’utilisateur, à partir du run suivant. Une conversation sans dépôt n’a pas de variables d’environnement.</p>
       <ul>
         <li>Injectées dans l’environnement de l’agent (et de ses commandes), <strong>jamais écrites sur disque</strong> par la plateforme : elles n’entrent pas dans les checkpoints.</li>
         <li><strong>Secrets</strong> : stockés dans Vault, jamais réaffichés (6 caractères minimum). Ils sont <strong>masqués</strong> (<code>***</code>) dans les sorties d’outils, les réponses de l’agent (même coupés entre deux fragments du flux), le flux temps réel, la base de données, et retirés des requêtes envoyées au fournisseur LLM.</li>
         <li>Noms réservés refusés : <code>PATH</code>, <code>HOME</code>, <code>*_PROXY</code>, <code>LD_*</code>, <code>CAP_*</code>, <code>PI_*</code>, <code>GH_*</code>, <code>GITHUB_TOKEN</code>, <code>GITLAB_TOKEN</code>, certificats, <code>GIT_SSH*</code>…</li>
       </ul>
-      <div class="callout warn"><p>Comme pour les secrets de CI, l’agent de chaque membre du projet peut <em>utiliser</em> un secret (et donc l’écrire dans un fichier ou l’envoyer vers un hôte autorisé). Réservez-y des identifiants de développement à droits minimaux.</p></div>
+      <div class="callout warn"><p>Comme pour les secrets de CI, l’agent de toute conversation sur le dépôt peut <em>utiliser</em> un secret (et donc l’écrire dans un fichier ou l’envoyer vers un hôte autorisé). Réservez-y des identifiants de développement à droits minimaux.</p></div>
 
       <h2>Script de préparation</h2>
-      <p>Script bash exécuté dans <code>/workspace</code> avec les variables du projet, <strong>dans chaque nouvelle sandbox</strong> et à chaque modification du script ou de l’image. Il doit être idempotent, comme une étape de CI :</p>
+      <p>Script bash exécuté dans <code>/workspace</code> avec les variables du dépôt, <strong>dans chaque nouvelle sandbox</strong> et à chaque modification du script ou de l’image. Il doit être idempotent, comme une étape de CI :</p>
       <pre><code>npm ci
 pip install -r requirements.txt</code></pre>
       <ul>
@@ -29,7 +29,7 @@ pip install -r requirements.txt</code></pre>
       </ul>
 
       <h2>Image de sandbox</h2>
-      <p>Chaque projet choisit parmi les images <strong>actives</strong> déclarées par l’administrateur (ex. une variante avec un JDK, Go ou Rust). L’image officielle <code>ghcr.io/shadow-p99/shipcove-sandbox</code> contient Pi (et son plugin de captures d’écran), Git, Python, uv, Node.js, npm, Playwright et Chromium ; une image dérivée part de celle-ci (<code>FROM ghcr.io/shadow-p99/shipcove-sandbox:&lt;version&gt;@sha256:…</code>). Changer d’image recrée la sandbox au run suivant.</p>
+      <p>Chaque dépôt peut utiliser une des images <strong>actives</strong> déclarées par l’administrateur (ex. une variante avec un JDK, Go ou Rust). L’image officielle <code>ghcr.io/shadow-p99/shipcove-sandbox</code> contient Pi (et son plugin de captures d’écran), Git, Python, uv, Node.js, npm, Playwright et Chromium ; une image dérivée part de celle-ci (<code>FROM ghcr.io/shadow-p99/shipcove-sandbox:&lt;version&gt;@sha256:…</code>). Changer d’image recrée la sandbox au run suivant.</p>
 
       <h2>Services lancés par l’agent</h2>
       <p>Pi démarre <strong>lui-même, quand il en a besoin</strong>, des bases de données, caches ou files de messages choisis dans un <strong>catalogue géré par l’administrateur</strong> (<em>Administration → Sandboxes &amp; previews</em>) : image, port, sonde de santé, variables par défaut, mémoire. Rien ne démarre tant que l’agent ne le demande pas ; aucun réglage côté utilisateur.</p>
@@ -42,7 +42,7 @@ pip install -r requirements.txt</code></pre>
         </tbody>
       </table>
       <ul>
-        <li>L’agent utilise l’outil <code>platform_services</code> : <em>start</em>, <em>stop</em>, <em>status</em>, <em>logs</em>, <em>catalog</em>. Dans les variables d’un service, <code>${NOM}</code> reprend une variable ou un secret du projet sans que l’agent en connaisse la valeur (ex. <code>POSTGRES_PASSWORD=${DB_PASSWORD}</code>).</li>
+        <li>L’agent utilise l’outil <code>platform_services</code> : <em>start</em>, <em>stop</em>, <em>status</em>, <em>logs</em>, <em>catalog</em>. Dans les variables d’un service, <code>${NOM}</code> reprend une variable ou un secret du dépôt sans que l’agent en connaisse la valeur (ex. <code>POSTGRES_PASSWORD=${DB_PASSWORD}</code>).</li>
         <li>Chaque service partage le réseau de <strong>sa</strong> sandbox : joignable sur <code>localhost</code> depuis celle-ci uniquement, sans plus d’accès sortant qu’elle. Conteneurs durcis et limités (mémoire, CPU, processus), 4 services au plus par sandbox par défaut.</li>
         <li>Les services durent autant que la sandbox et disparaissent avec elle : données éphémères, l’agent refait migrations et données de test après un redémarrage.</li>
       </ul>

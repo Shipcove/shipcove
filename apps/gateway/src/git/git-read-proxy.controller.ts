@@ -2,7 +2,7 @@ import { Readable } from 'node:stream';
 import { Controller, Get, Inject, Logger, Param, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import { gitConnections, projects, repositories, workspaces, type Database } from '@cap/database';
+import { gitConnections, repositories, workspaces, type Database } from '@cap/database';
 import { DB, GitProviderClient, redactString } from '@cap/server-core';
 import { RunTokenService } from '../run-token.service.js';
 
@@ -56,11 +56,10 @@ export class GitReadProxyController {
     const [row] = await this.db
       .select({ repo: repositories })
       .from(workspaces)
-      .innerJoin(projects, eq(projects.id, workspaces.projectId))
-      .innerJoin(repositories, eq(repositories.id, projects.repositoryId))
+      .innerJoin(repositories, eq(repositories.id, workspaces.repositoryId))
       .where(and(eq(workspaces.id, principal.workspaceId), eq(repositories.id, repoId)));
     if (!row) {
-      res.status(404).send('Dépôt non associé à ce workspace');
+      res.status(404).send('Dépôt non associé à cette conversation');
       return null;
     }
     // Credential de lecture : connexion active du propriétaire du workspace pour cet hôte.

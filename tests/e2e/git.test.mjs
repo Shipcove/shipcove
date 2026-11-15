@@ -100,13 +100,10 @@ before(async () => {
   ctx.glProject = project.body;
 
   ctx.admin = await adminClient(state);
-  const slug = `git-${uid()}`;
-  const team = await ctx.admin.post('/teams', { name: `Git ${slug}`, slug });
   const username = `g${uid()}`;
   const password = 'Git-Password-123456';
   const u = await ctx.admin.post('/admin/users', { email: `${username}@example.test`, username, displayName: `Git ${username}`, platformRole: 'user', password });
-  await ctx.admin.post(`/teams/${team.body.id}/members`, { userId: u.body.id, role: 'member' });
-  ctx.teamId = team.body.id;
+  assert.equal(u.status, 201, JSON.stringify(u.body));
   ctx.devLogin = { username, password };
   ctx.dev = new Client();
   assert.equal((await ctx.dev.post('/auth/login', { login: username, password })).body.status, 'authenticated');
@@ -219,12 +216,22 @@ test('renouvellement du jeton OAuth : automatique, sûr sous concurrence', async
   ctx.glToken = vaultRead(`git-connections/${ctx.connId}`).accessToken;
 });
 
-test('projet depuis un dépôt GitLab : clone via la passerelle, sans jeton dans la sandbox', async () => {
-  const p = await ctx.dev.post('/projects', { teamId: ctx.teamId, name: `Démo Git ${uid()}`, repository: { gitConnectionId: ctx.connId, fullName: 'capdev/cap-demo' } });
-  assert.equal(p.status, 201, JSON.stringify(p.body));
-  const w = await ctx.dev.post('/workspaces', { projectId: p.body.id, name: 'Git e2e' });
+test('conversation sur un dépôt GitLab : dépôt vérifié avec la connexion, clone via la passerelle, sans jeton dans la sandbox', async () => {
+  // Dépôt inaccessible avec la connexion : refusé, rien n'est créé.
+  const denied = await ctx.dev.post('/workspaces', { repository: { gitConnectionId: ctx.connId, fullName: 'root/inexistant' } });
+  assert.equal(denied.status, 404, JSON.stringify(denied.body));
+  // Connexion d'un autre utilisateur : refusée.
+  assert.ok([403, 404].includes((await ctx.admin.post('/workspaces', { repository: { gitConnectionId: ctx.connId, fullName: 'capdev/cap-demo' } })).status));
+  const w = await ctx.dev.post('/workspaces', { repository: { gitConnectionId: ctx.connId, fullName: 'capdev/cap-demo' } });
   assert.equal(w.status, 201, JSON.stringify(w.body));
+  assert.equal(w.body.repository.fullName, 'capdev/cap-demo');
+  assert.equal(w.body.repository.host, FORGE_HOST);
   ctx.ws = w.body;
+  // Deux conversations sur le même dépôt partagent la même entrée du catalogue (environnement commun).
+  const w2 = await ctx.dev.post('/workspaces', { repository: { gitConnectionId: ctx.connId, fullName: 'capdev/cap-demo' } });
+  assert.equal(w2.body.repository.id, w.body.repository.id);
+  await ctx.dev.del(`/workspaces/${w2.body.id}`);
+  assert.ok((await ctx.admin.get('/admin/repositories')).body.some((r) => r.id === w.body.repository.id && r.fullName === 'capdev/cap-demo'));
   const events = await run(ctx.dev, ctx.ws.id, `Inspecte. ${tool('bash', { command: 'cat README.md; git log --oneline -1; git remote -v; cat ~/.gitconfig; env' })}`);
   assert.equal(events.at(-1).type, 'run.completed', JSON.stringify(events.at(-1)));
   const out = events.filter((e) => e.type === 'tool.completed').map((e) => e.data.output).join('\n');

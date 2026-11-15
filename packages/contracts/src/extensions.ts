@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /* ---------- Skills ---------- */
 
-export const SkillScopeSchema = z.enum(['global', 'team', 'personal']);
+export const SkillScopeSchema = z.enum(['global', 'personal']);
 export type SkillScope = z.infer<typeof SkillScopeSchema>;
 
 export const SkillNameSchema = z
@@ -15,7 +15,6 @@ export const CreateSkillSchema = z.object({
   name: SkillNameSchema,
   description: z.string().min(1).max(1024),
   scope: SkillScopeSchema,
-  teamId: z.uuid().nullable().default(null),
   /** Contenu de SKILL.md (frontmatter inclus) et fichiers annexes texte. */
   files: z
     .array(z.object({ path: z.string().min(1).max(256), content: z.string().max(500_000) }))
@@ -30,7 +29,6 @@ export interface SkillDto {
   name: string;
   description: string;
   scope: SkillScope;
-  teamId: string | null;
   ownerId: string | null;
   status: 'draft' | 'pending_review' | 'published' | 'disabled' | 'revoked';
   latestVersion: number;
@@ -43,7 +41,7 @@ export interface SkillDto {
 
 /* ---------- MCP ---------- */
 
-export const McpScopeSchema = z.enum(['global', 'team', 'personal']);
+export const McpScopeSchema = z.enum(['global', 'personal']);
 export type McpScope = z.infer<typeof McpScopeSchema>;
 
 export const McpTransportSchema = z.enum(['stdio', 'streamable_http']);
@@ -52,7 +50,6 @@ export const CreateMcpServerSchema = z.object({
   name: z.string().min(1).max(64).regex(/^[a-z0-9_-]+$/),
   description: z.string().max(1000).default(''),
   scope: McpScopeSchema,
-  teamId: z.uuid().nullable().default(null),
   transport: McpTransportSchema,
   url: z.url().max(2000).optional(),
   command: z.string().max(500).optional(),
@@ -69,7 +66,6 @@ export interface McpServerDto {
   name: string;
   description: string;
   scope: McpScope;
-  teamId: string | null;
   ownerId: string | null;
   transport: 'stdio' | 'streamable_http';
   url: string | null;
@@ -87,14 +83,13 @@ export interface McpToolDto {
   id: string;
   name: string;
   description: string;
-  /** Résultat effectif après héritage des politiques (global > équipe > personnel). */
+  /** Résultat effectif après héritage des politiques (global > personnel). */
   effective: 'allowed' | 'denied';
 }
 
 export const McpPermissionSchema = z.object({
   toolName: z.string().min(1).max(200),
   scope: McpScopeSchema,
-  teamId: z.uuid().nullable().default(null),
   effect: z.enum(['allow', 'deny']),
 });
 

@@ -1,24 +1,24 @@
 import { sql } from 'drizzle-orm';
 import { bigint, boolean, index, integer, jsonb, pgTable, primaryKey, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { createdAt, pk, ts, updatedAt } from './_common.js';
-import { users } from './iam.js';
-import { projects, teams } from './teams.js';
+import { gitConnections, users } from './iam.js';
+import { repositories } from './repositories.js';
 
 export const workspaces = pgTable(
   'workspaces',
   {
     id: pk(),
-    projectId: uuid()
-      .notNull()
-      .references(() => projects.id, { onDelete: 'restrict' }),
-    /** Équipe propriétaire du projet, dénormalisée pour l'imputation des crédits. */
-    teamId: uuid()
-      .notNull()
-      .references(() => teams.id, { onDelete: 'restrict' }),
     ownerId: uuid()
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    /** Dépôt Git associé à la conversation (facultatif). */
+    repositoryId: uuid().references(() => repositories.id, { onDelete: 'set null' }),
+    /** Connexion Git du propriétaire utilisée pour ce dépôt. */
+    gitConnectionId: uuid().references(() => gitConnections.id, { onDelete: 'set null' }),
+    /** Titre de la conversation. */
     name: text().notNull(),
+    /** `auto` : titre généré (remplaçable) ; `user` : choisi par l'utilisateur. */
+    titleSource: text({ enum: ['auto', 'user'] }).notNull().default('auto'),
     status: text({ enum: ['ready', 'starting', 'running', 'stopping', 'archived', 'error'] })
       .notNull()
       .default('ready'),
@@ -52,7 +52,7 @@ export const workspaces = pgTable(
     archivedAt: ts(),
     deletedAt: ts(),
   },
-  (t) => [index().on(t.ownerId), index().on(t.projectId), index().on(t.status)],
+  (t) => [index().on(t.ownerId), index().on(t.repositoryId), index().on(t.status)],
 );
 
 /** Une seule conversation par workspace (contrainte d'unicité). */
@@ -77,7 +77,7 @@ export const conversations = pgTable(
   (t) => [uniqueIndex('conversations_workspace_uq').on(t.workspaceId)],
 );
 
-/** Partage nominatif, en lecture seule, révocable ; conditionné à l'appartenance courante à l'équipe. */
+/** Partage nominatif avec un autre utilisateur, en lecture seule, révocable. */
 export const conversationShares = pgTable(
   'conversation_shares',
   {

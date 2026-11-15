@@ -24,10 +24,10 @@ type Ws = typeof workspaces.$inferSelect;
 export class SkillsMaterializer {
   constructor(@Inject(DB) private readonly db: Database) {}
 
-  async activeSkills(ws: Pick<Ws, 'ownerId' | 'teamId'>) {
-    const subject = { userId: ws.ownerId, teamId: ws.teamId };
+  async activeSkills(ws: Pick<Ws, 'ownerId'>) {
+    const subject = { userId: ws.ownerId };
     const all = await this.db.select().from(skills).where(eq(skills.status, 'published'));
-    const visible = all.filter((s) => scopeVisible(s.scope, s.teamId, s.ownerId, subject));
+    const visible = all.filter((s) => scopeVisible(s.scope, s.ownerId, subject));
     if (visible.length === 0) return [];
     const installs = await this.db
       .select()
@@ -38,7 +38,7 @@ export class SkillsMaterializer {
       const mine = installs.filter(
         (i) =>
           i.skillId === s.id &&
-          (i.scope === 'global' || (i.scope === 'team' && i.subjectId === subject.teamId) || (i.scope === 'personal' && i.subjectId === subject.userId)),
+          (i.scope === 'global' || (i.scope === 'personal' && i.subjectId === subject.userId)),
       );
       // Désactivation à n'importe quelle portée applicable → inactif ; sinon actif par défaut.
       if (mine.some((i) => !i.enabled)) continue;
@@ -64,10 +64,10 @@ export class SkillsMaterializer {
     );
   }
 
-  async allowedMcpTools(ws: Pick<Ws, 'ownerId' | 'teamId'>) {
-    const subject = { userId: ws.ownerId, teamId: ws.teamId };
+  async allowedMcpTools(ws: Pick<Ws, 'ownerId'>) {
+    const subject = { userId: ws.ownerId };
     const servers = (await this.db.select().from(mcpServers).where(eq(mcpServers.enabled, true))).filter((s) =>
-      scopeVisible(s.scope, s.teamId, s.ownerId, subject),
+      scopeVisible(s.scope, s.ownerId, subject),
     );
     if (servers.length === 0) return [];
     const ids = servers.map((s) => s.id);

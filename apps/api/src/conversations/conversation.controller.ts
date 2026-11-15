@@ -19,7 +19,6 @@ import {
   conversations,
   llmModels,
   messages,
-  teamMembers,
   toolCalls,
   users,
   type Database,
@@ -30,7 +29,7 @@ import { CurrentUser, ReqCtx, type RequestContext } from '../common/decorators.j
 import type { AuthUser } from '../common/request.js';
 import { AccessService } from '../access/access.service.js';
 import { IdempotencyService } from '../common/idempotency.service.js';
-import { WorkspacesService } from '../workspaces/workspaces.service.js';
+import { DEFAULT_TITLE, WorkspacesService } from '../workspaces/workspaces.service.js';
 
 const uuid = { schema: z.uuid() };
 
@@ -152,7 +151,7 @@ export class ConversationController {
     return this.idempotency.run(user.id, idemKey, `POST /workspaces/${id}/messages`, body, async () => {
       const [conv] = await this.db.select().from(conversations).where(eq(conversations.workspaceId, id));
       const modelId = body.modelId ?? w.modelId ?? null;
-      const model = modelId ? await this.workspacesService.assertModelAllowed(modelId, w.teamId) : null;
+      const model = modelId ? await this.workspacesService.assertModelAllowed(modelId) : null;
       if (body.attachmentIds.length) {
         const owned = await this.db
           .select({ id: attachments.id, kind: attachments.kind })
@@ -190,7 +189,7 @@ export class ConversationController {
       // Pas de lancement si le quota est déjà atteint (vérification préalable, l'autorité reste la gateway).
       const quota = await this.quotas.canProceed(user.id);
       if (!quota.ok) throw new AppError('quota_exceeded', 'Quota atteint', { window: quota.window, resetsAt: quota.resetsAt });
-      return this.db.transaction(async (tx) => {
+      const result = await this.db.transaction(async (tx) => {
         const [m] = await tx.insert(messages).values({ conversationId: conv.id, role: 'user', authorId: user.id, text: body.text, meta: answersMeta(body) }).returning();
         if (body.attachmentIds.length) await tx.update(attachments).set({ messageId: m.id }).where(inArray(attachments.id, body.attachmentIds));
         const [run] = await tx
@@ -222,6 +221,9 @@ export class ConversationController {
         await this.jobs.enqueue('run.start', { runId: run.id }, { dedupeKey: `run:${run.id}`, maxAttempts: 1 }, tx);
         return { messageId: m.id, runId: run.id };
       });
+      // Premier message d'une conversation au titre automatique : titre généré en arrière-plan.
+      if (w.titleSource === 'auto' && w.name === DEFAULT_TITLE) void this.workspacesService.generateTitle(id, body.text).catch(() => undefined);
+      return result;
     });
   }
 
@@ -254,7 +256,7 @@ export class ConversationController {
   @Post('runs/:runId/resume')
   @HttpCode(202)
   async resume(@Param('id', uuid) id: string, @Param('runId', uuid) runId: string, @CurrentUser() user: AuthUser) {
-    const w = await this.access.requireWorkspaceOwner(user, id);
+    await this.access.requireWorkspaceOwner(user, id);
     const check = await this.quotas.canProceed(user.id);
     if (!check.ok) throw new AppError('quota_exceeded', 'Quota toujours atteint', { window: check.window, resetsAt: check.resetsAt });
     const [r] = await this.db
@@ -326,7 +328,7 @@ export class ConversationController {
         });
         await drain();
       })();
-      // Maintien de connexion + revérification des droits (partage révoqué, retrait d'équipe).
+      // Maintien de connexion + revérification des droits (partage révoqué).
       const keepAlive = setInterval(() => sub.next({ comment: 'keepalive', data: '' } as MessageEvent), 15_000);
       const recheck = setInterval(() => {
         this.access.requireWorkspaceRead(user, id).catch(() => sub.complete());
@@ -379,13 +381,10 @@ export class SharesController {
 
   @Post()
   async create(@Param('conversationId', uuid) conversationId: string, @Body({ schema: CreateShareSchema }) body: { userId: string }, @CurrentUser() user: AuthUser, @ReqCtx() ctx: RequestContext) {
-    const { w } = await this.ownedConversation(user, conversationId);
+    await this.ownedConversation(user, conversationId);
     if (body.userId === user.id) throw new AppError('validation_failed', 'Impossible de partager avec soi-même');
-    const [member] = await this.db
-      .select()
-      .from(teamMembers)
-      .where(and(eq(teamMembers.teamId, w.teamId), eq(teamMembers.userId, body.userId)));
-    if (!member) throw new AppError('forbidden', 'Le destinataire doit être membre de l’équipe du projet');
+    const [target] = await this.db.select({ id: users.id }).from(users).where(and(eq(users.id, body.userId), eq(users.status, 'active')));
+    if (!target) throw new AppError('not_found', 'Utilisateur introuvable');
     const [s] = await this.db
       .insert(conversationShares)
       .values({ conversationId, userId: body.userId, createdBy: user.id })

@@ -7,7 +7,6 @@ export interface RunPrincipal {
   tokenId: string;
   workspaceId: string;
   userId: string;
-  teamId: string;
   runId: string | null;
   runStatus: string | null;
 }
@@ -31,6 +30,6 @@ export class RunTokenService {
       .where(and(eq(agentRuns.workspaceId, t.workspaceId), inArray(agentRuns.status, ['running', 'interrupting', 'paused_quota', 'queued'])))
       .orderBy(desc(agentRuns.queuedAt))
       .limit(1);
-    return { tokenId: t.id, workspaceId: t.workspaceId, userId: t.userId, teamId: t.teamId, runId: run?.id ?? null, runStatus: run?.status ?? null };
+    return { tokenId: t.id, workspaceId: t.workspaceId, userId: t.userId, runId: run?.id ?? null, runStatus: run?.status ?? null };
   }
 }

@@ -3,30 +3,16 @@ import { z } from 'zod';
 export const GitProviderKindSchema = z.enum(['github', 'github_enterprise', 'gitlab', 'gitlab_self_managed']);
 export type GitProviderKind = z.infer<typeof GitProviderKindSchema>;
 
+/** Dépôt choisi pour une conversation. */
 export const RepositoryRefSchema = z.object({
   /** Connexion Git de l'utilisateur utilisée pour lire le dépôt. */
   gitConnectionId: z.uuid(),
   /** `owner/name` (GitHub) ou chemin complet du projet (GitLab). */
   fullName: z.string().min(1).max(400),
-  defaultBranch: z.string().min(1).max(255).optional(),
+  /** Branche de travail (défaut : branche par défaut du dépôt). */
+  branch: z.string().min(1).max(255).optional(),
 });
 export type RepositoryRef = z.infer<typeof RepositoryRefSchema>;
-
-export const CreateProjectSchema = z.object({
-  teamId: z.uuid(),
-  name: z.string().min(1).max(120),
-  description: z.string().max(4000).optional(),
-  /** Absent = projet vierge sans dépôt. */
-  repository: RepositoryRefSchema.optional(),
-});
-export type CreateProject = z.infer<typeof CreateProjectSchema>;
-
-export const UpdateProjectSchema = z.object({
-  name: z.string().min(1).max(120).optional(),
-  description: z.string().max(4000).nullable().optional(),
-});
-
-export const AttachRepositorySchema = RepositoryRefSchema;
 
 export interface RepositoryDto {
   id: string;
@@ -38,20 +24,15 @@ export interface RepositoryDto {
   webUrl: string;
 }
 
-export interface ProjectDto {
-  id: string;
-  teamId: string;
-  teamName: string;
-  name: string;
-  description: string | null;
-  repository: RepositoryDto | null;
-  createdBy: string;
-  createdAt: string;
-  archivedAt: string | null;
-  myWorkspaceCount: number;
+/** Dépôt vu par l'administration (réglages d'environnement). */
+export interface AdminRepositoryDto extends RepositoryDto {
+  conversationCount: number;
+  lastUsedAt: string | null;
+  setupConfigured: boolean;
+  variableCount: number;
 }
 
-/* ---------- Environnement des sandboxes : variables, secrets, image, préparation ---------- */
+/* ---------- Environnement d'un dépôt : variables, secrets, image, préparation ---------- */
 
 /**
  * Noms réservés : ils piloteraient le réseau, le chargement de code ou l'identité de la sandbox
@@ -76,7 +57,6 @@ export type UpsertEnvVar = z.infer<typeof UpsertEnvVarSchema>;
 
 export interface EnvVarDto {
   id: string;
-  scope: 'team' | 'project';
   name: string;
   secret: boolean;
   /** `null` pour un secret (jamais renvoyé). */
@@ -91,22 +71,20 @@ export interface SandboxImageOptionDto {
   isDefault: boolean;
 }
 
-export interface ProjectEnvironmentDto {
+/** Réglages partagés par toutes les conversations sur le dépôt (administrateur). */
+export interface RepositoryEnvironmentDto {
+  repository: RepositoryDto;
   sandboxImageId: string | null;
   setupScript: string | null;
   images: SandboxImageOptionDto[];
-  /** Variables du projet (modifiables par ses administrateurs). */
   variables: EnvVarDto[];
-  /** Variables héritées de l'équipe (lecture ; une variable de projet du même nom l'emporte). */
-  teamVariables: EnvVarDto[];
-  canManage: boolean;
 }
 
-export const UpdateProjectEnvironmentSchema = z.object({
+export const UpdateRepositoryEnvironmentSchema = z.object({
   sandboxImageId: z.uuid().nullable(),
   setupScript: z.string().max(20_000).nullable(),
 });
-export type UpdateProjectEnvironment = z.infer<typeof UpdateProjectEnvironmentSchema>;
+export type UpdateRepositoryEnvironment = z.infer<typeof UpdateRepositoryEnvironmentSchema>;
 
 /* ---------- Services d'appui (bases de données, files…) ---------- */
 

@@ -59,7 +59,7 @@ export class LlmProxyController {
   async models(@Req() req: Request, @Res() res: Response) {
     const p = await this.tokens.authenticate(req.headers.authorization);
     if (!p) return openAiError(res, 401, 'unauthenticated', 'Jeton de run invalide');
-    const rows = await this.allowedModels(p.teamId);
+    const rows = await this.allowedModels();
     res.json({ object: 'list', data: rows.map((m) => ({ id: m.litellmModel, object: 'model', owned_by: 'platform' })) });
   }
 
@@ -74,7 +74,7 @@ export class LlmProxyController {
     }
     const body = req.body as Record<string, unknown>;
     const modelName = String(body?.model ?? '');
-    const model = (await this.allowedModels(principal.teamId)).find((m) => m.litellmModel === modelName);
+    const model = (await this.allowedModels()).find((m) => m.litellmModel === modelName);
     if (!model) return openAiError(res, 403, 'model_not_allowed', `Modèle non autorisé : ${modelName}`);
 
     const quotaSettings = await this.settings.section('quotas');
@@ -86,7 +86,6 @@ export class LlmProxyController {
     try {
       reservation = await this.quotas.reserve({
         userId: principal.userId,
-        teamId: principal.teamId,
         workspaceId: principal.workspaceId,
         runId: principal.runId,
         modelId: model.id,
@@ -197,12 +196,12 @@ export class LlmProxyController {
     }
   }
 
-  private async allowedModels(teamId: string) {
-    const rows = await this.db
+  /** Modèles activés et disponibles (ouverts à tous les utilisateurs). */
+  private async allowedModels() {
+    return this.db
       .select()
       .from(llmModels)
       .where(and(eq(llmModels.enabled, true), eq(llmModels.available, true), isNull(llmModels.deletedAt)));
-    return rows.filter((m) => m.allowedTeamIds.length === 0 || m.allowedTeamIds.includes(teamId));
   }
 
   private async touch(workspaceId: string) {

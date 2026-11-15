@@ -12,7 +12,7 @@ import { CreditsPipe } from '../../shared/pipes';
     @if (o(); as o) {
       <div class="mt-4 grid gap-3 md:grid-cols-4">
         <div class="card p-4"><div class="text-xs text-stone-500 uppercase">Utilisateurs</div><div class="text-2xl font-semibold">{{ o.users.active }}</div><div class="text-xs text-stone-500">{{ o.users.total }} au total · {{ o.users.suspended }} suspendu(s)</div></div>
-        <div class="card p-4"><div class="text-xs text-stone-500 uppercase">Équipes</div><div class="text-2xl font-semibold">{{ o.teams }}</div></div>
+        <div class="card p-4"><div class="text-xs text-stone-500 uppercase">Dépôts</div><div class="text-2xl font-semibold">{{ o.repositories }}</div></div>
         <div class="card p-4"><div class="text-xs text-stone-500 uppercase">Workspaces</div><div class="text-2xl font-semibold">{{ o.workspaces.total }}</div><div class="text-xs text-stone-500">{{ o.workspaces.running }} actif(s)</div></div>
         <div class="card p-4"><div class="text-xs text-stone-500 uppercase">Sandboxes actives</div><div class="text-2xl font-semibold">{{ o.sandboxes.active }}</div></div>
         <div class="card p-4"><div class="text-xs text-stone-500 uppercase">Appels LLM 24 h</div><div class="text-2xl font-semibold">{{ o.llm.requests24h }}</div><div class="text-xs text-stone-500">{{ o.llm.errors24h }} erreur(s) · p95 {{ o.llm.p95LatencyMs ?? '—' }} ms</div></div>

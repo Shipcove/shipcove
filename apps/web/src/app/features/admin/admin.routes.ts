@@ -7,7 +7,8 @@ export const ADMIN_ROUTES: Routes = [
     children: [
       { path: '', loadComponent: () => import('./admin-overview').then((m) => m.AdminOverview) },
       { path: 'users', loadComponent: () => import('./admin-people').then((m) => m.AdminUsers) },
-      { path: 'teams', loadComponent: () => import('./admin-people').then((m) => m.AdminTeams) },
+      { path: 'invitations', loadComponent: () => import('./admin-people').then((m) => m.AdminInvitations) },
+      { path: 'repositories', loadComponent: () => import('./admin-repositories').then((m) => m.AdminRepositories) },
       { path: 'iam', loadComponent: () => import('./admin-iam').then((m) => m.AdminIam) },
       { path: 'git', loadComponent: () => import('./admin-git').then((m) => m.AdminGit) },
       { path: 'models', loadComponent: () => import('./admin-models').then((m) => m.AdminModels) },

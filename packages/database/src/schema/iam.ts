@@ -154,8 +154,6 @@ export const invitations = pgTable(
     id: pk(),
     email: text().notNull(),
     tokenHash: text().notNull(),
-    teamId: uuid(),
-    role: text({ enum: ['team_admin', 'member'] }).notNull().default('member'),
     invitedBy: uuid().references(() => users.id, { onDelete: 'set null' }),
     expiresAt: ts().notNull(),
     acceptedAt: ts(),

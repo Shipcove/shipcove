@@ -9,8 +9,8 @@ export const DEFAULT_TEMPLATES: Record<string, { subject: string; bodyText: stri
     bodyText: 'Bonjour {{name}},\n\nPour choisir un nouveau mot de passe, ouvrez ce lien (valable 1 h) :\n{{link}}\n\nSi vous n’avez rien demandé, ignorez ce message ; votre mot de passe reste inchangé.',
   },
   'auth.invitation': {
-    subject: '{{inviter}} vous invite à rejoindre {{team}}',
-    bodyText: 'Bonjour,\n\n{{inviter}} vous invite à rejoindre l’équipe {{team}} sur Shipcove.\nCréez votre compte avec ce lien (valable 7 jours) :\n{{link}}',
+    subject: '{{inviter}} vous invite à rejoindre Shipcove',
+    bodyText: 'Bonjour,\n\n{{inviter}} vous invite à rejoindre Shipcove.\nCréez votre compte avec ce lien (valable 7 jours) :\n{{link}}',
   },
   'admin.smtp_test': {
     subject: 'Test de configuration SMTP',

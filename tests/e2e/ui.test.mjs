@@ -41,17 +41,14 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
       supportsReasoning: true,
       enabled: true,
       isDefault: true,
-      allowedTeamIds: mock.allowedTeamIds,
       coefficients: { input: mock.coefficients.input, output: mock.coefficients.output, cacheRead: mock.coefficients.cacheRead, cacheWrite: mock.coefficients.cacheWrite },
     });
     assert.equal(r.status, 200, JSON.stringify(r.body));
   }
   const slug = `ui-${uid()}`;
-  const team = await admin.post('/teams', { name: `UI ${slug}`, slug });
   const username = `ui${uid()}`;
   const password = 'Ui-Password-123456';
   const user = await admin.post('/admin/users', { email: `${username}@example.test`, username, displayName: `UI ${username}`, platformRole: 'user', password });
-  await admin.post(`/teams/${team.body.id}/members`, { userId: user.body.id, role: 'member' });
 
   const browser = await chromium.launch({ executablePath, args: ['--no-sandbox'] });
   try {
@@ -64,21 +61,29 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     await page.click('button:has-text("Se connecter")');
     await page.waitForURL(`${BASE}/`);
 
-    // Projet vierge puis workspace, via l'interface.
-    await page.goto(`${BASE}/projects`);
-    await page.click('button:has-text("Nouveau projet")');
-    await page.selectOption('#pt', team.body.id);
-    await page.fill('#pn', `Projet UI ${slug}`);
-    await page.click('form button:has-text("Créer")');
-    await page.waitForURL(/\/projects\/[0-9a-f-]+$/);
-    await page.fill('#wn', 'Workspace UI');
-    await page.click('form button:has-text("Créer")');
-    await page.waitForURL(/\/workspaces\/[0-9a-f-]+$/);
-
+    // Accueil = nouvelle conversation : sans dépôt par défaut, le premier message la crée.
+    await page.waitForSelector('cap-repo-picker >> text=Aucun dépôt');
+    assert.equal(await page.locator('a[href="/projects"], a[href="/teams"]').count(), 0, 'plus de sections Projets / Équipes');
+    await page.screenshot({ path: new URL('home.png', OUT).pathname });
+    await page.click('cap-repo-picker button');
+    await page.waitForSelector('text=Aucune connexion Git.');
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('text=Aucune connexion Git.', { state: 'detached' });
     // Message à Pi (fournisseur factice piloté par directives).
     await page.fill('textarea[aria-label="Message"]', 'Crée un fichier. [[tool:bash {"command":"mkdir -p app && printf \'console.log(1)\\n\' > app/main.js"}]]');
     await page.keyboard.press('Enter');
+    await page.waitForURL(/\/workspaces\/[0-9a-f-]+$/);
     await page.waitForSelector('text=Terminé : 1 action(s) exécutée(s).', { timeout: 240_000 });
+    // Titre automatique, affiché dans l'en-tête et dans la barre latérale (section sans dépôt, « Aujourd’hui »).
+    await page.waitForSelector('header h1:has-text("Crée un fichier.")', { timeout: 30_000 });
+    const sidebar = page.locator('nav[aria-label="Conversations"]');
+    await sidebar.locator('text=Aujourd’hui').waitFor();
+    await sidebar.locator('a:has-text("Crée un fichier.")').waitFor();
+    // Renommage dans l'en-tête.
+    await page.click('button[aria-label="Renommer la conversation"]');
+    await page.fill('input[aria-label="Titre de la conversation"]', 'Conversation UI');
+    await page.keyboard.press('Enter');
+    await sidebar.locator('a:has-text("Conversation UI")').waitFor();
     await page.waitForSelector('cap-tool-card');
 
     // Alignement vertical du « + », de l'input et du bouton d'envoi ; pas de dictée vocale.

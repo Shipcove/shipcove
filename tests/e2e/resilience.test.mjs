@@ -81,7 +81,6 @@ async function newUser() {
   const password = 'Resilience-Password-123456';
   const r = await ctx.admin.post('/admin/users', { email: `${username}@example.test`, username, displayName: `R ${username}`, platformRole: 'user', password });
   assert.equal(r.status, 201, JSON.stringify(r.body));
-  await ctx.admin.post(`/teams/${ctx.teamId}/members`, { userId: r.body.id, role: 'member' });
   const c = new Client();
   assert.equal((await c.post('/auth/login', { login: username, password })).body.status, 'authenticated');
   c.id = r.body.id;
@@ -89,8 +88,7 @@ async function newUser() {
 }
 
 async function workspace(client, name) {
-  const p = await client.post('/projects', { teamId: ctx.teamId, name: `${name} ${uid()}` });
-  const w = await client.post('/workspaces', { projectId: p.body.id, name });
+  const w = await client.post('/workspaces', { name });
   assert.equal(w.status, 201, JSON.stringify(w.body));
   return w.body;
 }
@@ -107,9 +105,6 @@ const tool = (name, args) => `[[tool:${name} ${JSON.stringify(args)}]]`;
 
 before(async () => {
   ctx.admin = await adminClient(state);
-  const slug = `res-${uid()}`;
-  const team = await ctx.admin.post('/teams', { name: `Résilience ${slug}`, slug });
-  ctx.teamId = team.body.id;
 });
 
 after(async () => {
@@ -244,7 +239,7 @@ test('panne de Vault : sessions et lecture préservées, écritures de secrets r
   try {
     // Les sessions sont en base : la navigation continue.
     assert.equal((await user.get('/auth/session')).body.authenticated, true);
-    assert.equal((await user.get('/projects')).status, 200);
+    assert.equal((await user.get('/workspaces')).status, 200);
     // Santé : Vault signalé indisponible.
     const ready = await fetch(`${BASE}/api/v1/health/ready`);
     assert.equal(ready.status, 503);

@@ -3,7 +3,7 @@ import net from 'node:net';
 import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { SecretProvider } from '@cap/secrets';
-import { previewPorts, sandboxInstances, teamMembers, users, workspaces, type Database } from '@cap/database';
+import { previewPorts, sandboxInstances, users, workspaces, type Database } from '@cap/database';
 import { DB, ENV, SECRETS, parsePreviewHost, signPreviewToken, verifyPreviewToken, type BaseEnv } from '@cap/server-core';
 
 const COOKIE = 'cap_preview';
@@ -74,15 +74,13 @@ export class PreviewProxyService implements OnModuleInit, OnModuleDestroy {
     const hit = this.cache.get(cacheKey);
     if (hit && Date.now() - hit.at < 10_000) return { target: hit, ws: parsed.workspaceId, port: parsed.port };
     const [row] = await this.db
-      .select({ ownerId: workspaces.ownerId, teamId: workspaces.teamId, host: sandboxInstances.internalHost, status: users.status })
+      .select({ ownerId: workspaces.ownerId, host: sandboxInstances.internalHost, status: users.status })
       .from(previewPorts)
       .innerJoin(workspaces, eq(workspaces.id, previewPorts.workspaceId))
       .innerJoin(users, eq(users.id, workspaces.ownerId))
       .leftJoin(sandboxInstances, and(eq(sandboxInstances.workspaceId, workspaces.id), eq(sandboxInstances.status, 'running')))
       .where(and(eq(previewPorts.workspaceId, parsed.workspaceId), eq(previewPorts.port, parsed.port), isNull(previewPorts.closedAt), isNull(workspaces.deletedAt)));
     if (!row || row.ownerId !== claims.uid || row.status !== 'active') return { status: 403, message: 'Preview fermée ou accès révoqué' };
-    const [member] = await this.db.select().from(teamMembers).where(and(eq(teamMembers.teamId, row.teamId), eq(teamMembers.userId, claims.uid)));
-    if (!member) return { status: 403, message: 'Accès révoqué' };
     if (!row.host) return { status: 503, message: 'Sandbox arrêtée : démarrez le workspace' };
     const target = { host: row.host, port: parsed.port, at: Date.now() };
     this.cache.set(cacheKey, target);

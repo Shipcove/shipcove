@@ -9,7 +9,7 @@ Chemin d'un appel LLM : Pi (sandbox) → `apps/gateway` `/llm/v1/chat/completion
    un workspace, un run et un utilisateur, expirant). Ce jeton ne donne accès qu'aux modèles
    autorisés et est débité sur le quota de son propriétaire : il n'élargit aucun privilège.
 2. Avant chaque appel, la gateway **réserve atomiquement** un montant estimé
-   (`credit_reservations`) dans une transaction verrouillant les compteurs utilisateur puis équipe
+   (`credit_reservations`) dans une transaction verrouillant le compteur de l'utilisateur
    (ordre fixe → pas d'interblocage), en tenant compte des réservations ouvertes de toutes les
    instances.
 3. Elle relaie le flux à LiteLLM (`stream_options.include_usage=true`), capture l'usage final,
@@ -31,5 +31,5 @@ partir de `effective_from`) ; une consommation référence la version utilisée.
 
 ## Fenêtres
 5 h et 7 jours glissants, calculées par somme du ledger + réservations ouvertes sur la fenêtre.
-Les deux s'appliquent à l'utilisateur ; le plafond d'équipe (optionnel) s'applique à l'équipe
-propriétaire du projet.
+Les deux s'appliquent à l'utilisateur, et à lui seul : un compteur par personne pour toutes ses
+conversations, aucun plafond collectif (voir ADR 0015). Les titres automatiques ne sont pas décomptés.

@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import type { ModelDto } from '@cap/contracts';
+import type { ModelDto, PlatformSettings } from '@cap/contracts';
 import { Api } from '../../core/api.service';
 import { ToastService } from '../../core/toast.service';
 
-type AdminModel = ModelDto & { allowedTeamIds: string[]; litellmParams: Record<string, unknown>; lastSyncError: string | null; secretConfigured: boolean };
+type AdminModel = ModelDto & { litellmParams: Record<string, unknown>; lastSyncError: string | null; secretConfigured: boolean };
 
 const EMPTY = {
   litellmModel: '',
@@ -17,7 +17,6 @@ const EMPTY = {
   supportsReasoning: true,
   enabled: true,
   isDefault: false,
-  allowedTeamIds: [] as string[],
   input: '3',
   output: '15',
   cacheRead: '0.3',
@@ -62,10 +61,19 @@ const EMPTY = {
       <div><label class="label">Sortie</label><input class="input" name="co" [(ngModel)]="f.output" /></div>
       <div><label class="label">Cache lu</label><input class="input" name="cr" [(ngModel)]="f.cacheRead" /></div>
       <div><label class="label">Cache écrit</label><input class="input" name="cwr" [(ngModel)]="f.cacheWrite" /></div>
-      <div class="md:col-span-4"><label class="label">Équipes autorisées (aucune = toutes)</label>
-        <div class="flex flex-wrap gap-3 text-sm">@for (t of teams(); track t['id']) { <label><input type="checkbox" [checked]="f.allowedTeamIds.includes(t['id'])" (change)="toggleTeam(t['id'])" /> {{ t['name'] }}</label> }</div>
-      </div>
       <div class="flex gap-2 md:col-span-4"><button class="btn-primary">Enregistrer</button>@if (editing()) { <button type="button" class="btn-secondary" (click)="reset()">Annuler</button> }</div>
+    </form>
+
+    <form class="card mt-4 space-y-2 p-4" (ngSubmit)="saveTitleModel()">
+      <div class="font-medium">Titres automatiques des conversations</div>
+      <p class="text-sm text-stone-500">Après le premier message, ce modèle propose un titre court (appel non décompté des quotas). Sans modèle, le début du message sert de titre. Un titre renommé par l’utilisateur n’est jamais remplacé.</p>
+      <div class="flex gap-2">
+        <select class="input md:max-w-sm" name="titleModel" [(ngModel)]="titleModelId" aria-label="Modèle des titres">
+          <option [ngValue]="null">Aucun (début du message)</option>
+          @for (m of models(); track m.id) { @if (m.enabled) { <option [ngValue]="m.id">{{ m.displayName }}</option> } }
+        </select>
+        <button class="btn-primary">Enregistrer</button>
+      </div>
     </form>
   `,
 })
@@ -73,16 +81,22 @@ export class AdminModels implements OnInit {
   private readonly api = inject(Api);
   private readonly toast = inject(ToastService);
   protected readonly models = signal<AdminModel[]>([]);
-  protected readonly teams = signal<Array<Record<string, string>>>([]);
   protected readonly editing = signal<string | null>(null);
-  protected f = { ...EMPTY, allowedTeamIds: [] as string[] };
+  protected f = { ...EMPTY };
+  protected titleModelId: string | null = null;
 
   async ngOnInit() {
     this.models.set(await this.api.get<AdminModel[]>('/admin/models'));
-    this.teams.set(await this.api.get('/admin/teams'));
+    const s = await this.api.get<PlatformSettings>('/admin/settings');
+    this.titleModelId = s.conversations.titleModelId;
   }
-  protected toggleTeam(id: string) {
-    this.f.allowedTeamIds = this.f.allowedTeamIds.includes(id) ? this.f.allowedTeamIds.filter((x) => x !== id) : [...this.f.allowedTeamIds, id];
+  protected async saveTitleModel() {
+    try {
+      await this.api.patch('/admin/settings', { section: 'conversations', values: { titleModelId: this.titleModelId } });
+      this.toast.show('Modèle des titres enregistré', 'success');
+    } catch (e) {
+      this.toast.error(e);
+    }
   }
   protected edit(m: AdminModel) {
     this.editing.set(m.id);
@@ -97,7 +111,6 @@ export class AdminModels implements OnInit {
       supportsReasoning: m.supportsReasoning,
       enabled: m.enabled,
       isDefault: m.isDefault,
-      allowedTeamIds: [...m.allowedTeamIds],
       input: m.coefficients?.input ?? '0',
       output: m.coefficients?.output ?? '0',
       cacheRead: m.coefficients?.cacheRead ?? '0',
@@ -106,7 +119,7 @@ export class AdminModels implements OnInit {
   }
   protected reset() {
     this.editing.set(null);
-    this.f = { ...EMPTY, allowedTeamIds: [] };
+    this.f = { ...EMPTY };
   }
   protected async save() {
     let params: Record<string, unknown>;
@@ -128,7 +141,6 @@ export class AdminModels implements OnInit {
       supportsReasoning: this.f.supportsReasoning,
       enabled: this.f.enabled,
       isDefault: this.f.isDefault,
-      allowedTeamIds: this.f.allowedTeamIds,
       coefficients: { input: n(this.f.input), output: n(this.f.output), cacheRead: n(this.f.cacheRead), cacheWrite: n(this.f.cacheWrite) },
     };
     try {

@@ -82,7 +82,6 @@ export interface MeResponse {
   emailVerified: boolean;
   mfaEnabled: boolean;
   createdAt: string;
-  teams: Array<{ id: string; name: string; slug: string; role: 'team_admin' | 'member' }>;
 }
 
 export interface SessionInfo {

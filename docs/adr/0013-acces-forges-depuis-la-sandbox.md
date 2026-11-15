@@ -44,7 +44,7 @@ entrer le jeton de l'utilisateur.
      réseau des sandboxes et tant que la sandbox existe.
 
 3. **Portée : tous les dépôts accessibles à l'utilisateur** (choix produit), et pas seulement celui
-   du projet.
+   de la conversation.
 
 4. **Garde-fous appliqués par la gateway**, sans dépendre de l'outil utilisé.
    Les opérations suivantes sont refusées :
@@ -75,7 +75,7 @@ entrer le jeton de l'utilisateur.
      reconnaissent le dépôt.
 
 7. Les noms `GH_*`, `GLAB_*`, `GITHUB_TOKEN`, `GITLAB_TOKEN` et `GIT_SSL_*` sont réservés : une
-   variable de projet ne peut pas les redéfinir.
+   variable de dépôt ne peut pas les redéfinir.
 
 ## Conséquences
 
