@@ -83,11 +83,14 @@ export class Client {
   }
 }
 
-/** Connexion de l'administrateur initial, avec enrôlement TOTP imposé par la politique. */
+/**
+ * Connexion de l'administrateur initial (exempté du TOTP imposé), puis activation volontaire du
+ * TOTP : les tests suivants exercent ainsi la vérification du second facteur.
+ */
 export async function loginAdmin(app: NestExpressApplication): Promise<{ client: Client; totpSecret: string }> {
   const client = new Client(app);
   const r = await client.post('/auth/login', { login: 'admin@example.test', password: 'Admin-Password-123!' });
-  if (r.body.status !== 'mfa_enrollment_required') throw new Error(`login admin: ${JSON.stringify(r.body)}`);
+  if (r.body.status !== 'authenticated') throw new Error(`login admin: ${JSON.stringify(r.body)}`);
   const e = await client.post('/auth/mfa/totp/enroll');
   if (!e.body?.secret) throw new Error(`enroll: ${e.status} ${JSON.stringify(e.body)}`);
   const code = await generate({ secret: e.body.secret });

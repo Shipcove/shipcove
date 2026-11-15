@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { generate } from 'otplib';
-import { auditEvents, jobs, localCredentials } from '@cap/database';
+import { auditEvents, jobs, localCredentials, users } from '@cap/database';
 import { Client, createUser, loginAdmin, startApp, type TestContext } from '../test/helpers.js';
 
 let ctx: TestContext;
@@ -16,7 +16,16 @@ describe('Authentification locale (e2e)', () => {
     expect(c.passwordHash.startsWith('$argon2id$')).toBe(true);
   });
 
-  it('impose l’enrôlement MFA à l’administrateur puis exige le TOTP aux connexions suivantes', async () => {
+  it('exempte l’administrateur initial du TOTP imposé, pas les autres administrateurs', async () => {
+    const first = await new Client(ctx.app).post('/auth/login', { login: 'admin', password: 'Admin-Password-123!' });
+    expect(first.body.status).toBe('authenticated');
+    const { id } = await createUser(ctx, 'second-admin');
+    await ctx.db.update(users).set({ platformRole: 'platform_admin' }).where(eq(users.id, id));
+    const r = await new Client(ctx.app).post('/auth/login', { login: 'second-admin', password: 'User-Password-123!' });
+    expect(r.body).toEqual({ status: 'mfa_enrollment_required' });
+  });
+
+  it('exige le TOTP aux connexions suivantes une fois activé par l’administrateur', async () => {
     const { totpSecret } = await loginAdmin(ctx.app);
     const c = new Client(ctx.app);
     const r = await c.post('/auth/login', { login: 'admin', password: 'Admin-Password-123!' });
