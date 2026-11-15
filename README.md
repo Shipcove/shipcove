@@ -122,8 +122,8 @@ cahier des charges dans [`SPEC.md`](SPEC.md).
 
 Les images sont publiées sur `ghcr.io/shipcove` (`shipcove-web`, `shipcove-api`, `shipcove-worker`,
 `shipcove-gateway`, `shipcove-preview`, `shipcove-docker-guard`, `shipcove-sandbox`).
-Elles sont construites par la CI GitHub Actions (`.github/workflows/ci.yml`) après les tests
-unitaires : branche `develop` → étiquettes `develop` et `sha-<commit>` ; tag `vX.Y.Z` → `X.Y.Z` et
+Elles sont construites par la CI GitHub Actions (`.github/workflows/ci.yml`) :
+branche `develop` → étiquettes `develop` et `sha-<commit>` ; tag `vX.Y.Z` → `X.Y.Z` et
 `X.Y`. Les pull requests construisent les images sans les publier.
 
 ```bash

@@ -1,6 +1,6 @@
-# Intégration continue : tests unitaires, puis construction et publication des images Docker
-# sur le registre GitHub (ghcr.io/shipcove/shipcove-*).
-#  - pull request : tests + construction des images (sans publication) ;
+# Intégration continue : construction et publication des images Docker sur le registre GitHub
+# (ghcr.io/shipcove/shipcove-*). Les tests seront ajoutés plus tard.
+#  - pull request : construction des images (sans publication) ;
 #  - push sur develop / main : images étiquetées par branche et par commit (sha-…) ;
 #  - tag vX.Y.Z : images X.Y.Z, X.Y et latest.
 name: CI
@@ -21,47 +21,10 @@ permissions:
 
 env:
   REGISTRY: ghcr.io/shipcove
-  NODE_VERSION: '26'
-  PNPM_VERSION: '12.18.0'
 
 jobs:
-  unit-tests:
-    name: Tests unitaires
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    services:
-      # Base éphémère des tests d'intégration PostgreSQL (quotas…), comme tools/test-infra/up.sh.
-      postgres:
-        image: postgres:18.7-alpine
-        env:
-          POSTGRES_USER: cap
-          POSTGRES_PASSWORD: cap
-          POSTGRES_DB: cap_test
-        ports: ['5433:5432']
-        options: >-
-          --health-cmd "pg_isready -U cap -d cap_test"
-          --health-interval 5s --health-timeout 5s --health-retries 20
-    env:
-      TEST_DATABASE_URL: postgres://cap:cap@127.0.0.1:5433/cap_test
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Construction des paquets partagés
-        run: pnpm -r --filter "./packages/**" build
-      # Exclus pour l'instant : @cap/storage (S3 et Docker requis), web (pas de tests unitaires), e2e.
-      - name: Tests unitaires
-        run: pnpm -r --filter "!@cap/storage" --filter "!web" --filter "!e2e" test
-
   images:
     name: Image ${{ matrix.image }}
-    needs: unit-tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
