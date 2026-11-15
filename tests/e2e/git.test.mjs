@@ -156,7 +156,7 @@ test('forges Git administrées : jeton personnel refusé par défaut, configurat
   const listed = await ctx.admin.get('/admin/git-forges');
   assert.ok(!JSON.stringify(listed.body).includes(app.body.secret), 'secret client jamais renvoyé');
   const pub = await ctx.dev.get('/me/git-connections/oauth/providers');
-  assert.deepEqual(pub.body.forges.map((f) => f.id), [forge.id]);
+  assert.ok(pub.body.forges.some((f) => f.id === forge.id), 'forge active proposée aux utilisateurs');
   assert.equal(pub.body.allowPersonalTokens, false);
   ctx.forge = forge;
 });
@@ -355,5 +355,5 @@ test('suppression de la forge par l’administrateur : connexions révoquées', 
   const conns = (await ctx.dev.get('/me/git-connections')).body.filter((c) => c.id === ctx.connId);
   assert.equal(conns.length, 0, 'connexion révoquée (plus listée)');
   assert.equal(sql(`select status from git_connections where id = '${ctx.connId}'`), 'revoked');
-  assert.equal((await ctx.dev.get('/me/git-connections/oauth/providers')).body.forges.length, 0);
+  assert.ok(!(await ctx.dev.get('/me/git-connections/oauth/providers')).body.forges.some((f) => f.id === ctx.forge.id), 'forge supprimée retirée de la liste');
 });

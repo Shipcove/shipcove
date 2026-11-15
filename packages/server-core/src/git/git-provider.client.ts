@@ -302,31 +302,47 @@ export class GitProviderClient {
     };
   }
 
+  /**
+   * Dépôts accessibles avec la connexion (propriétaire, collaborateur, membre d'organisation ou de
+   * groupe), les plus récemment actifs d'abord. Pagination jusqu'à 1 000 dépôts ; `query` filtre
+   * sur le nom complet et la description.
+   */
   async listRepositories(conn: Conn, query?: string): Promise<RemoteRepositoryDto[]> {
-    if (isGitHub(conn.provider)) {
-      const rows = query
-        ? (await this.call<{ items: Array<Record<string, unknown>> }>(conn, 'GET', `/search/repositories?q=${encodeURIComponent(`${query} in:name fork:true user:${conn.accountLogin}`)}&per_page=50`)).items
-        : await this.call<Array<Record<string, unknown>>>(conn, 'GET', `/user/repos?per_page=100&sort=pushed&affiliation=owner,collaborator,organization_member`);
-      return rows.map((r) => ({
-        fullName: r.full_name as string,
-        defaultBranch: (r.default_branch as string) ?? 'main',
-        private: !!r.private,
-        webUrl: r.html_url as string,
-        description: (r.description as string | null) ?? null,
-      }));
+    const MAX_PAGES = 10;
+    const all: RemoteRepositoryDto[] = [];
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      let rows: Array<Record<string, unknown>>;
+      if (isGitHub(conn.provider)) {
+        rows = await this.call<Array<Record<string, unknown>>>(conn, 'GET', `/user/repos?per_page=100&page=${page}&sort=pushed&affiliation=owner,collaborator,organization_member`);
+        all.push(
+          ...rows.map((r) => ({
+            fullName: r.full_name as string,
+            defaultBranch: (r.default_branch as string) ?? 'main',
+            private: !!r.private,
+            webUrl: r.html_url as string,
+            description: (r.description as string | null) ?? null,
+          })),
+        );
+      } else {
+        rows = await this.call<Array<Record<string, unknown>>>(
+          conn,
+          'GET',
+          `/projects?membership=true&archived=false&per_page=100&page=${page}&order_by=last_activity_at${query ? `&search=${encodeURIComponent(query)}&search_namespaces=true` : ''}`,
+        );
+        all.push(
+          ...rows.map((r) => ({
+            fullName: r.path_with_namespace as string,
+            defaultBranch: (r.default_branch as string) ?? 'main',
+            private: r.visibility !== 'public',
+            webUrl: r.web_url as string,
+            description: (r.description as string | null) ?? null,
+          })),
+        );
+      }
+      if (rows.length < 100) break;
     }
-    const rows = await this.call<Array<Record<string, unknown>>>(
-      conn,
-      'GET',
-      `/projects?membership=true&per_page=100&order_by=last_activity_at${query ? `&search=${encodeURIComponent(query)}` : ''}`,
-    );
-    return rows.map((r) => ({
-      fullName: r.path_with_namespace as string,
-      defaultBranch: (r.default_branch as string) ?? 'main',
-      private: r.visibility !== 'public',
-      webUrl: r.web_url as string,
-      description: (r.description as string | null) ?? null,
-    }));
+    const q = query?.trim().toLowerCase();
+    return q ? all.filter((r) => r.fullName.toLowerCase().includes(q) || (r.description ?? '').toLowerCase().includes(q)) : all;
   }
 
   async listBranches(conn: Conn, fullName: string): Promise<string[]> {
