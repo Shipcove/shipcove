@@ -13,8 +13,8 @@ marked.setOptions({ gfm: true, breaks: false });
 marked.use({
   renderer: {
     /**
-     * Bloc de code : en-tête (langage, actions au survol) et coloration syntaxique. Les actions
-     * (retour à la ligne, copie) sont gérées par la directive `capCodeBlocks`.
+     * Bloc de code : en-tête (langage, copie au survol) et coloration syntaxique. La copie est
+     * gérée par la directive `capCodeBlocks`.
      */
     code({ text, lang }) {
       const requested = (lang ?? '').trim().split(/\s+/)[0].toLowerCase();
@@ -32,8 +32,7 @@ marked.use({
       const label = escapeHtml(LANG_LABEL[language] ?? (language || 'texte'));
       return (
         `<div class="code-block"><div class="code-head"><span class="code-lang">${label}</span>` +
-        `<span class="code-actions"><button type="button" class="code-action" data-code-action="wrap" title="Retour à la ligne" aria-label="Retour à la ligne"></button>` +
-        `<button type="button" class="code-action" data-code-action="copy" title="Copier" aria-label="Copier le code"></button></span></div>` +
+        `<span class="code-actions"><button type="button" class="code-action" data-code-action="copy" title="Copier" aria-label="Copier le code"></button></span></div>` +
         `<pre><code class="hljs">${html}</code></pre></div>\n`
       );
     },
@@ -54,7 +53,7 @@ export class MarkdownPipe implements PipeTransform {
   }
 }
 
-/** Actions des blocs de code rendus par `markdown` : copie et retour à la ligne. */
+/** Copie des blocs de code rendus par `markdown`. */
 @Directive({ selector: '[capCodeBlocks]' })
 export class CodeBlocksDirective {
   @HostListener('click', ['$event'])
@@ -63,11 +62,7 @@ export class CodeBlocksDirective {
     const block = btn?.closest<HTMLElement>('.code-block');
     if (!btn || !block) return;
     ev.preventDefault();
-    if (btn.dataset['codeAction'] === 'wrap') {
-      block.classList.toggle('wrap');
-      btn.setAttribute('aria-pressed', String(block.classList.contains('wrap')));
-      return;
-    }
+    if (btn.dataset['codeAction'] !== 'copy') return;
     await navigator.clipboard.writeText(block.querySelector('code')?.textContent ?? '');
     btn.classList.add('done');
     btn.title = 'Copié';
