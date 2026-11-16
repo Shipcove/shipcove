@@ -11,7 +11,7 @@ import {
   workspaces,
   type Database,
 } from '@cap/database';
-import { PI_PROVIDER, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
+import { PI_KEEP_RECENT_TOKENS, PI_PROVIDER, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
 import { DB, ENV, EnvironmentService, EventsService, NotificationService, modelAllowedFor, ObjectStorage, PgNotifier, QuotaService, RunQueueService, StreamScrubber, redactString, scrubDeep, scrubSecrets, type NewEvent } from '@cap/server-core';
 import { toUserPath } from '@cap/storage';
 import { execCollect } from '@cap/sandbox';
@@ -71,6 +71,16 @@ interface RunContext {
  * - checkpoint bloquant après chaque outil (extension) + checkpoint indépendant sur fin d'outil ;
  * - interruption, steering, pause quota et reprise.
  */
+/** Le résumé de compaction est relu dans l'interface, en français. */
+const COMPACT_LANGUAGE_INSTRUCTION = 'Rédige le résumé en français.';
+
+/** Refus de compaction de Pi qui ne sont pas des échecs, traduits ; `null` pour une vraie erreur. */
+export function nothingToCompact(error: string): string | null {
+  if (/already compacted/i.test(error)) return 'Rien à compacter : le contexte vient déjà d’être compacté';
+  if (/nothing to compact/i.test(error)) return 'Rien à compacter : la conversation est encore courte';
+  return null;
+}
+
 /** Commande shell qui clone un dépôt (git, gh, glab). */
 const CLONE_RE = /\b(?:git|gh\s+repo|glab\s+repo)\s+clone\b/;
 
@@ -265,11 +275,29 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       const compact = await this.compactRequest(run);
       if (compact) {
         // `/compact` : compaction du contexte de Pi, sans nouveau tour de l'agent.
-        let error: string | null = null;
-        await runtime.compact(compact.instructions || undefined).catch((e: Error) => (error = redactString(e.message)));
-        await ctx.queue;
-        if (!ctx.compactionMarked) await this.compactionMarker(ctx, { tokensBefore: null, summary: null, error: error ?? 'La compaction n’a pas abouti' });
-        outcome = { error };
+        // En dessous du contexte récent que Pi garde tel quel, il n'y a rien à résumer : Pi appellerait
+        // quand même le modèle sur une liste vide (résumé « (none) » partout). On s'en dispense.
+        const stats = await runtime.sessionStats().catch(() => null);
+        if (stats?.contextTokens != null && stats.contextTokens < PI_KEEP_RECENT_TOKENS * 1.25) {
+          await this.compactionMarker(ctx, {
+            tokensBefore: null,
+            summary: null,
+            error: null,
+            skipped: `Rien à compacter : la conversation est encore courte (≈ ${Math.round(stats.contextTokens / 1000)}k tokens de contexte ; Pi garde tels quels les ${PI_KEEP_RECENT_TOKENS / 1000}k derniers)`,
+          });
+          outcome = { error: null };
+        } else {
+          let error: string | null = null;
+          const instructions = [COMPACT_LANGUAGE_INSTRUCTION, compact.instructions].filter(Boolean).join('\n');
+          await runtime.compact(instructions).catch((e: Error) => (error = redactString(e.message)));
+          await ctx.queue;
+          // Refus de Pi qui ne sont pas des échecs (rien de nouveau à résumer) : le run réussit.
+          const nothing = error ? nothingToCompact(error) : null;
+          if (!ctx.compactionMarked) {
+            await this.compactionMarker(ctx, nothing ? { tokensBefore: null, summary: null, error: null, skipped: nothing } : { tokensBefore: null, summary: null, error: error ?? 'La compaction n’a pas abouti' });
+          }
+          outcome = { error: nothing ? null : error };
+        }
       } else {
         const { text, images } = await this.promptFor(run);
         // Dépôt rattaché et remonté à la racine depuis le dernier run : Pi doit connaître les nouveaux chemins.
@@ -353,7 +381,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
    * Marqueur persistant de compaction (manuelle ou automatique) dans le fil : message système
    * `meta.kind = 'compaction'`, avec le résumé produit par Pi s'il est disponible.
    */
-  private async compactionMarker(ctx: RunContext, r: { tokensBefore: number | null; summary: string | null; error: string | null }): Promise<void> {
+  private async compactionMarker(ctx: RunContext, r: { tokensBefore: number | null; summary: string | null; error: string | null; skipped?: string }): Promise<void> {
     ctx.compactionMarked = true;
     // Les événements en tampon (dont `compaction.started`) partent avant le marqueur.
     await this.flush(ctx);
@@ -363,8 +391,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       ctx.workspaceId,
       ctx.conversationId,
       ctx.runId,
-      error ? `Échec de la compaction du contexte : ${error}` : 'Contexte de la conversation compacté',
-      { kind: 'compaction', status: error ? 'failed' : 'succeeded', tokensBefore: r.tokensBefore, summary, error },
+      error ? `Échec de la compaction du contexte : ${error}` : (r.skipped ?? 'Contexte de la conversation compacté'),
+      { kind: 'compaction', status: error ? 'failed' : r.skipped ? 'skipped' : 'succeeded', tokensBefore: r.tokensBefore, summary, error },
     );
     await this.events.emit(ctx.workspaceId, 'compaction.completed', { error, tokensBefore: r.tokensBefore }, ctx.runId);
   }
@@ -657,9 +685,11 @@ export class RunOrchestrator implements OnApplicationBootstrap {
         case 'compaction_start':
           this.push(ctx, { type: 'compaction.started', runId: ctx.runId, data: { reason: e.reason } });
           break;
-        case 'compaction_end':
-          await this.compactionMarker(ctx, { tokensBefore: e.tokensBefore, summary: e.summary, error: e.error });
+        case 'compaction_end': {
+          const nothing = e.error ? nothingToCompact(e.error) : null;
+          await this.compactionMarker(ctx, nothing ? { tokensBefore: null, summary: null, error: null, skipped: nothing } : { tokensBefore: e.tokensBefore, summary: e.summary, error: e.error });
           break;
+        }
         case 'agent_end':
           ctx.done({ error: e.error });
           break;
