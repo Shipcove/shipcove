@@ -33,7 +33,7 @@ import { WorkspaceStore } from './workspace.store';
         <div class="flex items-center gap-2 border-b border-stone-200 px-3 py-1.5 text-xs dark:border-stone-800">
           <button class="btn-ghost !p-1" (click)="selected.set(null)" aria-label="Retour à la liste"><cap-icon name="chevronRight" [size]="14" class="rotate-180" /></button>
           <span class="truncate font-mono">{{ file.path }}</span>
-          <span class="text-emerald-600">+{{ file.additions }}</span><span class="text-red-600">−{{ file.deletions }}</span>
+          @if (!file.statsSkipped) { <span class="text-emerald-600">+{{ file.additions }}</span><span class="text-red-600">−{{ file.deletions }}</span> }
           <span class="ml-auto flex gap-1">
             <button class="btn-ghost hidden !px-2 !py-0.5 text-xs whitespace-nowrap sm:inline-flex" [class.bg-stone-200]="!sideBySide()" (click)="sideBySide.set(false)">Unifié</button>
             <button class="btn-ghost hidden !px-2 !py-0.5 text-xs whitespace-nowrap sm:inline-flex" [class.bg-stone-200]="sideBySide()" (click)="sideBySide.set(true)">Côte à côte</button>
@@ -66,6 +66,7 @@ import { WorkspaceStore } from './workspace.store';
                   <span class="ml-1 text-stone-400">{{ dir(f.path) }}</span>
                 </span>
                 @if (f.binary) { <span class="text-xs text-stone-400">bin</span> }
+                @else if (f.statsSkipped) { <span class="text-xs text-stone-400" title="Lignes non comptées (trop de fichiers modifiés)">—</span> }
                 @else { <span class="shrink-0 text-xs"><span class="text-emerald-600">+{{ f.additions }}</span> <span class="text-red-600">−{{ f.deletions }}</span></span> }
               </button>
             </li>

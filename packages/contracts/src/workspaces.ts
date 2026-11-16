@@ -237,6 +237,8 @@ export interface FileChangeDto {
   additions: number;
   deletions: number;
   binary: boolean;
+  /** Lignes non comptées (trop de fichiers modifiés, ou lecture impossible pour le moment). */
+  statsSkipped?: boolean;
 }
 
 export interface ChangesResponse {
