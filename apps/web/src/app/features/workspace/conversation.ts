@@ -1,14 +1,14 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, output, signal, viewChild } from '@angular/core';
-import type { MessageDto } from '@cap/contracts';
+import type { AttachmentDto, MessageDto } from '@cap/contracts';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
-import { CodeBlocksDirective, MarkdownPipe, linkify } from '../../shared/pipes';
+import { BytesPipe, CodeBlocksDirective, MarkdownPipe, linkify } from '../../shared/pipes';
 import { ToolCard } from './tool-card';
 import { WorkspaceStore } from './workspace.store';
 
 @Component({
   selector: 'cap-conversation',
-  imports: [ToolCard, MarkdownPipe, CodeBlocksDirective, Icon],
+  imports: [ToolCard, MarkdownPipe, CodeBlocksDirective, BytesPipe, Icon],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div #scroller class="h-full overflow-x-hidden overflow-y-auto" (scroll)="onScroll()">
@@ -30,8 +30,28 @@ import { WorkspaceStore } from './workspace.store';
                 @for (sk of parts.skills; track sk) { <span class="mr-1.5 font-medium text-sky-700 dark:text-sky-400" [title]="'/skill:' + sk"><span class="opacity-60">/</span>{{ sk }}</span> }
                 <span class="whitespace-pre-wrap">@for (seg of linkify(parts.rest); track $index) {@if (seg.href) {<a class="external-link text-accent-700 underline dark:text-accent-500" [href]="seg.href" target="_blank" rel="noopener noreferrer">{{ seg.text }}</a>} @else {<span>{{ seg.text }}</span>}}</span>
                 @if (m.attachments.length) {
-                  <div class="mt-2 flex flex-wrap gap-1">
-                    @for (a of m.attachments; track a.id) { <span class="badge bg-white/70 dark:bg-stone-700"><cap-icon name="paperclip" [size]="11" />{{ a.fileName }}</span> }
+                  <div class="mt-2 flex flex-wrap gap-1.5" role="list" aria-label="Fichiers joints">
+                    @for (a of m.attachments; track a.id) {
+                      @if (a.kind === 'image' && store.isOwner()) {
+                        <button role="listitem" class="group relative overflow-hidden rounded-lg border border-stone-300 bg-white dark:border-stone-700 dark:bg-stone-900"
+                          (click)="viewing.set(a)" [attr.aria-label]="'Agrandir ' + a.fileName" [title]="a.fileName + ' · ' + (a.size | bytes)">
+                          <img [src]="attachmentUrl(a)" [alt]="a.fileName" loading="lazy" class="h-24 w-auto max-w-48 object-cover" height="96" />
+                          <span class="absolute right-1 bottom-1 rounded bg-black/55 p-0.5 text-white opacity-0 transition group-hover:opacity-100 touch:opacity-100"><cap-icon name="maximize" [size]="12" /></span>
+                        </button>
+                      } @else if (store.isOwner()) {
+                        <a role="listitem" class="flex max-w-64 items-center gap-2 rounded-lg border border-stone-300 bg-white/70 px-2.5 py-1.5 text-xs hover:border-accent-400 dark:border-stone-700 dark:bg-stone-900"
+                          [href]="attachmentUrl(a)" [download]="a.fileName" [title]="'Télécharger ' + a.fileName">
+                          <cap-icon [name]="attachmentIcon(a)" [size]="16" class="shrink-0 text-stone-500" />
+                          <span class="min-w-0"><span class="block truncate font-medium">{{ a.fileName }}</span><span class="block text-stone-500">{{ attachmentType(a) }} · {{ a.size | bytes }}</span></span>
+                          <cap-icon name="download" [size]="13" class="shrink-0 text-stone-400" />
+                        </a>
+                      } @else {
+                        <span role="listitem" class="flex max-w-64 items-center gap-2 rounded-lg border border-stone-300 bg-white/70 px-2.5 py-1.5 text-xs dark:border-stone-700 dark:bg-stone-900" title="Contenu accessible au propriétaire de la conversation uniquement">
+                          <cap-icon [name]="attachmentIcon(a)" [size]="16" class="shrink-0 text-stone-500" />
+                          <span class="min-w-0"><span class="block truncate font-medium">{{ a.fileName }}</span><span class="block text-stone-500">{{ attachmentType(a) }} · {{ a.size | bytes }}</span></span>
+                        </span>
+                      }
+                    }
                   </div>
                 }
               </div>
@@ -72,13 +92,46 @@ import { WorkspaceStore } from './workspace.store';
         }
       </div>
     </div>
+    @if (viewing(); as a) {
+      <div class="fixed inset-0 z-50 flex flex-col bg-black/85 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" [attr.aria-label]="a.fileName" tabindex="-1"
+        (click)="viewing.set(null)" (keydown.escape)="viewing.set(null)" #viewer>
+        <div class="mb-3 flex items-center gap-3 text-sm text-stone-200" (click)="$event.stopPropagation()">
+          <span class="truncate font-mono">{{ a.fileName }}</span>
+          <span class="text-stone-400">{{ a.size | bytes }}</span>
+          <a class="ml-auto rounded px-2 py-1 hover:bg-white/10" [href]="attachmentUrl(a)" [download]="a.fileName">Télécharger</a>
+          <button class="rounded p-1 hover:bg-white/10" (click)="viewing.set(null)" aria-label="Fermer"><cap-icon name="x" [size]="18" /></button>
+        </div>
+        <div class="flex min-h-0 flex-1 items-center justify-center">
+          <img [src]="attachmentUrl(a)" [alt]="a.fileName" class="max-h-full max-w-full rounded object-contain shadow-2xl" (click)="$event.stopPropagation()" />
+        </div>
+      </div>
+    }
   `,
   host: { class: 'block h-full' },
 })
 export class Conversation {
-  /** Skills en tête d'un message (« /skill:a /skill:b texte ») affichés comme des blocs. */
   protected readonly linkify = linkify;
 
+  /** Pièce jointe affichée en grand. */
+  protected readonly viewing = signal<AttachmentDto | null>(null);
+  private readonly viewerRef = viewChild<ElementRef<HTMLElement>>('viewer');
+
+  protected attachmentUrl(a: AttachmentDto): string {
+    return `/api/v1/workspaces/${this.store.workspace()!.id}/attachments/${a.id}`;
+  }
+
+  protected attachmentIcon(a: AttachmentDto): string {
+    return a.kind === 'image' ? 'image' : a.kind === 'archive' ? 'archive' : 'file';
+  }
+
+  /** Type lisible : extension du nom, sinon nature détectée. */
+  protected attachmentType(a: AttachmentDto): string {
+    const ext = /\.([a-z0-9]{1,8})$/i.exec(a.fileName)?.[1];
+    if (ext) return ext.toUpperCase();
+    return { image: 'Image', text: 'Texte', archive: 'Archive', binary: 'Fichier' }[a.kind];
+  }
+
+  /** Skills en tête d'un message (« /skill:a /skill:b texte ») affichés comme des blocs. */
   protected skillParts(text: string): { skills: string[]; rest: string } {
     const skills: string[] = [];
     let rest = text;
@@ -95,6 +148,11 @@ export class Conversation {
   private readonly stick = signal(true);
 
   constructor() {
+    effect(() => {
+      // Focus sur la visionneuse à l'ouverture (Échap pour fermer).
+      const el = this.viewerRef();
+      if (el) queueMicrotask(() => el.nativeElement.focus());
+    });
     effect(() => {
       // Défilement automatique tant que l'utilisateur est en bas de la conversation.
       this.store.messages();

@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, asc, eq, sql } from 'drizzle-orm';
-import { agentRuns, conversations, messages, workspaces, type Database, type DbOrTx } from '@cap/database';
+import { toAttachmentDto } from '@cap/contracts';
+import { agentRuns, attachments, conversations, messages, workspaces, type Database, type DbOrTx } from '@cap/database';
 import { DB } from '../tokens.js';
 import { EventsService } from '../events/events.service.js';
 import { JobsService } from '../jobs/jobs.service.js';
@@ -89,10 +90,11 @@ export class RunQueueService {
         // Le message rejoint le fil à sa position de traitement.
         await tx.update(messages).set({ pendingDelivery: false, runId: run.id, createdAt: new Date() }).where(eq(messages.id, m.id));
         const remaining = await this.list(conversationId, tx);
+        const atts = await tx.select().from(attachments).where(and(eq(attachments.messageId, m.id), sql`${attachments.deletedAt} is null`)).orderBy(asc(attachments.createdAt));
         await this.events.append(
           w.id,
           [
-            { type: 'message.created', runId: run.id, data: { messageId: m.id, role: 'user', text: m.text, attachmentIds: [] } },
+            { type: 'message.created', runId: run.id, data: { messageId: m.id, role: 'user', text: m.text, attachmentIds: atts.map((a) => a.id), attachments: atts.map(toAttachmentDto) } },
             { type: 'queue.updated', runId: run.id, data: { messages: remaining } },
             { type: 'run.queued', runId: run.id, data: { runId: run.id } },
           ],

@@ -211,7 +211,14 @@ export class WorkspaceStore {
       case 'message.created': {
         const id = d['messageId'] as string;
         if (this.messages().some((m) => m.id === id)) return;
-        this.messages.update((l) => [...l, { ...emptyMessage(id, d['role'] as 'user' | 'assistant' | 'system', d['text'] as string, e.runId, e.ts), meta: (d['meta'] as Record<string, unknown> | undefined) ?? null }]);
+        this.messages.update((l) => [
+          ...l,
+          {
+            ...emptyMessage(id, d['role'] as 'user' | 'assistant' | 'system', d['text'] as string, e.runId, e.ts),
+            meta: (d['meta'] as Record<string, unknown> | undefined) ?? null,
+            attachments: (d['attachments'] as AttachmentDto[] | undefined) ?? [],
+          },
+        ]);
         return;
       }
       case 'message.delta':

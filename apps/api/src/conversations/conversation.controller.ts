@@ -6,6 +6,7 @@ import { z } from 'zod';
 import {
   CreateShareSchema,
   SendMessageSchema,
+  toAttachmentDto,
   type ConversationDto,
   type ConversationShareDto,
   type EventEnvelope,
@@ -91,7 +92,7 @@ export class ConversationController {
       completedAt: m.completedAt?.toISOString() ?? null,
       attachments: atts
         .filter((a) => a.messageId === m.id)
-        .map((a) => ({ id: a.id, fileName: a.fileName, mimeType: a.detectedMimeType, size: a.size, kind: a.kind, status: a.status, rejectionReason: a.rejectionReason, createdAt: a.createdAt.toISOString() })),
+        .map(toAttachmentDto),
       toolCalls: calls
         .filter((c) => c.messageId === m.id)
         .map((c) => ({
@@ -153,9 +154,10 @@ export class ConversationController {
       const [conv] = await this.db.select().from(conversations).where(eq(conversations.workspaceId, id));
       const modelId = body.modelId ?? w.modelId ?? null;
       const model = modelId ? await this.workspacesService.assertModelAllowed(modelId, user.id) : null;
+      let attached: Array<typeof attachments.$inferSelect> = [];
       if (body.attachmentIds.length) {
         const owned = await this.db
-          .select({ id: attachments.id, kind: attachments.kind })
+          .select()
           .from(attachments)
           .where(and(inArray(attachments.id, body.attachmentIds), eq(attachments.ownerId, user.id), eq(attachments.workspaceId, id), eq(attachments.status, 'ready'), eq(attachments.source, 'user'), isNull(attachments.messageId)));
         if (owned.length !== body.attachmentIds.length) throw new AppError('attachment_rejected', 'Pièce jointe invalide ou déjà utilisée');
@@ -163,6 +165,8 @@ export class ConversationController {
         if (model && !model.supportsImages && owned.some((a) => a.kind === 'image')) {
           throw new AppError('attachment_rejected', `Le modèle ${model.displayName} n’accepte pas les images`);
         }
+        // Ordre choisi par l'utilisateur.
+        attached = body.attachmentIds.map((aid) => owned.find((a) => a.id === aid)!);
       }
       if (body.delivery === 'follow_up') {
         // File d'attente durable : le message sera traité par un nouveau run à la fin du run courant.
@@ -214,7 +218,7 @@ export class ConversationController {
         await this.events.append(
           id,
           [
-            { type: 'message.created', runId: run.id, data: { messageId: m.id, role: 'user', text: body.text, attachmentIds: body.attachmentIds, meta: answersMeta(body) } },
+            { type: 'message.created', runId: run.id, data: { messageId: m.id, role: 'user', text: body.text, attachmentIds: body.attachmentIds, attachments: attached.map(toAttachmentDto), meta: answersMeta(body) } },
             { type: 'run.queued', runId: run.id, data: { runId: run.id } },
           ],
           tx,

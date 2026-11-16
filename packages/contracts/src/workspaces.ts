@@ -150,6 +150,20 @@ export interface AttachmentDto {
   createdAt: string;
 }
 
+/** Pièce jointe telle qu'exposée dans le fil (ligne `attachments`). */
+export function toAttachmentDto(a: {
+  id: string;
+  fileName: string;
+  detectedMimeType: string;
+  size: number;
+  kind: AttachmentDto['kind'];
+  status: AttachmentDto['status'];
+  rejectionReason: string | null;
+  createdAt: Date;
+}): AttachmentDto {
+  return { id: a.id, fileName: a.fileName, mimeType: a.detectedMimeType, size: a.size, kind: a.kind, status: a.status, rejectionReason: a.rejectionReason, createdAt: a.createdAt.toISOString() };
+}
+
 export interface RunDto {
   id: string;
   workspaceId: string;

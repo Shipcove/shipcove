@@ -10,7 +10,7 @@
  *   reprendre à `data.fromId`.
  * - Une reconnexion ne relance jamais Pi : le flux est lu depuis la base.
  */
-import type { ToolImageDto } from './workspaces.js';
+import type { AttachmentDto, ToolImageDto } from './workspaces.js';
 export const EVENT_SCHEMA_VERSION = 1 as const;
 
 export interface EventEnvelope<T extends AgentEventType = AgentEventType> {
@@ -30,7 +30,7 @@ export interface AgentEventDataMap {
   'run.completed': { runId: string };
   'run.failed': { runId: string; error: string; retryable: boolean };
   'run.interrupted': { runId: string; reason: string };
-  'message.created': { messageId: string; role: 'user' | 'assistant' | 'system'; text: string; attachmentIds: string[]; meta?: Record<string, unknown> | null };
+  'message.created': { messageId: string; role: 'user' | 'assistant' | 'system'; text: string; attachmentIds: string[]; meta?: Record<string, unknown> | null; attachments?: AttachmentDto[] };
   'message.delta': { messageId: string; delta: string };
   'thinking.delta': { messageId: string; delta: string };
   'message.completed': {
