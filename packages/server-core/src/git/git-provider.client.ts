@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import type { GitProviderKind, RemoteRepositoryDto } from '@cap/contracts';
 import type { SecretProvider } from '@cap/secrets';
-import { gitConnections, gitForges, type Database } from '@cap/database';
+import { gitConnections, gitForges, repositories, type Database, type DbOrTx } from '@cap/database';
 import { DB, SECRETS } from '../tokens.js';
 import { AppError } from '../common/errors.js';
 import { SettingsService } from '../settings/settings.service.js';
@@ -274,6 +274,36 @@ export class GitProviderClient {
       for (const b of branches) if (patterns.some((p) => p.test(b))) protectedBranches.add(b);
     }
     return { defaultBranch: repo.defaultBranch, protectedBranches };
+  }
+
+  /**
+   * Inscrit (ou met à jour) un dépôt au catalogue partagé, lu avec la connexion de l'utilisateur.
+   * L'URL de clonage doit être sur le même hôte que la connexion : le jeton n'est jamais présenté
+   * à un autre hôte. Erreur de la forge → `GitProviderError`.
+   */
+  async upsertRepository(tx: DbOrTx, conn: Conn, fullName: string): Promise<typeof repositories.$inferSelect> {
+    const meta = await this.getRepository(conn, fullName);
+    const clone = await this.assertTransport(meta.cloneUrl);
+    if (clone.host.toLowerCase() !== conn.host.toLowerCase()) {
+      throw new AppError('validation_failed', `URL de clonage sur un hôte inattendu (${clone.host}, connexion ${conn.host})`);
+    }
+    const [row] = await tx
+      .insert(repositories)
+      .values({
+        provider: meta.provider,
+        host: meta.host,
+        fullName: meta.fullName,
+        externalId: meta.externalId,
+        cloneUrl: meta.cloneUrl,
+        webUrl: meta.webUrl,
+        defaultBranch: meta.defaultBranch,
+      })
+      .onConflictDoUpdate({
+        target: [repositories.host, repositories.fullName],
+        set: { cloneUrl: meta.cloneUrl, webUrl: meta.webUrl, externalId: meta.externalId, defaultBranch: meta.defaultBranch },
+      })
+      .returning();
+    return row;
   }
 
   async getRepository(conn: Conn, fullName: string): Promise<RepoMetadata> {

@@ -70,34 +70,13 @@ export class WorkspacesService {
    */
   async resolveRepository(tx: DbOrTx, user: AuthUser, ref: RepositoryRef): Promise<{ repositoryId: string; gitConnectionId: string; branch: string }> {
     const conn = await this.git.connection(ref.gitConnectionId, user.id);
-    let meta;
     try {
-      meta = await this.git.getRepository(conn, ref.fullName);
+      const row = await this.git.upsertRepository(tx, conn, ref.fullName);
+      return { repositoryId: row.id, gitConnectionId: conn.id, branch: ref.branch ?? row.defaultBranch };
     } catch (err) {
       if (err instanceof GitProviderError) throw new AppError('not_found', `Dépôt inaccessible avec cette connexion (${err.message})`);
       throw err;
     }
-    const clone = await this.git.assertTransport(meta.cloneUrl);
-    if (clone.host.toLowerCase() !== conn.host.toLowerCase()) {
-      throw new AppError('validation_failed', `URL de clonage sur un hôte inattendu (${clone.host}, connexion ${conn.host})`);
-    }
-    const [row] = await tx
-      .insert(repositories)
-      .values({
-        provider: meta.provider,
-        host: meta.host,
-        fullName: meta.fullName,
-        externalId: meta.externalId,
-        cloneUrl: meta.cloneUrl,
-        webUrl: meta.webUrl,
-        defaultBranch: meta.defaultBranch,
-      })
-      .onConflictDoUpdate({
-        target: [repositories.host, repositories.fullName],
-        set: { cloneUrl: meta.cloneUrl, webUrl: meta.webUrl, externalId: meta.externalId, defaultBranch: meta.defaultBranch },
-      })
-      .returning({ id: repositories.id });
-    return { repositoryId: row.id, gitConnectionId: conn.id, branch: ref.branch ?? meta.defaultBranch };
   }
 
   /**

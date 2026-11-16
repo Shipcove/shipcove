@@ -346,6 +346,14 @@ export class WorkspaceStore {
         this.conversations.patch(this.workspace()!.id, changes);
         return;
       }
+      case 'workspace.repository': {
+        // Dépôt cloné par Pi et rattaché : en-tête, barre latérale et panneaux Git sans rechargement.
+        const changes = { repository: d['repository'] as WorkspaceDto['repository'], branch: d['branch'] as string };
+        this.workspace.update((w) => (w ? { ...w, ...changes } : w));
+        this.conversations.patch(e.workspaceId, changes);
+        this.bumpFiles();
+        return;
+      }
       case 'model.changed':
         this.workspace.update((w) => (w ? { ...w, modelId: d['modelId'] as string } : w));
         return;

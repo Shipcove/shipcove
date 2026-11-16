@@ -10,6 +10,7 @@
  *   reprendre à `data.fromId`.
  * - Une reconnexion ne relance jamais Pi : le flux est lu depuis la base.
  */
+import type { RepositoryDto } from './repositories.js';
 import type { AttachmentDto, ToolImageDto } from './workspaces.js';
 export const EVENT_SCHEMA_VERSION = 1 as const;
 
@@ -64,6 +65,8 @@ export interface AgentEventDataMap {
   'workspace.status': { status: string; syncState: string; detail: string | null };
   /** Nouveau titre de la conversation (génération automatique ou renommage). */
   'workspace.renamed': { name: string; titleSource: 'auto' | 'user' };
+  /** Dépôt rattaché en cours de conversation (cloné par Pi dans une conversation sans dépôt). */
+  'workspace.repository': { repository: RepositoryDto; branch: string };
   'compaction.started': { reason: string };
   'compaction.completed': { error?: string | null; tokensBefore?: number | null };
   'model.changed': { modelId: string; modelName: string };
@@ -106,6 +109,7 @@ export const AGENT_EVENT_TYPES = [
   'usage.updated',
   'workspace.status',
   'workspace.renamed',
+  'workspace.repository',
   'compaction.started',
   'compaction.completed',
   'model.changed',

@@ -21,6 +21,7 @@ import { JobRunner } from '../jobs/job-runner.service.js';
 import { CheckpointService } from '../sandbox/checkpoint.service.js';
 import { SandboxManager, type ActiveSandbox } from '../sandbox/sandbox-manager.service.js';
 import { SetupService } from '../sandbox/setup.service.js';
+import { NO_REPOSITORY_PROMPT, RepositoryAttachService } from '../sandbox/repository-attach.service.js';
 import { ScreenshotsService } from '../sandbox/screenshots.service.js';
 
 /** Outils après lesquels on recherche de nouvelles captures d'écran. */
@@ -45,6 +46,8 @@ interface RunContext {
   lastAssistantMessageId: string | null;
   toolStarts: Map<string, number>;
   toolFiles: Map<string, string[]>;
+  /** Appels `bash` qui clonent un dépôt (rattachement automatique, issue #1). */
+  cloneCalls?: Set<string>;
   pending: NewEvent[];
   lastToolOutputAt: Map<string, number>;
   done: (result: { error: string | null }) => void;
@@ -68,6 +71,9 @@ interface RunContext {
  * - checkpoint bloquant après chaque outil (extension) + checkpoint indépendant sur fin d'outil ;
  * - interruption, steering, pause quota et reprise.
  */
+/** Commande shell qui clone un dépôt (git, gh, glab). */
+const CLONE_RE = /\b(?:git|gh\s+repo|glab\s+repo)\s+clone\b/;
+
 @Injectable()
 export class RunOrchestrator implements OnApplicationBootstrap {
   private readonly logger = new Logger('Runs');
@@ -88,6 +94,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     private readonly runQueue: RunQueueService,
     private readonly environment: EnvironmentService,
     private readonly setup: SetupService,
+    private readonly repoAttach: RepositoryAttachService,
     private readonly screenshots: ScreenshotsService,
     private readonly services: ServicesService,
   ) {}
@@ -201,7 +208,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       sessionFile: conv.piSessionPath,
       skillDirs: [],
       plugins: await this.sandboxes.availablePlugins(sandbox),
-      ...(planMode ? { tools: PLAN_MODE_TOOLS, appendSystemPrompt: PLAN_MODE_PROMPT } : {}),
+      ...(planMode ? { tools: PLAN_MODE_TOOLS } : {}),
+      appendSystemPrompt: [planMode ? PLAN_MODE_PROMPT : null, ws.repositoryId ? null : NO_REPOSITORY_PROMPT].filter(Boolean).join('\n\n') || undefined,
     });
     // Variables et secrets du dépôt : processus de Pi (donc ses commandes) uniquement,
     // jamais écrits sur disque par la plateforme. Les variables de la plateforme l'emportent.
@@ -264,7 +272,9 @@ export class RunOrchestrator implements OnApplicationBootstrap {
         outcome = { error };
       } else {
         const { text, images } = await this.promptFor(run);
-        await runtime.prompt(setupNote ? `${setupNote}\n\n${text}` : text, images);
+        // Dépôt rattaché et remonté à la racine depuis le dernier run : Pi doit connaître les nouveaux chemins.
+        const repoNote = await this.repoAttach.pendingAgentNote(ws.id).catch(() => null);
+        await runtime.prompt([setupNote, repoNote, text].filter(Boolean).join('\n\n'), images);
         outcome = await finished;
       }
     } catch (err) {
@@ -289,6 +299,9 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       await runtime.close();
       this.active.delete(runId);
     }
+
+    // Conversation sans dépôt où Pi en a cloné un : rattachement (Pi est arrêté, le dépôt peut être remonté à la racine).
+    await this.repoAttach.tryAttach(sandbox, { runId, allowMove: true });
 
     // Checkpoint de fin de run (capture aussi les écritures de processus de fond).
     await this.checkpoints
@@ -580,6 +593,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
         }
         case 'tool_start': {
           ctx.toolStarts.set(e.toolCallId, Date.now());
+          if (e.toolName === 'bash' && CLONE_RE.test(String((e.args as { command?: unknown } | null)?.command ?? ''))) (ctx.cloneCalls ??= new Set()).add(e.toolCallId);
           await this.db
             .insert(toolCalls)
             .values({ runId: ctx.runId, messageId: ctx.lastAssistantMessageId, externalId: e.toolCallId, toolName: e.toolName, args: scrubDeep(redactArgs(e.args), ctx.secretValues) })
@@ -604,6 +618,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           if (!['read', 'grep', 'find', 'ls'].includes(e.toolName) && !ctx.toolFiles.has(e.toolCallId)) {
             await this.checkpointForTool(ctx, e.toolCallId).catch(() => undefined);
           }
+          // Dépôt cloné à la racine : rattaché tout de suite (un clone en sous-dossier attend la fin du run).
+          if (ctx.cloneCalls?.delete(e.toolCallId) && !e.isError) await this.repoAttach.tryAttach(ctx.sandbox, { runId: ctx.runId, allowMove: false });
           const files = ctx.toolFiles.get(e.toolCallId) ?? [];
           const output = scrubSecrets(e.output, ctx.secretValues);
           // Captures d'écran de Pi (plugin browser ou scripts) : affichées dans la carte de l'outil.

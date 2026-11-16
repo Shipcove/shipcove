@@ -11,6 +11,7 @@ import { GitBrokerService } from './git/git-broker.service.js';
 import { McpBridgeService } from './mcp/mcp-bridge.service.js';
 import { SkillsMaterializer } from './mcp/skills-materializer.service.js';
 import { SetupService } from './sandbox/setup.service.js';
+import { RepositoryAttachService } from './sandbox/repository-attach.service.js';
 import { ServicesService } from './sandbox/services.service.js';
 import { ScreenshotsService } from './sandbox/screenshots.service.js';
 import { SandboxRpcService } from './rpc/sandbox-rpc.service.js';
@@ -31,6 +32,7 @@ export class WorkerModule {
         CheckpointService,
         SkillsMaterializer,
         SetupService,
+        RepositoryAttachService,
         ServicesService,
         ScreenshotsService,
         SandboxManager,
