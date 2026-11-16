@@ -108,7 +108,29 @@ export class ChangesPanel {
     });
   }
 
+  /** Un seul chargement à la fois ; les demandes reçues pendant ce temps en déclenchent un seul de plus. */
+  private inflight: Promise<void> | null = null;
+  private rerun = false;
+
   async reload(): Promise<void> {
+    if (this.inflight) {
+      this.rerun = true;
+      return this.inflight;
+    }
+    this.inflight = (async () => {
+      try {
+        do {
+          this.rerun = false;
+          await this.load();
+        } while (this.rerun);
+      } finally {
+        this.inflight = null;
+      }
+    })();
+    return this.inflight;
+  }
+
+  private async load(): Promise<void> {
     const ws = this.store.workspace();
     if (!ws) return;
     this.loading.set(true);

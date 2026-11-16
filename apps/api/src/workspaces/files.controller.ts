@@ -21,10 +21,16 @@ import { CurrentUser } from '../common/decorators.js';
 import type { AuthUser } from '../common/request.js';
 import { AccessService } from '../access/access.service.js';
 import { SandboxRpcClient } from './sandbox-rpc.client.js';
+import { ContentCache } from './content-cache.js';
 
 const uuid = { schema: z.uuid() };
 const MAX_DISPLAY = 2 * 1024 * 1024;
 const HIDDEN = [/^\.git(\/|$)/, /^\.cap(\/|$)/];
+/** Objets conservés en mémoire : au plus 512 Kio chacun, 64 Mio au total (par processus). */
+const OBJECT_CACHE_MAX_ITEM = 512 * 1024;
+const OBJECT_CACHE_MAX_BYTES = 64 * 1024 * 1024;
+
+type LineStats = { additions: number; deletions: number; binary: boolean };
 
 function blobStore(s: ObjectStorage): BlobStore {
   const b = s.workspaceBucket;
@@ -58,9 +64,27 @@ export class FilesController {
     this.storage = new WorkspaceStorage(db, blobStore(objectStorage));
   }
 
+  /*
+   * Caches (issue #10). Tout ce qui est mis en cache est immuable : un manifeste est figé pour une
+   * génération donnée, un objet est adressé par son sha256, les statistiques d'un fichier ne
+   * dépendent que du couple (ancien hachage, nouveau hachage). Aucune invalidation n'est donc
+   * nécessaire, et les chargements concurrents d'une même clé sont fusionnés.
+   */
+  private readonly manifests = new ContentCache<Manifest | null>({ maxEntries: 16, shouldCache: (m) => m !== null });
+  private readonly objects = new ContentCache<Buffer | null>({
+    maxEntries: 20_000,
+    maxWeight: OBJECT_CACHE_MAX_BYTES,
+    weigh: (b) => b?.length ?? 0,
+    shouldCache: (b) => b !== null && b.length <= OBJECT_CACHE_MAX_ITEM,
+  });
+  private readonly lineStats = new ContentCache<LineStats>({ maxEntries: 200_000 });
+  /** Réponses de `GET changes`, indexées par (workspace, portée, génération de base, génération courante). */
+  private readonly changesResponses = new ContentCache<ChangesResponse>({ maxEntries: 64 });
+
   private async manifest(workspaceId: string, generation?: number | null): Promise<Manifest | null> {
     const gen = generation ?? (await this.storage.currentGeneration(workspaceId));
-    return this.storage.readManifest(workspaceId, gen);
+    if (gen <= 0) return null;
+    return this.manifests.getOrLoad(`${workspaceId}:${gen}`, () => this.storage.readManifest(workspaceId, gen));
   }
 
   @Get('files')
@@ -177,7 +201,14 @@ export class FilesController {
       return { scope, baseLabel: 'Par rapport à HEAD', files: (r.files ?? []).filter((f) => !HIDDEN.some((re) => re.test(f.path))) };
     }
     const { gen, label } = await this.baseGeneration(id, scope);
-    const current = await this.manifest(id);
+    const currentGen = await this.storage.currentGeneration(id);
+    // Entrées immuables : une même (base, courante) donne toujours la même réponse. Les rechargements
+    // déclenchés par les événements SSE, sur chaque onglet et chaque réplique, se résolvent ici.
+    return this.changesResponses.getOrLoad(`${id}:${scope}:${gen ?? 0}:${currentGen}`, () => this.computeChanges(id, scope, label, gen, currentGen));
+  }
+
+  private async computeChanges(id: string, scope: ChangeScope, label: string, gen: number | null, currentGen: number): Promise<ChangesResponse> {
+    const current = await this.manifest(id, currentGen);
     if (!current) return { scope, baseLabel: label, files: [] };
     const base = gen ? await this.manifest(id, gen) : null;
     const changes = diffManifests(base?.entries ?? [], current.entries).filter((c) => c.type !== 'd');
@@ -185,20 +216,21 @@ export class FilesController {
     for (const c of changes) {
       const rel = toUserPath(c.path);
       if (!rel || HIDDEN.some((re) => re.test(rel))) continue;
-      let additions = 0;
-      let deletions = 0;
-      let binary = false;
-      const before = c.oldHash ? await this.object(id, c.oldHash) : null;
-      const after = c.newHash ? await this.object(id, c.newHash) : null;
-      if (isBinary(before) || isBinary(after)) binary = true;
-      else if ((before?.length ?? 0) + (after?.length ?? 0) < 4 * MAX_DISPLAY) {
-        const d = unifiedDiff(rel, before?.toString('utf8') ?? null, after?.toString('utf8') ?? null);
-        additions = d.additions;
-        deletions = d.deletions;
-      }
-      files.push({ path: rel, status: c.status, additions, deletions, binary });
+      // Les statistiques ne dépendent que des deux contenus : d'une génération à l'autre, seuls les
+      // fichiers réellement modifiés depuis le calcul précédent sont relus dans le stockage.
+      const stats = await this.lineStats.getOrLoad(`${id}:${c.oldHash ?? ''}:${c.newHash ?? ''}`, () => this.computeLineStats(id, rel, c.oldHash, c.newHash));
+      files.push({ path: rel, status: c.status, ...stats });
     }
     return { scope, baseLabel: label, files };
+  }
+
+  private async computeLineStats(id: string, rel: string, oldHash?: string | null, newHash?: string | null): Promise<LineStats> {
+    const before = oldHash ? await this.object(id, oldHash) : null;
+    const after = newHash ? await this.object(id, newHash) : null;
+    if (isBinary(before) || isBinary(after)) return { additions: 0, deletions: 0, binary: true };
+    if ((before?.length ?? 0) + (after?.length ?? 0) >= 4 * MAX_DISPLAY) return { additions: 0, deletions: 0, binary: false };
+    const d = unifiedDiff(rel, before?.toString('utf8') ?? null, after?.toString('utf8') ?? null);
+    return { additions: d.additions, deletions: d.deletions, binary: false };
   }
 
   @Get('changes/diff')
@@ -232,17 +264,8 @@ export class FilesController {
     return { path, scope, original, modified, binary: false, patch: unifiedDiff(path, original, modified).patch };
   }
 
-  private readonly cache = new Map<string, Buffer>();
-  private async object(id: string, h: string): Promise<Buffer | null> {
-    const key = `${id}:${h}`;
-    const hit = this.cache.get(key);
-    if (hit) return hit;
-    const buf = await this.storage.readObject(id, h).catch(() => null);
-    if (buf && buf.length < 512 * 1024) {
-      if (this.cache.size > 500) this.cache.clear();
-      this.cache.set(key, buf);
-    }
-    return buf;
+  private object(id: string, h: string): Promise<Buffer | null> {
+    return this.objects.getOrLoad(`${id}:${h}`, () => this.storage.readObject(id, h).catch(() => null));
   }
 }
 
