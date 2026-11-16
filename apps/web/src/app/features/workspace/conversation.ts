@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, output,
 import type { MessageDto } from '@cap/contracts';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
-import { CodeBlocksDirective, MarkdownPipe } from '../../shared/pipes';
+import { CodeBlocksDirective, MarkdownPipe, linkify } from '../../shared/pipes';
 import { ToolCard } from './tool-card';
 import { WorkspaceStore } from './workspace.store';
 
@@ -28,7 +28,7 @@ import { WorkspaceStore } from './workspace.store';
               }
               <div class="max-w-[85%] min-w-0 rounded-2xl bg-stone-200/80 px-4 py-2.5 text-[0.925rem] [overflow-wrap:anywhere] dark:bg-stone-800">@let parts = skillParts(m.text);
                 @for (sk of parts.skills; track sk) { <span class="mr-1.5 font-medium text-sky-700 dark:text-sky-400" [title]="'/skill:' + sk"><span class="opacity-60">/</span>{{ sk }}</span> }
-                <span class="whitespace-pre-wrap">{{ parts.rest }}</span>
+                <span class="whitespace-pre-wrap">@for (seg of linkify(parts.rest); track $index) {@if (seg.href) {<a class="external-link text-accent-700 underline dark:text-accent-500" [href]="seg.href" target="_blank" rel="noopener noreferrer">{{ seg.text }}</a>} @else {<span>{{ seg.text }}</span>}}</span>
                 @if (m.attachments.length) {
                   <div class="mt-2 flex flex-wrap gap-1">
                     @for (a of m.attachments; track a.id) { <span class="badge bg-white/70 dark:bg-stone-700"><cap-icon name="paperclip" [size]="11" />{{ a.fileName }}</span> }
@@ -77,6 +77,8 @@ import { WorkspaceStore } from './workspace.store';
 })
 export class Conversation {
   /** Skills en tête d'un message (« /skill:a /skill:b texte ») affichés comme des blocs. */
+  protected readonly linkify = linkify;
+
   protected skillParts(text: string): { skills: string[]; rest: string } {
     const skills: string[] = [];
     let rest = text;

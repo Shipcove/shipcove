@@ -39,6 +39,54 @@ marked.use({
   },
 });
 
+/** Lien sortant de l'application (autre origine) : ouvert dans un nouvel onglet. */
+export function isExternalHref(href: string): boolean {
+  try {
+    const url = new URL(href, window.location.href);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.origin !== window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+/*
+ * Liens externes des contenus rendus : nouvel onglet, sans accès à `window.opener` ni Referer.
+ * Les liens internes (même origine, ancres) gardent la navigation dans l'onglet courant.
+ */
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName !== 'A') return;
+  const href = node.getAttribute('href');
+  if (!href || !isExternalHref(href)) return;
+  node.setAttribute('target', '_blank');
+  node.setAttribute('rel', 'noopener noreferrer');
+  node.classList.add('external-link');
+});
+
+export interface TextPart {
+  text: string;
+  /** URL http(s) détectée dans le texte, à rendre comme lien externe. */
+  href?: string;
+}
+
+const URL_RE = /\bhttps?:\/\/[^\s<>"'`]+/gi;
+
+/** Découpe un texte brut en segments texte / URL (rendu sans `innerHTML`). */
+export function linkify(text: string): TextPart[] {
+  const out: TextPart[] = [];
+  let last = 0;
+  for (const m of text.matchAll(URL_RE)) {
+    // Ponctuation finale non incluse (« voir https://x.y/z. »), parenthèse fermante seulement si non appariée.
+    let url = m[0].replace(/[.,;:!?»]+$/, '');
+    while (url.endsWith(')') && (url.match(/\(/g)?.length ?? 0) < (url.match(/\)/g)?.length ?? 0)) url = url.slice(0, -1);
+    const start = m.index;
+    if (start > last) out.push({ text: text.slice(last, start) });
+    out.push({ text: url, href: url });
+    last = start + url.length;
+  }
+  if (last < text.length) out.push({ text: text.slice(last) });
+  return out;
+}
+
 /** Markdown → HTML assaini (DOMPurify) ; aucun HTML brut du modèle n'est exécuté. */
 @Pipe({ name: 'markdown' })
 export class MarkdownPipe implements PipeTransform {
