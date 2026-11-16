@@ -15,6 +15,7 @@ export * from './notifications/notification.service.js';
 export * from './storage/object-storage.js';
 export * from './testing.js';
 export * from './git/git-provider.client.js';
+export * from './git/remote-url.js';
 export * from './extensions/policy.js';
 export * from './mcp/mcp-client.js';
 export * from './common/preview-token.js';

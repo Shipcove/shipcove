@@ -24,6 +24,10 @@ export interface RepositoryDto {
   webUrl: string;
 }
 
+export function toRepositoryDto(r: { id: string; provider: GitProviderKind; host: string; fullName: string; cloneUrl: string; defaultBranch: string; webUrl: string }): RepositoryDto {
+  return { id: r.id, provider: r.provider, host: r.host, fullName: r.fullName, cloneUrl: r.cloneUrl, defaultBranch: r.defaultBranch, webUrl: r.webUrl };
+}
+
 /** Dépôt vu par l'administration (réglages d'environnement). */
 export interface AdminRepositoryDto extends RepositoryDto {
   conversationCount: number;

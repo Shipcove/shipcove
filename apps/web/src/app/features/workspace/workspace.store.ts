@@ -53,6 +53,8 @@ export class WorkspaceStore {
   readonly filesVersion = signal(0);
   readonly lastEventId = signal(0);
   /** Messages envoyés pendant une génération : chacun lancera un run à la fin du run courant. */
+  /** Compaction du contexte en cours (manuelle ou automatique). */
+  readonly compacting = signal(false);
   readonly queued = signal<Array<{ messageId: string; text: string }>>([]);
 
   readonly activeRun = computed(() => this.runs().find((r) => ['queued', 'running', 'interrupting', 'paused_quota'].includes(r.status)) ?? null);
@@ -116,9 +118,20 @@ export class WorkspaceStore {
 
   /* ------------------------------ Commandes ------------------------------ */
 
-  async send(text: string, attachmentIds: string[], delivery: 'new_run' | 'steer' | 'follow_up' = 'new_run', answersTo?: string): Promise<void> {
+  async send(text: string, attachmentIds: string[], delivery: 'new_run' | 'steer' | 'follow_up' = 'new_run', answersTo?: string, command?: 'compact'): Promise<void> {
     const ws = this.workspace()!;
-    await this.api.post(`/workspaces/${ws.id}/messages`, { text, attachmentIds, delivery, modelId: ws.modelId ?? undefined, answersTo }, { 'Idempotency-Key': idempotencyKey() });
+    await this.api.post(`/workspaces/${ws.id}/messages`, { text, attachmentIds, delivery, modelId: ws.modelId ?? undefined, answersTo, command }, { 'Idempotency-Key': idempotencyKey() });
+  }
+
+  /** File d'attente : retrait ou modification d'un message pas encore transmis (mise à jour locale immédiate, SSE ensuite). */
+  async removeQueued(messageId: string): Promise<void> {
+    await this.api.delete(`/workspaces/${this.workspace()!.id}/messages/${messageId}`);
+    this.queued.update((l) => l.filter((q) => q.messageId !== messageId));
+  }
+
+  async editQueued(messageId: string, text: string): Promise<void> {
+    await this.api.patch(`/workspaces/${this.workspace()!.id}/messages/${messageId}`, { text });
+    this.queued.update((l) => l.map((q) => (q.messageId === messageId ? { ...q, text } : q)));
   }
 
   /** Retour en arrière des fichiers : état d'avant un run, ou génération explicite (annulation). */
@@ -200,7 +213,14 @@ export class WorkspaceStore {
       case 'message.created': {
         const id = d['messageId'] as string;
         if (this.messages().some((m) => m.id === id)) return;
-        this.messages.update((l) => [...l, { ...emptyMessage(id, d['role'] as 'user' | 'assistant' | 'system', d['text'] as string, e.runId, e.ts), meta: (d['meta'] as Record<string, unknown> | undefined) ?? null }]);
+        this.messages.update((l) => [
+          ...l,
+          {
+            ...emptyMessage(id, d['role'] as 'user' | 'assistant' | 'system', d['text'] as string, e.runId, e.ts),
+            meta: (d['meta'] as Record<string, unknown> | undefined) ?? null,
+            attachments: (d['attachments'] as AttachmentDto[] | undefined) ?? [],
+          },
+        ]);
         return;
       }
       case 'message.delta':
@@ -279,10 +299,18 @@ export class WorkspaceStore {
         const status = e.type === 'run.completed' ? 'completed' : e.type === 'run.failed' ? 'failed' : 'interrupted';
         this.runs.update((l) => l.map((r) => (r.id === d['runId'] ? { ...r, status, endedAt: e.ts, error: (d['error'] as string) ?? (d['reason'] as string) ?? null } : r)));
         if (e.type === 'run.failed') this.toast.show(`Échec du run : ${d['error']}`, 'error');
+        this.compacting.set(false);
         void this.refreshUsage();
         this.bumpFiles();
         return;
       }
+      case 'compaction.started':
+        this.compacting.set(true);
+        return;
+      case 'compaction.completed':
+        // Succès comme échec sont signalés par le marqueur inscrit dans le fil.
+        this.compacting.set(false);
+        return;
       case 'queue.updated':
         this.queued.set((d['messages'] as Array<{ messageId: string; text: string }>) ?? []);
         return;
@@ -316,6 +344,14 @@ export class WorkspaceStore {
         const changes = { name: d['name'] as string, titleSource: d['titleSource'] as WorkspaceDto['titleSource'] };
         this.workspace.update((w) => (w ? { ...w, ...changes } : w));
         this.conversations.patch(this.workspace()!.id, changes);
+        return;
+      }
+      case 'workspace.repository': {
+        // Dépôt cloné par Pi et rattaché : en-tête, barre latérale et panneaux Git sans rechargement.
+        const changes = { repository: d['repository'] as WorkspaceDto['repository'], branch: d['branch'] as string };
+        this.workspace.update((w) => (w ? { ...w, ...changes } : w));
+        this.conversations.patch(e.workspaceId, changes);
+        this.bumpFiles();
         return;
       }
       case 'model.changed':

@@ -21,6 +21,7 @@ import { JobRunner } from '../jobs/job-runner.service.js';
 import { CheckpointService } from '../sandbox/checkpoint.service.js';
 import { SandboxManager, type ActiveSandbox } from '../sandbox/sandbox-manager.service.js';
 import { SetupService } from '../sandbox/setup.service.js';
+import { NO_REPOSITORY_PROMPT, RepositoryAttachService } from '../sandbox/repository-attach.service.js';
 import { ScreenshotsService } from '../sandbox/screenshots.service.js';
 
 /** Outils après lesquels on recherche de nouvelles captures d'écran. */
@@ -45,6 +46,8 @@ interface RunContext {
   lastAssistantMessageId: string | null;
   toolStarts: Map<string, number>;
   toolFiles: Map<string, string[]>;
+  /** Appels `bash` qui clonent un dépôt (rattachement automatique, issue #1). */
+  cloneCalls?: Set<string>;
   pending: NewEvent[];
   lastToolOutputAt: Map<string, number>;
   done: (result: { error: string | null }) => void;
@@ -56,6 +59,8 @@ interface RunContext {
   secretValues: string[];
   /** Masquage des flux de texte / raisonnement (secret éventuellement coupé entre fragments). */
   scrubbers: Map<string, StreamScrubber>;
+  /** Marqueur de compaction déjà inscrit dans le fil pour ce run. */
+  compactionMarked?: boolean;
 }
 
 /**
@@ -66,6 +71,9 @@ interface RunContext {
  * - checkpoint bloquant après chaque outil (extension) + checkpoint indépendant sur fin d'outil ;
  * - interruption, steering, pause quota et reprise.
  */
+/** Commande shell qui clone un dépôt (git, gh, glab). */
+const CLONE_RE = /\b(?:git|gh\s+repo|glab\s+repo)\s+clone\b/;
+
 @Injectable()
 export class RunOrchestrator implements OnApplicationBootstrap {
   private readonly logger = new Logger('Runs');
@@ -86,6 +94,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     private readonly runQueue: RunQueueService,
     private readonly environment: EnvironmentService,
     private readonly setup: SetupService,
+    private readonly repoAttach: RepositoryAttachService,
     private readonly screenshots: ScreenshotsService,
     private readonly services: ServicesService,
   ) {}
@@ -199,7 +208,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       sessionFile: conv.piSessionPath,
       skillDirs: [],
       plugins: await this.sandboxes.availablePlugins(sandbox),
-      ...(planMode ? { tools: PLAN_MODE_TOOLS, appendSystemPrompt: PLAN_MODE_PROMPT } : {}),
+      ...(planMode ? { tools: PLAN_MODE_TOOLS } : {}),
+      appendSystemPrompt: [planMode ? PLAN_MODE_PROMPT : null, ws.repositoryId ? null : NO_REPOSITORY_PROMPT].filter(Boolean).join('\n\n') || undefined,
     });
     // Variables et secrets du dépôt : processus de Pi (donc ses commandes) uniquement,
     // jamais écrits sur disque par la plateforme. Les variables de la plateforme l'emportent.
@@ -252,9 +262,21 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       const level = model.supportsReasoning ? (run.thinkingLevel ?? ws.thinkingLevel) : 'off';
       await runtime.setThinkingLevel(level).catch((e) => this.logger.warn(`thinking level ${level} : ${e.message}`));
       await this.events.emit(ws.id, 'model.changed', { modelId: model.id, modelName: model.displayName }, runId);
-      const { text, images } = await this.promptFor(run);
-      await runtime.prompt(setupNote ? `${setupNote}\n\n${text}` : text, images);
-      outcome = await finished;
+      const compact = await this.compactRequest(run);
+      if (compact) {
+        // `/compact` : compaction du contexte de Pi, sans nouveau tour de l'agent.
+        let error: string | null = null;
+        await runtime.compact(compact.instructions || undefined).catch((e: Error) => (error = redactString(e.message)));
+        await ctx.queue;
+        if (!ctx.compactionMarked) await this.compactionMarker(ctx, { tokensBefore: null, summary: null, error: error ?? 'La compaction n’a pas abouti' });
+        outcome = { error };
+      } else {
+        const { text, images } = await this.promptFor(run);
+        // Dépôt rattaché et remonté à la racine depuis le dernier run : Pi doit connaître les nouveaux chemins.
+        const repoNote = await this.repoAttach.pendingAgentNote(ws.id).catch(() => null);
+        await runtime.prompt([setupNote, repoNote, text].filter(Boolean).join('\n\n'), images);
+        outcome = await finished;
+      }
     } catch (err) {
       outcome = { error: redactString((err as Error).message) };
     } finally {
@@ -277,6 +299,9 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       await runtime.close();
       this.active.delete(runId);
     }
+
+    // Conversation sans dépôt où Pi en a cloné un : rattachement (Pi est arrêté, le dépôt peut être remonté à la racine).
+    await this.repoAttach.tryAttach(sandbox, { runId, allowMove: true });
 
     // Checkpoint de fin de run (capture aussi les écritures de processus de fond).
     await this.checkpoints
@@ -314,6 +339,34 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     }
     await this.finish(runId, ws.id, 'completed', null);
     return { status: 'completed' };
+  }
+
+  /** Run déclenché par `/compact` : instructions facultatives (texte après la commande). */
+  private async compactRequest(run: typeof agentRuns.$inferSelect): Promise<{ instructions: string } | null> {
+    if (!run.triggerMessageId || run.pausedReason === 'resuming') return null;
+    const [m] = await this.db.select({ text: messages.text, meta: messages.meta }).from(messages).where(eq(messages.id, run.triggerMessageId));
+    if ((m?.meta as { kind?: string } | null)?.kind !== 'compact') return null;
+    return { instructions: m.text.replace(/^\s*\/compact\b/, '').trim() };
+  }
+
+  /**
+   * Marqueur persistant de compaction (manuelle ou automatique) dans le fil : message système
+   * `meta.kind = 'compaction'`, avec le résumé produit par Pi s'il est disponible.
+   */
+  private async compactionMarker(ctx: RunContext, r: { tokensBefore: number | null; summary: string | null; error: string | null }): Promise<void> {
+    ctx.compactionMarked = true;
+    // Les événements en tampon (dont `compaction.started`) partent avant le marqueur.
+    await this.flush(ctx);
+    const summary = r.summary ? scrubSecrets(r.summary, ctx.secretValues).slice(0, 50_000) : null;
+    const error = r.error ? scrubSecrets(redactString(r.error), ctx.secretValues).slice(0, 2000) : null;
+    await this.systemMessage(
+      ctx.workspaceId,
+      ctx.conversationId,
+      ctx.runId,
+      error ? `Échec de la compaction du contexte : ${error}` : 'Contexte de la conversation compacté',
+      { kind: 'compaction', status: error ? 'failed' : 'succeeded', tokensBefore: r.tokensBefore, summary, error },
+    );
+    await this.events.emit(ctx.workspaceId, 'compaction.completed', { error, tokensBefore: r.tokensBefore }, ctx.runId);
   }
 
   private async promptFor(run: typeof agentRuns.$inferSelect): Promise<{ text: string; images: RuntimeImage[] }> {
@@ -540,6 +593,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
         }
         case 'tool_start': {
           ctx.toolStarts.set(e.toolCallId, Date.now());
+          if (e.toolName === 'bash' && CLONE_RE.test(String((e.args as { command?: unknown } | null)?.command ?? ''))) (ctx.cloneCalls ??= new Set()).add(e.toolCallId);
           await this.db
             .insert(toolCalls)
             .values({ runId: ctx.runId, messageId: ctx.lastAssistantMessageId, externalId: e.toolCallId, toolName: e.toolName, args: scrubDeep(redactArgs(e.args), ctx.secretValues) })
@@ -564,6 +618,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           if (!['read', 'grep', 'find', 'ls'].includes(e.toolName) && !ctx.toolFiles.has(e.toolCallId)) {
             await this.checkpointForTool(ctx, e.toolCallId).catch(() => undefined);
           }
+          // Dépôt cloné à la racine : rattaché tout de suite (un clone en sous-dossier attend la fin du run).
+          if (ctx.cloneCalls?.delete(e.toolCallId) && !e.isError) await this.repoAttach.tryAttach(ctx.sandbox, { runId: ctx.runId, allowMove: false });
           const files = ctx.toolFiles.get(e.toolCallId) ?? [];
           const output = scrubSecrets(e.output, ctx.secretValues);
           // Captures d'écran de Pi (plugin browser ou scripts) : affichées dans la carte de l'outil.
@@ -602,7 +658,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           this.push(ctx, { type: 'compaction.started', runId: ctx.runId, data: { reason: e.reason } });
           break;
         case 'compaction_end':
-          this.push(ctx, { type: 'compaction.completed', runId: ctx.runId, data: {} });
+          await this.compactionMarker(ctx, { tokensBefore: e.tokensBefore, summary: e.summary, error: e.error });
           break;
         case 'agent_end':
           ctx.done({ error: e.error });

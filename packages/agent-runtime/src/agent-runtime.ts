@@ -29,7 +29,7 @@ export type RuntimeEvent =
   | { type: 'tool_update'; toolCallId: string; output: string }
   | { type: 'tool_end'; toolCallId: string; toolName: string; output: string; isError: boolean; details: unknown }
   | { type: 'compaction_start'; reason: string }
-  | { type: 'compaction_end'; tokensBefore: number | null; error: string | null }
+  | { type: 'compaction_end'; tokensBefore: number | null; summary: string | null; error: string | null }
   | { type: 'retry'; attempt: number; maxAttempts: number; error: string }
   | { type: 'queue'; followUp: string[]; steering: string[] }
   | { type: 'process_exit'; code: number | null; stderr: string };

@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, asc, eq, sql } from 'drizzle-orm';
-import { agentRuns, conversations, messages, workspaces, type Database, type DbOrTx } from '@cap/database';
+import { toAttachmentDto } from '@cap/contracts';
+import { agentRuns, attachments, conversations, messages, workspaces, type Database, type DbOrTx } from '@cap/database';
 import { DB } from '../tokens.js';
 import { EventsService } from '../events/events.service.js';
 import { JobsService } from '../jobs/jobs.service.js';
@@ -37,6 +38,28 @@ export class RunQueueService {
     return rows;
   }
 
+  /**
+   * Retire (`text` absent) ou modifie un message encore en attente. Verrou sur la ligne : une
+   * promotion concurrente (`startNext`) l'ignore, et un message déjà promu n'est plus en attente.
+   * Les autres messages gardent leur ordre. Renvoie `false` si le message n'est plus en attente.
+   */
+  async withdraw(workspaceId: string, conversationId: string, messageId: string, change?: { text: string }): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      const [m] = await tx
+        .select({ id: messages.id })
+        .from(messages)
+        .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId), eq(messages.pendingDelivery, true), sql`${messages.deletedAt} is null`))
+        .for('update');
+      if (!m) return false;
+      await tx
+        .update(messages)
+        .set(change ? { text: change.text } : { pendingDelivery: false, deletedAt: new Date() })
+        .where(eq(messages.id, messageId));
+      await this.events.append(workspaceId, [{ type: 'queue.updated', runId: null, data: { messages: await this.list(conversationId, tx) } }], tx);
+      return true;
+    });
+  }
+
   /** Lance un run pour le plus ancien message en attente, si aucun run n'est actif. */
   async startNext(conversationId: string): Promise<string | null> {
     try {
@@ -67,10 +90,11 @@ export class RunQueueService {
         // Le message rejoint le fil à sa position de traitement.
         await tx.update(messages).set({ pendingDelivery: false, runId: run.id, createdAt: new Date() }).where(eq(messages.id, m.id));
         const remaining = await this.list(conversationId, tx);
+        const atts = await tx.select().from(attachments).where(and(eq(attachments.messageId, m.id), sql`${attachments.deletedAt} is null`)).orderBy(asc(attachments.createdAt));
         await this.events.append(
           w.id,
           [
-            { type: 'message.created', runId: run.id, data: { messageId: m.id, role: 'user', text: m.text, attachmentIds: [] } },
+            { type: 'message.created', runId: run.id, data: { messageId: m.id, role: 'user', text: m.text, attachmentIds: atts.map((a) => a.id), attachments: atts.map(toAttachmentDto) } },
             { type: 'queue.updated', runId: run.id, data: { messages: remaining } },
             { type: 'run.queued', runId: run.id, data: { runId: run.id } },
           ],

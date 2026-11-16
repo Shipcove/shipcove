@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Pu
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { ApiTags } from '@nestjs/swagger';
-import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   CreateSkillSchema,
@@ -225,6 +225,42 @@ export class SkillsController {
     await this.assertManage(user, s);
     await this.db.delete(skills).where(eq(skills.id, id)); // versions et activations en cascade
     await this.audit.record({ actorId: user.id, action: 'skill.delete', targetType: 'skill', targetId: id, ip: ctx.ip, metadata: { name: s.name, scope: s.scope } });
+  }
+
+  /**
+   * Portée d'un skill (administrateur plateforme) : un skill personnel — importé en .zip ou non —
+   * devient global (disponible pour tous, publié), ou un skill global redevient personnel à
+   * l'administrateur qui fait le changement. Contrôle côté API, pas seulement dans l'interface.
+   */
+  @Put(':skillId/scope')
+  async setScope(
+    @Param('skillId', uuid) id: string,
+    @Body({ schema: z.object({ scope: SkillScopeSchema }) }) body: { scope: 'global' | 'personal' },
+    @CurrentUser() user: AuthUser,
+    @ReqCtx() ctx: RequestContext,
+  ) {
+    if (user.platformRole !== 'platform_admin') throw new AppError('forbidden', 'Réservé aux administrateurs plateforme');
+    const s = await this.visible(user, id);
+    if (s.scope === body.scope) return { scope: s.scope };
+    const ownerId = body.scope === 'global' ? null : user.id;
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(skills)
+        .set({ scope: body.scope, ownerId, status: 'published', updatedAt: new Date() })
+        .where(eq(skills.id, id))
+        .catch((err: unknown) => {
+          if (isUniqueViolation(err)) throw new AppError('conflict', body.scope === 'global' ? 'Un skill global porte déjà ce nom' : 'Vous avez déjà un skill personnel de ce nom');
+          throw err;
+        });
+      // Redevenu personnel : activations des autres utilisateurs et activation par défaut retirées.
+      if (body.scope === 'personal') {
+        await tx
+          .delete(skillInstallations)
+          .where(and(eq(skillInstallations.skillId, id), or(eq(skillInstallations.scope, 'global'), and(eq(skillInstallations.scope, 'personal'), sql`${skillInstallations.subjectId} <> ${user.id}`))));
+      }
+    });
+    await this.audit.record({ actorId: user.id, action: 'skill.scope', targetType: 'skill', targetId: id, ip: ctx.ip, metadata: { name: s.name, from: s.scope, to: body.scope, previousOwnerId: s.ownerId } });
+    return { scope: body.scope };
   }
 
   /** Validation d'un skill personnel en attente de revue (administrateur). */

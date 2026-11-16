@@ -52,6 +52,7 @@ const PATHS: Record<string, string> = {
   enter: 'M20 4v7a4 4 0 0 1-4 4H4M9 10l-5 5 5 5',
   list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
   maximize: 'M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7',
+  download: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3',
   minimize: 'M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7',
   undo: 'M3 7v6h6M3 13a9 9 0 1 0 2.64-6.36L3 9',
 };

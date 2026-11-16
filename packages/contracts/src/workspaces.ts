@@ -90,6 +90,8 @@ export const SendMessageSchema = z.object({
   modelId: z.uuid().optional(),
   /** Pendant un run actif : `steer` (avant le prochain appel LLM) ou `follow_up` (file d'attente durable : nouveau run à la fin du run courant). */
   delivery: z.enum(['new_run', 'steer', 'follow_up']).default('new_run'),
+  /** Commande de la plateforme : `compact` compacte le contexte de Pi (le texte, facultatif, guide le résumé). */
+  command: z.enum(['compact']).optional(),
   /** Réponse au formulaire d'un appel `ask_user` (identifiant de l'appel d'outil). */
   answersTo: z.string().min(1).max(200).optional(),
 });
@@ -148,6 +150,20 @@ export interface AttachmentDto {
   status: 'pending' | 'ready' | 'rejected';
   rejectionReason: string | null;
   createdAt: string;
+}
+
+/** Pièce jointe telle qu'exposée dans le fil (ligne `attachments`). */
+export function toAttachmentDto(a: {
+  id: string;
+  fileName: string;
+  detectedMimeType: string;
+  size: number;
+  kind: AttachmentDto['kind'];
+  status: AttachmentDto['status'];
+  rejectionReason: string | null;
+  createdAt: Date;
+}): AttachmentDto {
+  return { id: a.id, fileName: a.fileName, mimeType: a.detectedMimeType, size: a.size, kind: a.kind, status: a.status, rejectionReason: a.rejectionReason, createdAt: a.createdAt.toISOString() };
 }
 
 export interface RunDto {

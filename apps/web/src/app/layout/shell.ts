@@ -8,7 +8,7 @@ import { AuthStore } from '../core/auth.store';
 import { ConversationsService } from '../core/conversations.service';
 import { ThemeService } from '../core/theme.service';
 import { ToastService } from '../core/toast.service';
-import { ConfirmService, deleteConversationDialog } from '../core/confirm.service';
+import { ConfirmService, deleteConversationDialog, leaveShareDialog } from '../core/confirm.service';
 import { Icon } from '../shared/icon';
 import { LayoutService } from '../core/layout.service';
 
@@ -134,8 +134,7 @@ const COLLAPSED_KEY = 'cap.sidebar.collapsedRepos';
     <ng-template #item let-w>
       <div class="group/item relative">
         <a [routerLink]="['/workspaces', w.id]" routerLinkActive="bg-stone-200 font-medium text-stone-900 dark:bg-stone-800 dark:text-stone-100"
-          class="flex items-center gap-2 rounded-md py-1.5 pr-2 pl-6 text-sm text-stone-700 hover:bg-stone-200/70 dark:text-stone-300 dark:hover:bg-stone-800"
-          [class.group-hover/item:pr-8]="w.access === 'owner'" [class.touch:pr-9]="w.access === 'owner'" [title]="w.name">
+          class="flex items-center gap-2 rounded-md py-1.5 pr-2 pl-6 text-sm text-stone-700 group-hover/item:pr-8 hover:bg-stone-200/70 touch:pr-9 dark:text-stone-300 dark:hover:bg-stone-800" [title]="w.name">
           <span class="truncate">{{ w.name }}</span>
           @if (w.access === 'shared_read') { <cap-icon name="share" [size]="12" class="shrink-0 text-stone-400" /> }
           @if (w.activeRunStatus === 'running' || w.activeRunStatus === 'queued') { <span class="ml-auto h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent-500 group-hover/item:hidden touch:hidden" title="Pi travaille"></span> }
@@ -144,6 +143,11 @@ const COLLAPSED_KEY = 'cap.sidebar.collapsedRepos';
           <button class="absolute top-1/2 right-1 hidden -translate-y-1/2 rounded p-1 text-stone-500 group-hover/item:block hover:bg-stone-300/70 hover:text-red-600 focus-visible:block touch:block touch:p-1.5 dark:hover:bg-stone-700"
             (click)="remove(w)" [disabled]="deleting() === w.id" [attr.aria-label]="'Supprimer « ' + w.name + ' »'" title="Supprimer la conversation">
             <cap-icon name="trash" [size]="13" />
+          </button>
+        } @else {
+          <button class="absolute top-1/2 right-1 hidden -translate-y-1/2 rounded p-1 text-stone-500 group-hover/item:block hover:bg-stone-300/70 hover:text-red-600 focus-visible:block touch:block touch:p-1.5 dark:hover:bg-stone-700"
+            (click)="leaveShare(w)" [disabled]="deleting() === w.id" [attr.aria-label]="'Retirer le partage « ' + w.name + ' »'" title="Retirer le partage">
+            <cap-icon name="x" [size]="13" />
           </button>
         }
       </div>
@@ -221,6 +225,22 @@ export class Shell implements OnInit, OnDestroy {
       this.conversations.remove(w.id);
       if (this.router.url.startsWith(`/workspaces/${w.id}`)) await this.router.navigateByUrl('/');
       this.toast.show('Conversation supprimée', 'success');
+    } catch (e) {
+      this.toast.error(e);
+    } finally {
+      this.deleting.set(null);
+    }
+  }
+
+  /** Destinataire d'un partage : retrait de son côté uniquement. */
+  protected async leaveShare(w: WorkspaceDto): Promise<void> {
+    if (!(await this.confirm.ask(leaveShareDialog(w.name)))) return;
+    this.deleting.set(w.id);
+    try {
+      await this.api.delete(`/workspaces/${w.id}/share`);
+      this.conversations.remove(w.id);
+      if (this.router.url.startsWith(`/workspaces/${w.id}`)) await this.router.navigateByUrl('/');
+      this.toast.show('Partage retiré', 'success');
     } catch (e) {
       this.toast.error(e);
     } finally {

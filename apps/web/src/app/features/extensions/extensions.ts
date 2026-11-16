@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import type { McpServerDto, SkillCategoryDto, SkillDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
 import { AuthStore } from '../../core/auth.store';
+import { ConfirmService } from '../../core/confirm.service';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
 
@@ -24,6 +25,12 @@ import { Icon } from '../../shared/icon';
             <span class="h-2 w-2 rounded-full bg-emerald-500"></span>{{ enabledCount() }} activé(s) sur {{ publishedCount() }}
           </span>
           <div class="ml-auto flex gap-2">
+            @if (auth.isAdmin()) {
+              <!-- Administrateur : portée choisie à l'import. -->
+              <label class="flex items-center gap-1.5 text-sm text-stone-600 dark:text-stone-400" title="Un skill global est disponible pour tous les utilisateurs">
+                <input type="checkbox" [(ngModel)]="importGlobal" name="importGlobal" class="accent-accent-600" /> Global
+              </label>
+            }
             <button class="btn-secondary !py-1.5 text-sm" (click)="zipInput.click()" [disabled]="importing()" title="Importer un skill depuis une archive .zip (SKILL.md, dossiers et fichiers)">
               <cap-icon name="paperclip" [size]="14" /> {{ importing() ? 'Import…' : 'Importer .zip' }}</button>
             <a routerLink="/extensions/skills/new" class="btn-primary !py-1.5 text-sm"><cap-icon name="plus" [size]="14" /> Nouveau skill</a>
@@ -87,6 +94,11 @@ import { Icon } from '../../shared/icon';
               </div>
               <p class="mt-2 line-clamp-2 text-sm text-stone-600 dark:text-stone-400" [title]="s.description">{{ s.description }}</p>
               <div class="mt-auto flex justify-end gap-1 pt-2">
+                @if (auth.isAdmin()) {
+                  <button class="btn-ghost !py-1 text-xs" (click)="setScope(s, s.scope === 'global' ? 'personal' : 'global')" [disabled]="scoping() === s.id"
+                    [title]="s.scope === 'global' ? 'Le skill redevient personnel (à vous) et n’est plus disponible pour les autres' : 'Rendre ce skill disponible pour tous les utilisateurs'">
+                    <cap-icon name="globe" [size]="13" /> {{ s.scope === 'global' ? 'Retirer du global' : 'Rendre global' }}</button>
+                }
                 <a [routerLink]="['/extensions/skills', s.id]" class="btn-ghost !py-1 text-xs"><cap-icon [name]="s.canManage ? 'edit' : 'eye'" [size]="13" /> {{ s.canManage ? 'Modifier' : 'Voir' }}</a>
               </div>
             </article>
@@ -141,6 +153,7 @@ export class ExtensionsPage implements OnInit {
   protected readonly auth = inject(AuthStore);
   private readonly api = inject(Api);
   private readonly toast = inject(ToastService);
+  private readonly confirm = inject(ConfirmService);
   protected readonly skills = signal<SkillDto[]>([]);
   protected readonly servers = signal<McpServerDto[]>([]);
   protected readonly filter = signal<'all' | 'enabled' | 'disabled' | 'pending'>('all');
@@ -240,7 +253,32 @@ export class ExtensionsPage implements OnInit {
 
 
 
-  /** Import d'une archive .zip : skill personnel, ouvert ensuite dans l'éditeur. */
+  /** Administrateur : importer directement en global. */
+  protected importGlobal = false;
+  protected readonly scoping = signal<string | null>(null);
+
+  /** Administrateur : rendre global un skill personnel (ex. importé en .zip), ou l'inverse. */
+  protected async setScope(s: SkillDto, scope: 'global' | 'personal') {
+    const ok = await this.confirm.ask(
+      scope === 'global'
+        ? { title: 'Rendre le skill global ?', message: '{subject} sera disponible pour tous les utilisateurs de l’instance.', subject: s.name, details: ['Chacun pourra l’activer ; seuls les administrateurs pourront le modifier', 'Vous pourrez retirer ce caractère global à tout moment'], confirmLabel: 'Rendre global' }
+        : { title: 'Retirer le caractère global ?', message: '{subject} redeviendra un skill personnel, à vous.', subject: s.name, details: ['Les autres utilisateurs n’y auront plus accès', 'Leurs activations de ce skill sont retirées'], confirmLabel: 'Retirer', danger: true },
+    );
+    if (!ok) return;
+    this.scoping.set(s.id);
+    try {
+      await this.api.put(`/skills/${s.id}/scope`, { scope });
+      // Mise à jour sur place : la carte garde sa position dans la liste.
+      this.skills.update((l) => l.map((x) => (x.id === s.id ? { ...x, scope, ownerId: scope === 'global' ? null : (this.auth.me()?.id ?? null), status: 'published' } : x)));
+      this.toast.show(scope === 'global' ? 'Skill rendu global' : 'Skill redevenu personnel', 'success');
+    } catch (e) {
+      this.toast.error(e);
+    } finally {
+      this.scoping.set(null);
+    }
+  }
+
+  /** Import d'une archive .zip : skill personnel (ou global, choix de l'administrateur), ouvert ensuite dans l'éditeur. */
   protected async importZip(e: Event) {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -248,7 +286,7 @@ export class ExtensionsPage implements OnInit {
     if (!file) return;
     const form = new FormData();
     form.append('file', file, file.name);
-    form.append('scope', 'personal');
+    form.append('scope', this.auth.isAdmin() && this.importGlobal ? 'global' : 'personal');
     this.importing.set(true);
     try {
       const r = await this.api.upload<{ id: string; findings: string[]; ignored: string[] }>('/skills/import', form);

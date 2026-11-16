@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Inject, Param, Post, Query, Sse, type MessageEvent } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Inject, Param, Patch, Post, Query, Sse, type MessageEvent } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { Observable } from 'rxjs';
@@ -6,6 +6,7 @@ import { z } from 'zod';
 import {
   CreateShareSchema,
   SendMessageSchema,
+  toAttachmentDto,
   type ConversationDto,
   type ConversationShareDto,
   type EventEnvelope,
@@ -32,9 +33,11 @@ import { IdempotencyService } from '../common/idempotency.service.js';
 import { DEFAULT_TITLE, WorkspacesService } from '../workspaces/workspaces.service.js';
 
 const uuid = { schema: z.uuid() };
+const EditQueuedMessageSchema = z.object({ text: z.string().trim().min(1).max(100_000) });
 
-/** Message de réponse à un formulaire de questions de Pi (`ask_user`). */
-function answersMeta(body: { answersTo?: string }): Record<string, unknown> | null {
+/** Meta du message : réponse à un formulaire de Pi (`ask_user`) ou commande de la plateforme (`/compact`). */
+function answersMeta(body: { answersTo?: string; command?: 'compact' }): Record<string, unknown> | null {
+  if (body.command === 'compact') return { kind: 'compact' };
   return body.answersTo ? { kind: 'answers', toolCallId: body.answersTo } : null;
 }
 
@@ -90,7 +93,7 @@ export class ConversationController {
       completedAt: m.completedAt?.toISOString() ?? null,
       attachments: atts
         .filter((a) => a.messageId === m.id)
-        .map((a) => ({ id: a.id, fileName: a.fileName, mimeType: a.detectedMimeType, size: a.size, kind: a.kind, status: a.status, rejectionReason: a.rejectionReason, createdAt: a.createdAt.toISOString() })),
+        .map(toAttachmentDto),
       toolCalls: calls
         .filter((c) => c.messageId === m.id)
         .map((c) => ({
@@ -152,9 +155,10 @@ export class ConversationController {
       const [conv] = await this.db.select().from(conversations).where(eq(conversations.workspaceId, id));
       const modelId = body.modelId ?? w.modelId ?? null;
       const model = modelId ? await this.workspacesService.assertModelAllowed(modelId, user.id) : null;
+      let attached: Array<typeof attachments.$inferSelect> = [];
       if (body.attachmentIds.length) {
         const owned = await this.db
-          .select({ id: attachments.id, kind: attachments.kind })
+          .select()
           .from(attachments)
           .where(and(inArray(attachments.id, body.attachmentIds), eq(attachments.ownerId, user.id), eq(attachments.workspaceId, id), eq(attachments.status, 'ready'), eq(attachments.source, 'user'), isNull(attachments.messageId)));
         if (owned.length !== body.attachmentIds.length) throw new AppError('attachment_rejected', 'Pièce jointe invalide ou déjà utilisée');
@@ -162,6 +166,8 @@ export class ConversationController {
         if (model && !model.supportsImages && owned.some((a) => a.kind === 'image')) {
           throw new AppError('attachment_rejected', `Le modèle ${model.displayName} n’accepte pas les images`);
         }
+        // Ordre choisi par l'utilisateur.
+        attached = body.attachmentIds.map((aid) => owned.find((a) => a.id === aid)!);
       }
       if (body.delivery === 'follow_up') {
         // File d'attente durable : le message sera traité par un nouveau run à la fin du run courant.
@@ -176,6 +182,7 @@ export class ConversationController {
         return { messageId: queued.id, runId, queued: runId === null };
       }
       if (body.delivery === 'steer') {
+        if (body.command) throw new AppError('validation_failed', 'Une commande ne peut pas guider un run en cours : mettez-la en file d’attente');
         const [active] = await this.db
           .select()
           .from(agentRuns)
@@ -213,7 +220,7 @@ export class ConversationController {
         await this.events.append(
           id,
           [
-            { type: 'message.created', runId: run.id, data: { messageId: m.id, role: 'user', text: body.text, attachmentIds: body.attachmentIds, meta: answersMeta(body) } },
+            { type: 'message.created', runId: run.id, data: { messageId: m.id, role: 'user', text: body.text, attachmentIds: body.attachmentIds, attachments: attached.map(toAttachmentDto), meta: answersMeta(body) } },
             { type: 'run.queued', runId: run.id, data: { runId: run.id } },
           ],
           tx,
@@ -225,6 +232,52 @@ export class ConversationController {
       if (w.titleSource === 'auto' && w.name === DEFAULT_TITLE) void this.workspacesService.generateTitle(id, body.text).catch(() => undefined);
       return result;
     });
+  }
+
+  /**
+   * Le destinataire d'un partage le retire de son côté : seul son propre partage est révoqué ;
+   * la conversation, son propriétaire et les autres destinataires ne sont pas touchés.
+   */
+  @Delete('share')
+  @HttpCode(204)
+  async leaveShare(@Param('id', uuid) id: string, @CurrentUser() user: AuthUser, @ReqCtx() ctx: RequestContext): Promise<void> {
+    const [conv] = await this.db.select({ id: conversations.id }).from(conversations).where(eq(conversations.workspaceId, id));
+    const res = conv
+      ? await this.db
+          .update(conversationShares)
+          .set({ revokedAt: new Date() })
+          .where(and(eq(conversationShares.conversationId, conv.id), eq(conversationShares.userId, user.id), isNull(conversationShares.revokedAt)))
+          .returning({ id: conversationShares.id })
+      : [];
+    if (res.length === 0) throw new AppError('not_found', 'Aucun partage actif de cette conversation avec vous');
+    await this.audit.record({ actorId: user.id, action: 'conversation.share_leave', targetType: 'conversation', targetId: conv.id, ip: ctx.ip, metadata: { shareId: res[0].id } });
+  }
+
+  /** Retire un message de la file d'attente avant sa transmission à Pi. */
+  @Delete('messages/:messageId')
+  @HttpCode(204)
+  async withdrawQueued(@Param('id', uuid) id: string, @Param('messageId', uuid) messageId: string, @CurrentUser() user: AuthUser): Promise<void> {
+    await this.access.requireWorkspaceOwner(user, id);
+    const [conv] = await this.db.select({ id: conversations.id }).from(conversations).where(eq(conversations.workspaceId, id));
+    if (!conv || !(await this.runQueue.withdraw(id, conv.id, messageId))) {
+      throw new AppError('conflict', 'Ce message n’est plus en attente : il a déjà été transmis à Pi');
+    }
+  }
+
+  /** Modifie le texte d'un message encore en file d'attente. */
+  @Patch('messages/:messageId')
+  async editQueued(
+    @Param('id', uuid) id: string,
+    @Param('messageId', uuid) messageId: string,
+    @Body({ schema: EditQueuedMessageSchema }) body: z.infer<typeof EditQueuedMessageSchema>,
+    @CurrentUser() user: AuthUser,
+  ): Promise<{ messageId: string }> {
+    await this.access.requireWorkspaceOwner(user, id);
+    const [conv] = await this.db.select({ id: conversations.id }).from(conversations).where(eq(conversations.workspaceId, id));
+    if (!conv || !(await this.runQueue.withdraw(id, conv.id, messageId, { text: body.text }))) {
+      throw new AppError('conflict', 'Ce message n’est plus en attente : il a déjà été transmis à Pi');
+    }
+    return { messageId };
   }
 
   @Post('runs/:runId/interrupt')

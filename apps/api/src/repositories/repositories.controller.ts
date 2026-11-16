@@ -6,6 +6,7 @@ import {
   UpdateRepositoryEnvironmentSchema,
   UpsertEnvVarSchema,
   UpsertServiceCatalogSchema,
+  toRepositoryDto,
   type AdminRepositoryDto,
   type EnvVarDto,
   type RepositoryDto,
@@ -26,9 +27,7 @@ type Row = typeof environmentVariables.$inferSelect;
 
 const toDto = (r: Row): EnvVarDto => ({ id: r.id, name: r.name, secret: r.secret, value: r.secret ? null : r.value, updatedAt: r.updatedAt.toISOString() });
 
-export function toRepoDto(r: typeof repositories.$inferSelect): RepositoryDto {
-  return { id: r.id, provider: r.provider, host: r.host, fullName: r.fullName, cloneUrl: r.cloneUrl, defaultBranch: r.defaultBranch, webUrl: r.webUrl };
-}
+export const toRepoDto = (r: typeof repositories.$inferSelect): RepositoryDto => toRepositoryDto(r);
 
 /**
  * Environnement des dépôts (variables, secrets, image, script de préparation), partagé par toutes

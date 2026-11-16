@@ -43,6 +43,17 @@ export class ConfirmService {
 }
 
 /** Confirmation de suppression d'une conversation (barre latérale et en-tête). */
+export function leaveShareDialog(name: string): ConfirmOptions {
+  return {
+    title: 'Retirer le partage ?',
+    message: '{subject} disparaîtra de votre liste et vous n’y aurez plus accès.',
+    subject: name,
+    details: ['La conversation n’est ni supprimée ni modifiée pour son propriétaire', 'Les autres personnes avec qui elle est partagée gardent leur accès', 'Le propriétaire pourra la partager de nouveau avec vous'],
+    confirmLabel: 'Retirer',
+    danger: true,
+  };
+}
+
 export function deleteConversationDialog(name: string, running: boolean): ConfirmOptions {
   return {
     title: 'Supprimer la conversation ?',

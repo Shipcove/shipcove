@@ -6,7 +6,7 @@ import type { Response } from 'express';
 import { and, eq, isNull } from 'drizzle-orm';
 import { fileTypeFromBuffer } from 'file-type';
 import { z } from 'zod';
-import type { AttachmentDto } from '@cap/contracts';
+import { toAttachmentDto, type AttachmentDto } from '@cap/contracts';
 import { attachments, type Database } from '@cap/database';
 import { AppError, AuditService, DB, ObjectStorage, SettingsService } from '@cap/server-core';
 import { CurrentUser } from '../common/decorators.js';
@@ -157,9 +157,7 @@ export class AttachmentsController {
   }
 }
 
-function toDto(a: typeof attachments.$inferSelect): AttachmentDto {
-  return { id: a.id, fileName: a.fileName, mimeType: a.detectedMimeType, size: a.size, kind: a.kind, status: a.status, rejectionReason: a.rejectionReason, createdAt: a.createdAt.toISOString() };
-}
+const toDto = (a: typeof attachments.$inferSelect): AttachmentDto => toAttachmentDto(a);
 
 function isProbablyText(buf: Buffer): boolean {
   const sample = buf.subarray(0, 8192);
