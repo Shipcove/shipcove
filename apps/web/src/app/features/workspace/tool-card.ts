@@ -5,6 +5,20 @@ import { WorkspaceStore } from './workspace.store';
 import { CodeBlock } from '../../shared/code-block';
 import { AskForm } from './ask-form';
 
+export function toolIcon(name: string): string {
+  return ({ bash: 'terminal', read: 'eye', write: 'file', edit: 'edit', browser_screenshot: 'image' } as Record<string, string>)[name] ?? (name.startsWith('platform_') ? 'git' : name.startsWith('mcp__') ? 'puzzle' : 'cpu');
+}
+
+export function toolLabel(name: string): string {
+  return ({ bash: 'Commande', read: 'Lecture', write: 'Écriture', edit: 'Modification', browser_screenshot: 'Capture d’écran' } as Record<string, string>)[name] ?? name;
+}
+
+/** Argument principal d'un appel (commande, chemin, URL…), sur une ligne. */
+export function toolSummary(call: ToolCallDto): string {
+  const a = (call.args ?? {}) as Record<string, unknown>;
+  return String(a['command'] ?? a['path'] ?? a['file_path'] ?? a['url'] ?? a['local_branch'] ?? a['title'] ?? '').split('\n')[0].slice(0, 120);
+}
+
 /**
  * Appel d'outil repliable : statut, commande, sortie, durée et fichiers touchés. Les captures d'écran
  * de Pi s'affichent en miniatures (toujours visibles) et s'agrandissent au clic.
@@ -146,12 +160,9 @@ export class ToolCard {
     else if (ev.key === 'ArrowLeft') this.step(-1);
   }
 
-  protected readonly icon = computed(() => ({ bash: 'terminal', read: 'eye', write: 'file', edit: 'edit', browser_screenshot: 'image' })[this.call().toolName] ?? (this.call().toolName.startsWith('platform_') ? 'git' : this.call().toolName.startsWith('mcp__') ? 'puzzle' : 'cpu'));
-  protected readonly label = computed(() => ({ bash: 'Commande', read: 'Lecture', write: 'Écriture', edit: 'Modification', browser_screenshot: 'Capture d’écran' })[this.call().toolName] ?? this.call().toolName);
-  protected readonly summary = computed(() => {
-    const a = (this.call().args ?? {}) as Record<string, unknown>;
-    return String(a['command'] ?? a['path'] ?? a['file_path'] ?? a['url'] ?? a['local_branch'] ?? a['title'] ?? '').split('\n')[0].slice(0, 120);
-  });
+  protected readonly icon = computed(() => toolIcon(this.call().toolName));
+  protected readonly label = computed(() => toolLabel(this.call().toolName));
+  protected readonly summary = computed(() => toolSummary(this.call()));
   /** Commande shell (outil bash), affichée avec coloration et invite `$`. */
   protected readonly command = computed(() => {
     if (this.call().toolName !== 'bash') return '';

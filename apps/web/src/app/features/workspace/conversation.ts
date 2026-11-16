@@ -1,14 +1,16 @@
-import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, output, signal, viewChild } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, output, signal, viewChild } from '@angular/core';
 import type { AttachmentDto, MessageDto } from '@cap/contracts';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
 import { BytesPipe, CodeBlocksDirective, MarkdownPipe, linkify } from '../../shared/pipes';
-import { ToolCard } from './tool-card';
+import { ToolCard, toolLabel, toolSummary } from './tool-card';
+import { buildTimeline, summarizeSteps } from './timeline';
 import { WorkspaceStore } from './workspace.store';
 
 @Component({
   selector: 'cap-conversation',
-  imports: [ToolCard, MarkdownPipe, CodeBlocksDirective, BytesPipe, Icon],
+  imports: [NgTemplateOutlet, ToolCard, MarkdownPipe, CodeBlocksDirective, BytesPipe, Icon],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div #scroller class="h-full overflow-x-hidden overflow-y-auto" (scroll)="onScroll()">
@@ -20,8 +22,8 @@ import { WorkspaceStore } from './workspace.store';
             <p class="mt-1 text-sm">Pi travaille dans une sandbox isolée : il lit, modifie et teste le code. Chaque modification est sauvegardée.</p>
           </div>
         }
-        @for (m of store.messages(); track m.id) {
-          @if (m.role === 'user') {
+        @for (row of timeline(); track row.key) {
+          @if (row.kind === 'message' && row.m.role === 'user') { @let m = row.m;
             <div class="group my-4 flex items-start justify-end gap-1">
               @if (canRewind(m)) {
                 <button class="btn-ghost mt-1.5 !p-1 opacity-0 transition-opacity group-hover:opacity-100 touch:opacity-100 focus:opacity-100" (click)="rewind(m)" [disabled]="busy()" title="Revenir à l’état des fichiers d’avant ce message" aria-label="Revenir avant ce message"><cap-icon name="undo" [size]="14" /></button>
@@ -56,7 +58,7 @@ import { WorkspaceStore } from './workspace.store';
                 }
               </div>
             </div>
-          } @else if (m.role === 'system') {
+          } @else if (row.kind === 'message') { @let m = row.m;
             <div class="my-3 flex items-start gap-2 rounded-lg border border-dashed border-stone-300 px-3 py-2 text-sm text-stone-600 [overflow-wrap:anywhere] dark:border-stone-700 dark:text-stone-400" [attr.aria-label]="m.meta?.['kind'] === 'rewind' ? 'Retour en arrière' : m.meta?.['kind'] === 'setup' ? 'Préparation de l’environnement' : null">
               @if (m.meta?.['kind'] === 'rewind') { <cap-icon name="undo" [size]="14" class="mt-0.5" /> }
               @if (m.meta?.['kind'] === 'setup') { <cap-icon [name]="m.meta?.['status'] === 'failed' ? 'alert' : 'terminal'" [size]="14" class="mt-0.5" [class.text-red-600]="m.meta?.['status'] === 'failed'" /> }
@@ -70,20 +72,57 @@ import { WorkspaceStore } from './workspace.store';
                 <button class="btn-ghost shrink-0 !py-0.5 text-xs" (click)="undoRewind(m)" [disabled]="busy()">Annuler</button>
               }
             </div>
-          } @else {
-            <div class="my-4 min-w-0">
-              @if (m.thinking) {
-                <details class="mb-1 text-sm text-stone-500">
-                  <summary class="cursor-pointer select-none">Raisonnement</summary>
-                  <div class="mt-1 border-l-2 border-stone-200 pl-3 whitespace-pre-wrap [overflow-wrap:anywhere] dark:border-stone-700">{{ m.thinking }}</div>
-                </details>
+          } @else if (row.kind === 'text') {
+            <div class="prose-chat my-3 min-w-0" capCodeBlocks [innerHTML]="row.m.text | markdown"></div>
+          } @else if (row.kind === 'interactive') {
+            <div class="my-2 min-w-0"><cap-tool-card [call]="row.call" (openFile)="openFile.emit($event)" /></div>
+          } @else if (row.kind === 'error') {
+            <div class="my-2 text-sm text-red-600">La réponse du modèle s’est terminée en erreur.</div>
+          } @else if (row.steps.length === 1) {
+            <div class="my-2 min-w-0">
+              <ng-container *ngTemplateOutlet="stepTpl; context: { $implicit: row.steps[0] }" />
+            </div>
+          } @else { @let s = summary(row.steps); @let open = openGroups().has(row.key);
+            <div class="my-2 min-w-0 rounded-lg border border-stone-200 dark:border-stone-800" [class.border-red-300]="s.failed" [class.dark:border-red-900]="s.failed">
+              <button class="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm text-stone-600 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-800/70"
+                (click)="toggleGroup(row.key)" [attr.aria-expanded]="open" [attr.aria-label]="(open ? 'Replier ' : 'Déplier ') + stepsLabel(s)">
+                <cap-icon [name]="open ? 'chevronDown' : 'chevronRight'" [size]="14" class="shrink-0 text-stone-400" />
+                <span class="shrink-0 font-medium">{{ stepsLabel(s) }}</span>
+                @if (!open) {
+                  <span class="min-w-0 truncate font-mono text-xs text-stone-500">
+                    @if (s.last.kind === 'tool') { {{ toolLabel(s.last.call.toolName) }} · {{ toolSummary(s.last.call) }} } @else { Raisonnement… }
+                  </span>
+                }
+                <span class="ml-auto flex shrink-0 items-center gap-2 text-xs">
+                  @if (s.failed) { <span class="flex items-center gap-1 font-medium text-red-600"><cap-icon name="alert" [size]="13" />{{ s.failed }} en erreur</span> }
+                  @if (s.running) { <span class="h-2 w-2 animate-pulse rounded-full bg-accent-500" aria-label="En cours"></span> }
+                  @else if (s.last.kind === 'tool') {
+                    @switch (s.last.call.status) {
+                      @case ('failed') { <cap-icon name="x" [size]="14" class="text-red-600" /> }
+                      @case ('blocked') { <cap-icon name="lock" [size]="14" class="text-amber-600" /> }
+                      @default { <cap-icon name="check" [size]="14" class="text-emerald-600" /> }
+                    }
+                  }
+                </span>
+              </button>
+              @if (open) {
+                <div class="border-t border-stone-200 px-2 py-1 dark:border-stone-800">
+                  @for (step of row.steps; track step.key) { <ng-container *ngTemplateOutlet="stepTpl; context: { $implicit: step }" /> }
+                </div>
               }
-              @if (m.text) { <div class="prose-chat" capCodeBlocks [innerHTML]="m.text | markdown"></div> }
-              @for (t of m.toolCalls; track t.id) { <cap-tool-card [call]="t" (openFile)="openFile.emit($event)" /> }
-              @if (m.stopReason === 'error') { <div class="mt-1 text-sm text-red-600">La réponse du modèle s’est terminée en erreur.</div> }
             </div>
           }
         }
+        <ng-template #stepTpl let-step>
+          @if (step.kind === 'thinking') {
+            <details class="my-1 text-sm text-stone-500">
+              <summary class="cursor-pointer select-none">Raisonnement</summary>
+              <div class="mt-1 border-l-2 border-stone-200 pl-3 whitespace-pre-wrap [overflow-wrap:anywhere] dark:border-stone-700">{{ step.text }}</div>
+            </details>
+          } @else {
+            <cap-tool-card [call]="step.call" (openFile)="openFile.emit($event)" />
+          }
+        </ng-template>
         @if (store.activeRun()?.status === 'running' || store.activeRun()?.status === 'queued' || store.activeRun()?.status === 'interrupting') {
           <div class="my-3 flex items-center gap-2 text-sm text-stone-500">
             <span class="h-2 w-2 animate-pulse rounded-full bg-accent-500"></span>
@@ -111,6 +150,29 @@ import { WorkspaceStore } from './workspace.store';
 })
 export class Conversation {
   protected readonly linkify = linkify;
+  protected readonly toolLabel = toolLabel;
+  protected readonly toolSummary = toolSummary;
+  protected readonly summary = summarizeSteps;
+
+  /** Fil affiché : raisonnements et commandes consécutifs regroupés. */
+  protected readonly timeline = computed(() => buildTimeline(this.store.messages()));
+  /** Groupes dépliés (repliés par défaut), par clé stable. */
+  protected readonly openGroups = signal<ReadonlySet<string>>(new Set());
+
+  protected toggleGroup(key: string): void {
+    this.openGroups.update((s) => {
+      const next = new Set(s);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  }
+
+  protected stepsLabel(s: { thinking: number; tools: number }): string {
+    const parts: string[] = [];
+    if (s.tools) parts.push(`${s.tools} ${s.tools > 1 ? 'actions' : 'action'}`);
+    if (s.thinking) parts.push(`${s.thinking} ${s.thinking > 1 ? 'raisonnements' : 'raisonnement'}`);
+    return parts.join(' · ');
+  }
 
   /** Pièce jointe affichée en grand. */
   protected readonly viewing = signal<AttachmentDto | null>(null);
