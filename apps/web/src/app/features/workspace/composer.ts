@@ -25,6 +25,11 @@ const MODES: Array<{ id: AgentMode; label: string; description: string }> = [
   { id: 'plan', label: 'Plan', description: 'Lecture seule : Pi explore et propose un plan sans rien modifier' },
 ];
 
+/** Commandes de la plateforme, proposées avant les skills. */
+const BUILTIN_COMMANDS: Array<{ command: string; name: string; description: string }> = [
+  { command: '/compact', name: 'compact', description: 'Compacter le contexte de la conversation (instructions facultatives à la suite)' },
+];
+
 /** Nombre de modèles affichés directement (les autres sont sous « Plus de modèles »). */
 const TOP_MODELS = 4;
 
@@ -278,11 +283,12 @@ export class Composer {
   protected readonly effortLabel = computed(() => EFFORTS.find((e) => e.id === this.store.workspace()?.thinkingLevel)?.label ?? 'Moyen');
   protected readonly modeLabel = computed(() => MODES.find((m) => m.id === this.store.workspace()?.agentMode)?.label ?? 'Autonome');
 
-  protected readonly slashCommands = computed(() =>
-    this.skills()
+  protected readonly slashCommands = computed(() => [
+    ...BUILTIN_COMMANDS,
+    ...this.skills()
       .filter((s) => s.enabledForMe)
       .map((s) => ({ command: `/skill:${s.name}`, name: s.name, description: s.description })),
-  );
+  ]);
   /** Skills choisis : blocs dans la zone de saisie, envoyés en tête du message. */
   protected readonly selectedSkills = signal<Array<{ command: string; name: string; description: string }>>([]);
   protected readonly slashFiltered = computed(() => {
@@ -433,6 +439,14 @@ export class Composer {
 
   /** Skill choisi : ajouté comme un bloc (retiré d'un seul Retour arrière), le texte « /… » tapé est effacé. */
   protected useSlash(command: string): void {
+    if (BUILTIN_COMMANDS.some((c) => c.command === command)) {
+      // Commande de la plateforme : reste dans le texte, des instructions peuvent suivre.
+      this.text = `${command} `;
+      this.textSig.set(this.text);
+      this.menu.set(null);
+      queueMicrotask(() => this.textareaRef().nativeElement.focus());
+      return;
+    }
     const skill = this.slashCommands().find((c) => c.command === command);
     if (skill && !this.selectedSkills().some((s) => s.command === command)) this.selectedSkills.update((l) => [...l, skill]);
     this.text = this.text.startsWith('/') ? this.text.replace(/^\/\S*\s?/, '') : this.text;
@@ -536,7 +550,9 @@ export class Composer {
     this.sending.set(true);
     try {
       // Pendant une génération, le message est mis en file d'attente (traité à la fin de la tâche en cours).
-      await this.store.send(text, ready.map((a) => a.id), this.running() ? 'follow_up' : 'new_run');
+      // `/compact [instructions]` : compaction du contexte (en file d'attente pendant une génération).
+      const command = !skills.length && /^\/compact(\s|$)/.test(this.text.trim()) ? 'compact' : undefined;
+      await this.store.send(text, command ? [] : ready.map((a) => a.id), this.running() ? 'follow_up' : 'new_run', undefined, command);
       this.text = '';
       this.textSig.set('');
       this.selectedSkills.set([]);

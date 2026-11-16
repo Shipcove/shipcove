@@ -3,14 +3,14 @@ import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, injec
 import type { AttachmentDto, MessageDto } from '@cap/contracts';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
-import { BytesPipe, CodeBlocksDirective, MarkdownPipe, linkify } from '../../shared/pipes';
+import { BytesPipe, CodeBlocksDirective, MarkdownPipe, TokensPipe, linkify } from '../../shared/pipes';
 import { ToolCard, toolLabel, toolSummary } from './tool-card';
 import { buildTimeline, summarizeSteps } from './timeline';
 import { WorkspaceStore } from './workspace.store';
 
 @Component({
   selector: 'cap-conversation',
-  imports: [NgTemplateOutlet, ToolCard, MarkdownPipe, CodeBlocksDirective, BytesPipe, Icon],
+  imports: [NgTemplateOutlet, ToolCard, MarkdownPipe, CodeBlocksDirective, BytesPipe, TokensPipe, Icon],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div #scroller class="h-full overflow-x-hidden overflow-y-auto" (scroll)="onScroll()">
@@ -57,6 +57,21 @@ import { WorkspaceStore } from './workspace.store';
                   </div>
                 }
               </div>
+            </div>
+          } @else if (row.kind === 'message' && row.m.meta?.['kind'] === 'compaction') { @let m = row.m; @let failed = m.meta?.['status'] === 'failed';
+            <div class="my-4" role="note" [attr.aria-label]="m.text">
+              <div class="flex items-center gap-3 text-xs" [class]="failed ? 'text-red-600' : 'text-stone-500'">
+                <span class="h-px flex-1" [class]="failed ? 'bg-red-200 dark:bg-red-900' : 'bg-stone-300 dark:bg-stone-700'"></span>
+                <span class="flex items-center gap-1.5"><cap-icon [name]="failed ? 'alert' : 'minimize'" [size]="13" />{{ m.text }}
+                  @if (!failed && m.meta?.['tokensBefore']) { <span class="text-stone-400">· {{ $any(m.meta?.['tokensBefore']) | tokens }} tokens avant</span> }</span>
+                <span class="h-px flex-1" [class]="failed ? 'bg-red-200 dark:bg-red-900' : 'bg-stone-300 dark:bg-stone-700'"></span>
+              </div>
+              @if (m.meta?.['summary']) {
+                <details class="mx-auto mt-1 max-w-xl text-sm text-stone-600 dark:text-stone-400">
+                  <summary class="cursor-pointer text-center text-xs select-none">Voir le résumé</summary>
+                  <div class="prose-chat mt-2 rounded-lg border border-stone-200 p-3 dark:border-stone-800" [innerHTML]="$any(m.meta?.['summary']) | markdown"></div>
+                </details>
+              }
             </div>
           } @else if (row.kind === 'message') { @let m = row.m;
             <div class="my-3 flex items-start gap-2 rounded-lg border border-dashed border-stone-300 px-3 py-2 text-sm text-stone-600 [overflow-wrap:anywhere] dark:border-stone-700 dark:text-stone-400" [attr.aria-label]="m.meta?.['kind'] === 'rewind' ? 'Retour en arrière' : m.meta?.['kind'] === 'setup' ? 'Préparation de l’environnement' : null">
@@ -123,7 +138,11 @@ import { WorkspaceStore } from './workspace.store';
             <cap-tool-card [call]="step.call" (openFile)="openFile.emit($event)" />
           }
         </ng-template>
-        @if (store.activeRun()?.status === 'running' || store.activeRun()?.status === 'queued' || store.activeRun()?.status === 'interrupting') {
+        @if (store.compacting()) {
+          <div class="my-3 flex items-center gap-2 text-sm text-stone-500" role="status">
+            <span class="h-2 w-2 animate-pulse rounded-full bg-amber-500"></span> Compaction du contexte en cours…
+          </div>
+        } @else if (store.activeRun()?.status === 'running' || store.activeRun()?.status === 'queued' || store.activeRun()?.status === 'interrupting') {
           <div class="my-3 flex items-center gap-2 text-sm text-stone-500">
             <span class="h-2 w-2 animate-pulse rounded-full bg-accent-500"></span>
             {{ store.activeRun()?.status === 'queued' ? 'Démarrage de la sandbox et de Pi…' : store.activeRun()?.status === 'interrupting' ? 'Arrêt en cours…' : 'Pi travaille…' }}

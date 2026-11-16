@@ -53,6 +53,8 @@ export class WorkspaceStore {
   readonly filesVersion = signal(0);
   readonly lastEventId = signal(0);
   /** Messages envoyés pendant une génération : chacun lancera un run à la fin du run courant. */
+  /** Compaction du contexte en cours (manuelle ou automatique). */
+  readonly compacting = signal(false);
   readonly queued = signal<Array<{ messageId: string; text: string }>>([]);
 
   readonly activeRun = computed(() => this.runs().find((r) => ['queued', 'running', 'interrupting', 'paused_quota'].includes(r.status)) ?? null);
@@ -116,9 +118,9 @@ export class WorkspaceStore {
 
   /* ------------------------------ Commandes ------------------------------ */
 
-  async send(text: string, attachmentIds: string[], delivery: 'new_run' | 'steer' | 'follow_up' = 'new_run', answersTo?: string): Promise<void> {
+  async send(text: string, attachmentIds: string[], delivery: 'new_run' | 'steer' | 'follow_up' = 'new_run', answersTo?: string, command?: 'compact'): Promise<void> {
     const ws = this.workspace()!;
-    await this.api.post(`/workspaces/${ws.id}/messages`, { text, attachmentIds, delivery, modelId: ws.modelId ?? undefined, answersTo }, { 'Idempotency-Key': idempotencyKey() });
+    await this.api.post(`/workspaces/${ws.id}/messages`, { text, attachmentIds, delivery, modelId: ws.modelId ?? undefined, answersTo, command }, { 'Idempotency-Key': idempotencyKey() });
   }
 
   /** File d'attente : retrait ou modification d'un message pas encore transmis (mise à jour locale immédiate, SSE ensuite). */
@@ -297,10 +299,18 @@ export class WorkspaceStore {
         const status = e.type === 'run.completed' ? 'completed' : e.type === 'run.failed' ? 'failed' : 'interrupted';
         this.runs.update((l) => l.map((r) => (r.id === d['runId'] ? { ...r, status, endedAt: e.ts, error: (d['error'] as string) ?? (d['reason'] as string) ?? null } : r)));
         if (e.type === 'run.failed') this.toast.show(`Échec du run : ${d['error']}`, 'error');
+        this.compacting.set(false);
         void this.refreshUsage();
         this.bumpFiles();
         return;
       }
+      case 'compaction.started':
+        this.compacting.set(true);
+        return;
+      case 'compaction.completed':
+        // Succès comme échec sont signalés par le marqueur inscrit dans le fil.
+        this.compacting.set(false);
+        return;
       case 'queue.updated':
         this.queued.set((d['messages'] as Array<{ messageId: string; text: string }>) ?? []);
         return;

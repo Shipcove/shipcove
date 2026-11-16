@@ -56,6 +56,8 @@ interface RunContext {
   secretValues: string[];
   /** Masquage des flux de texte / raisonnement (secret éventuellement coupé entre fragments). */
   scrubbers: Map<string, StreamScrubber>;
+  /** Marqueur de compaction déjà inscrit dans le fil pour ce run. */
+  compactionMarked?: boolean;
 }
 
 /**
@@ -252,9 +254,19 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       const level = model.supportsReasoning ? (run.thinkingLevel ?? ws.thinkingLevel) : 'off';
       await runtime.setThinkingLevel(level).catch((e) => this.logger.warn(`thinking level ${level} : ${e.message}`));
       await this.events.emit(ws.id, 'model.changed', { modelId: model.id, modelName: model.displayName }, runId);
-      const { text, images } = await this.promptFor(run);
-      await runtime.prompt(setupNote ? `${setupNote}\n\n${text}` : text, images);
-      outcome = await finished;
+      const compact = await this.compactRequest(run);
+      if (compact) {
+        // `/compact` : compaction du contexte de Pi, sans nouveau tour de l'agent.
+        let error: string | null = null;
+        await runtime.compact(compact.instructions || undefined).catch((e: Error) => (error = redactString(e.message)));
+        await ctx.queue;
+        if (!ctx.compactionMarked) await this.compactionMarker(ctx, { tokensBefore: null, summary: null, error: error ?? 'La compaction n’a pas abouti' });
+        outcome = { error };
+      } else {
+        const { text, images } = await this.promptFor(run);
+        await runtime.prompt(setupNote ? `${setupNote}\n\n${text}` : text, images);
+        outcome = await finished;
+      }
     } catch (err) {
       outcome = { error: redactString((err as Error).message) };
     } finally {
@@ -314,6 +326,34 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     }
     await this.finish(runId, ws.id, 'completed', null);
     return { status: 'completed' };
+  }
+
+  /** Run déclenché par `/compact` : instructions facultatives (texte après la commande). */
+  private async compactRequest(run: typeof agentRuns.$inferSelect): Promise<{ instructions: string } | null> {
+    if (!run.triggerMessageId || run.pausedReason === 'resuming') return null;
+    const [m] = await this.db.select({ text: messages.text, meta: messages.meta }).from(messages).where(eq(messages.id, run.triggerMessageId));
+    if ((m?.meta as { kind?: string } | null)?.kind !== 'compact') return null;
+    return { instructions: m.text.replace(/^\s*\/compact\b/, '').trim() };
+  }
+
+  /**
+   * Marqueur persistant de compaction (manuelle ou automatique) dans le fil : message système
+   * `meta.kind = 'compaction'`, avec le résumé produit par Pi s'il est disponible.
+   */
+  private async compactionMarker(ctx: RunContext, r: { tokensBefore: number | null; summary: string | null; error: string | null }): Promise<void> {
+    ctx.compactionMarked = true;
+    // Les événements en tampon (dont `compaction.started`) partent avant le marqueur.
+    await this.flush(ctx);
+    const summary = r.summary ? scrubSecrets(r.summary, ctx.secretValues).slice(0, 50_000) : null;
+    const error = r.error ? scrubSecrets(redactString(r.error), ctx.secretValues).slice(0, 2000) : null;
+    await this.systemMessage(
+      ctx.workspaceId,
+      ctx.conversationId,
+      ctx.runId,
+      error ? `Échec de la compaction du contexte : ${error}` : 'Contexte de la conversation compacté',
+      { kind: 'compaction', status: error ? 'failed' : 'succeeded', tokensBefore: r.tokensBefore, summary, error },
+    );
+    await this.events.emit(ctx.workspaceId, 'compaction.completed', { error, tokensBefore: r.tokensBefore }, ctx.runId);
   }
 
   private async promptFor(run: typeof agentRuns.$inferSelect): Promise<{ text: string; images: RuntimeImage[] }> {
@@ -602,7 +642,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           this.push(ctx, { type: 'compaction.started', runId: ctx.runId, data: { reason: e.reason } });
           break;
         case 'compaction_end':
-          this.push(ctx, { type: 'compaction.completed', runId: ctx.runId, data: {} });
+          await this.compactionMarker(ctx, { tokensBefore: e.tokensBefore, summary: e.summary, error: e.error });
           break;
         case 'agent_end':
           ctx.done({ error: e.error });

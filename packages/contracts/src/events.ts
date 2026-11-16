@@ -65,7 +65,7 @@ export interface AgentEventDataMap {
   /** Nouveau titre de la conversation (génération automatique ou renommage). */
   'workspace.renamed': { name: string; titleSource: 'auto' | 'user' };
   'compaction.started': { reason: string };
-  'compaction.completed': Record<string, never>;
+  'compaction.completed': { error?: string | null; tokensBefore?: number | null };
   'model.changed': { modelId: string; modelName: string };
   /** File d'attente : messages envoyés pendant une génération, traités chacun par un run à la fin du run courant. */
   'queue.updated': { messages: Array<{ messageId: string; text: string }> };

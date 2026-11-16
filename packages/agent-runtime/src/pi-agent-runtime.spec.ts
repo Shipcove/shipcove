@@ -56,6 +56,25 @@ describe('PiAgentRuntime', () => {
     expect(responses).toContainEqual({ type: 'extension_ui_response', id: 'u2', cancelled: true });
   });
 
+  it('compaction : instructions transmises, résumé et erreur remontés', async () => {
+    const pi = fakePi();
+    const rt = new PiAgentRuntime(pi.io);
+    const events: RuntimeEvent[] = [];
+    rt.onEvent((e) => events.push(e));
+    await rt.initialize();
+    await rt.compact('garde les décisions');
+    expect(pi.received.find((c) => c.type === 'compact')).toMatchObject({ customInstructions: 'garde les décisions' });
+    pi.stdout.write(`${JSON.stringify({ type: 'compaction_start', reason: 'manual' })}\n`);
+    pi.stdout.write(`${JSON.stringify({ type: 'compaction_end', result: { tokensBefore: 12000, summary: 'Résumé' } })}\n`);
+    pi.stdout.write(`${JSON.stringify({ type: 'compaction_end', result: null, errorMessage: 'rien à compacter' })}\n`);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(events).toEqual([
+      { type: 'compaction_start', reason: 'manual' },
+      { type: 'compaction_end', tokensBefore: 12000, summary: 'Résumé', error: null },
+      { type: 'compaction_end', tokensBefore: null, summary: null, error: 'rien à compacter' },
+    ]);
+  });
+
   it('rejette les commandes en attente si le processus meurt', async () => {
     const pi = fakePi();
     const rt = new PiAgentRuntime(pi.io);

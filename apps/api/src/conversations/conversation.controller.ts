@@ -35,8 +35,9 @@ import { DEFAULT_TITLE, WorkspacesService } from '../workspaces/workspaces.servi
 const uuid = { schema: z.uuid() };
 const EditQueuedMessageSchema = z.object({ text: z.string().trim().min(1).max(100_000) });
 
-/** Message de réponse à un formulaire de questions de Pi (`ask_user`). */
-function answersMeta(body: { answersTo?: string }): Record<string, unknown> | null {
+/** Meta du message : réponse à un formulaire de Pi (`ask_user`) ou commande de la plateforme (`/compact`). */
+function answersMeta(body: { answersTo?: string; command?: 'compact' }): Record<string, unknown> | null {
+  if (body.command === 'compact') return { kind: 'compact' };
   return body.answersTo ? { kind: 'answers', toolCallId: body.answersTo } : null;
 }
 
@@ -181,6 +182,7 @@ export class ConversationController {
         return { messageId: queued.id, runId, queued: runId === null };
       }
       if (body.delivery === 'steer') {
+        if (body.command) throw new AppError('validation_failed', 'Une commande ne peut pas guider un run en cours : mettez-la en file d’attente');
         const [active] = await this.db
           .select()
           .from(agentRuns)

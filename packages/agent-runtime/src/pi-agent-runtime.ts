@@ -285,8 +285,13 @@ export class PiAgentRuntime implements AgentRuntime {
         this.emit({ type: 'compaction_start', reason: String(msg.reason ?? 'manual') });
         return;
       case 'compaction_end': {
-        const r = msg.result as { tokensBefore?: number } | null;
-        this.emit({ type: 'compaction_end', tokensBefore: r?.tokensBefore ?? null, error: (msg.errorMessage as string) ?? null });
+        const r = msg.result as { tokensBefore?: number; summary?: unknown } | null;
+        this.emit({
+          type: 'compaction_end',
+          tokensBefore: r?.tokensBefore ?? null,
+          summary: typeof r?.summary === 'string' ? r.summary : null,
+          error: (msg.errorMessage as string) ?? null,
+        });
         return;
       }
       case 'queue_update':
