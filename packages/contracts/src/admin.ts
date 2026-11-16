@@ -25,6 +25,29 @@ export function previewPortAllowed(port: number, ranges: readonly string[]): boo
   });
 }
 
+/**
+ * Dossiers régénérables jamais utiles dans un checkpoint (si `sandbox.excludeDependencyDirs`).
+ * Chaque motif désigne un segment de chemin, à n'importe quelle profondeur.
+ */
+export const DEFAULT_CHECKPOINT_EXCLUDES = [
+  'node_modules',
+  '.pnpm-store',
+  '.npm',
+  '.next/cache',
+  '.nuxt',
+  '.turbo',
+  '.parcel-cache',
+  '.angular/cache',
+  '.svelte-kit',
+  '__pycache__',
+  '.venv',
+  '.pytest_cache',
+  '.mypy_cache',
+  '.ruff_cache',
+  '.tox',
+  '.gradle',
+] as const;
+
 export const PlatformSettingsSchema = z.object({
   auth: z
     .object({
@@ -69,6 +92,13 @@ export const PlatformSettingsSchema = z.object({
           'repo.maven.apache.org',
           'objects.githubusercontent.com',
         ]),
+      /**
+       * Exclut des checkpoints les dossiers régénérables de DEFAULT_CHECKPOINT_EXCLUDES (dépendances,
+       * caches). Ils ne sont alors ni sauvegardés ni restaurés : le script de préparation, relancé à
+       * chaque nouvelle sandbox, les réinstalle.
+       */
+      excludeDependencyDirs: z.boolean().default(true),
+      /** Motifs supplémentaires (nom de dossier ou de fichier, `*` autorisé), en plus de la liste ci-dessus. */
       checkpointExcludes: z.array(z.string().max(255)).default([]),
       /** Nombre maximal de services d'appui lancés par Pi dans une même sandbox. */
       maxServicesPerWorkspace: z.number().int().min(0).max(10).default(4),

@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
+import { DEFAULT_CHECKPOINT_EXCLUDES } from '@cap/contracts';
 import { workspaces, type Database } from '@cap/database';
 import type { SandboxHandle, SandboxProvider } from '@cap/sandbox';
 import { DB, EventsService, NotificationService, ObjectStorage, SettingsService, redactString } from '@cap/server-core';
@@ -64,7 +65,8 @@ export class CheckpointService {
 
   private async doCheckpoint(req: CheckpointRequest): Promise<CheckpointResult> {
     // Captures d'écran de Pi : conservées comme pièces jointes, jamais dans les checkpoints.
-    const excludes = [...(await this.settings.section('sandbox')).checkpointExcludes, '.cap/screenshots'];
+    const sandbox = await this.settings.section('sandbox');
+    const excludes = [...(sandbox.excludeDependencyDirs ? DEFAULT_CHECKPOINT_EXCLUDES : []), ...sandbox.checkpointExcludes, '.cap/screenshots'];
     await this.db.update(workspaces).set({ syncState: 'syncing' }).where(eq(workspaces.id, req.workspaceId));
     let attempt = 0;
     for (;;) {

@@ -22,7 +22,8 @@ const OUTPUT_LIMIT = 20_000;
  * Script de préparation du dépôt (dépendances, outils) : exécuté dans `/workspace` avec les
  * variables du dépôt, une fois par sandbox et à chaque modification du script (il doit donc
  * être idempotent, comme une étape de CI). Ce qu'il produit dans `/workspace` est conservé par
- * le checkpoint qui suit ; le reste vit avec la sandbox.
+ * le checkpoint qui suit, sauf les dépendances et caches exclus des checkpoints (node_modules…),
+ * qu'il réinstalle à chaque nouvelle sandbox ; le reste vit avec la sandbox.
  */
 @Injectable()
 export class SetupService {
