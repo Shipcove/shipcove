@@ -228,6 +228,25 @@ export class ConversationController {
     });
   }
 
+  /**
+   * Le destinataire d'un partage le retire de son côté : seul son propre partage est révoqué ;
+   * la conversation, son propriétaire et les autres destinataires ne sont pas touchés.
+   */
+  @Delete('share')
+  @HttpCode(204)
+  async leaveShare(@Param('id', uuid) id: string, @CurrentUser() user: AuthUser, @ReqCtx() ctx: RequestContext): Promise<void> {
+    const [conv] = await this.db.select({ id: conversations.id }).from(conversations).where(eq(conversations.workspaceId, id));
+    const res = conv
+      ? await this.db
+          .update(conversationShares)
+          .set({ revokedAt: new Date() })
+          .where(and(eq(conversationShares.conversationId, conv.id), eq(conversationShares.userId, user.id), isNull(conversationShares.revokedAt)))
+          .returning({ id: conversationShares.id })
+      : [];
+    if (res.length === 0) throw new AppError('not_found', 'Aucun partage actif de cette conversation avec vous');
+    await this.audit.record({ actorId: user.id, action: 'conversation.share_leave', targetType: 'conversation', targetId: conv.id, ip: ctx.ip, metadata: { shareId: res[0].id } });
+  }
+
   /** Retire un message de la file d'attente avant sa transmission à Pi. */
   @Delete('messages/:messageId')
   @HttpCode(204)
