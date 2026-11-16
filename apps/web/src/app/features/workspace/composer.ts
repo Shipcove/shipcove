@@ -71,9 +71,10 @@ const TOP_MODELS = 4;
         }
 
         @if (menu() === 'slash') {
-          <div class="absolute bottom-full left-2 z-30 mb-2 max-h-72 w-96 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="listbox" aria-label="Commandes slash">
-            @for (c of slashFiltered(); track c.command) {
-              <button class="flex w-full flex-col items-start rounded-lg px-3 py-1.5 text-left hover:bg-stone-100 dark:hover:bg-stone-800" (click)="useSlash(c.command)" role="option">
+          <div id="slash-listbox" class="absolute bottom-full left-2 z-30 mb-2 max-h-72 w-96 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="listbox" aria-label="Commandes slash">
+            @for (c of slashFiltered(); track c.command; let i = $index) {
+              <button [id]="'slash-opt-' + i" tabindex="-1" class="flex w-full flex-col items-start rounded-lg px-3 py-1.5 text-left hover:bg-stone-100 dark:hover:bg-stone-800" [class.bg-stone-100]="i === slashActive()" [class.dark:bg-stone-800]="i === slashActive()"
+                (click)="useSlash(c.command)" (mousemove)="slashActive.set(i)" (mousedown)="$event.preventDefault()" role="option" [attr.aria-selected]="i === slashActive()">
                 <span class="font-mono text-sm">{{ c.command }}</span><span class="line-clamp-1 text-xs text-stone-500">{{ c.description }}</span>
               </button>
             } @empty {
@@ -119,7 +120,9 @@ const TOP_MODELS = 4;
             }
             <textarea #textarea class="block h-9 max-h-60 min-w-40 flex-1 resize-none overflow-y-auto bg-transparent px-2 py-1.5 text-[0.95rem] leading-6 placeholder:text-stone-400 focus:outline-none" rows="1"
               [placeholder]="selectedSkills().length ? 'Ajoutez vos instructions (facultatif)' : store.draft ? 'Décrivez ce que Pi doit faire…' : running() ? 'Message mis en file d’attente jusqu’à la fin de la tâche en cours…' : 'Tapez / pour les commandes.'" [(ngModel)]="text" name="text"
-              (ngModelChange)="onTextChange()" (keydown)="onKey($event)" (paste)="onPaste($event)" [disabled]="!store.isOwner()" aria-label="Message"></textarea>
+              (ngModelChange)="onTextChange()" (keydown)="onKey($event)" (paste)="onPaste($event)" [disabled]="!store.isOwner()" aria-label="Message"
+              role="combobox" aria-autocomplete="list" aria-controls="slash-listbox" [attr.aria-expanded]="menu() === 'slash'"
+              [attr.aria-activedescendant]="menu() === 'slash' && slashFiltered().length ? 'slash-opt-' + slashActive() : null"></textarea>
           </div>
           @if (running()) {
             @if (store.activeRun()?.status === 'interrupting') {
@@ -276,6 +279,15 @@ export class Composer {
     const q = t.startsWith('/') ? t.slice(1).split(/\s/)[0].toLowerCase() : '';
     return this.slashCommands().filter((c) => c.command.slice(1).toLowerCase().includes(q));
   });
+  /** Commande sélectionnée au clavier dans le menu slash (index dans la liste filtrée). */
+  protected readonly slashActive = signal(0);
+
+  private moveSlash(delta: number): void {
+    const n = this.slashFiltered().length;
+    if (!n) return;
+    this.slashActive.update((i) => (Math.min(i, n - 1) + delta + n) % n);
+    queueMicrotask(() => document.getElementById(`slash-opt-${this.slashActive()}`)?.scrollIntoView({ block: 'nearest' }));
+  }
 
   /** Fenêtres du quota personnel en pourcentage ; jamais de crédits. */
   protected readonly warnAt = QUOTA_WARN;
@@ -359,6 +371,7 @@ export class Composer {
   protected openSlash(): void {
     if (!this.text.startsWith('/')) this.text = '/';
     this.textSig.set(this.text);
+    this.slashActive.set(0);
     void this.loadSkills();
     this.menu.set('slash');
     queueMicrotask(() => this.textareaRef().nativeElement.focus());
@@ -413,6 +426,7 @@ export class Composer {
       return;
     }
     this.textSig.set(this.text);
+    this.slashActive.set(0);
     this.autosize();
     if (this.text.startsWith('/') && !this.text.includes(' ')) {
       void this.loadSkills();
@@ -437,12 +451,29 @@ export class Composer {
       this.selectedSkills.update((l) => l.slice(0, -1));
       return;
     }
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-      e.preventDefault();
-      if (this.menu() === 'slash' && this.slashFiltered()[0]) {
-        this.useSlash(this.slashFiltered()[0].command);
+    if (this.menu() === 'slash' && !e.isComposing) {
+      // Menu slash : flèches pour la sélection (le curseur du champ ne bouge pas), Entrée/Tab pour valider.
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        this.moveSlash(e.key === 'ArrowDown' ? 1 : -1);
         return;
       }
+      const list = this.slashFiltered();
+      const chosen = list[Math.min(this.slashActive(), list.length - 1)];
+      if (chosen && ((e.key === 'Enter' && !e.shiftKey) || (e.key === 'Tab' && !e.shiftKey))) {
+        e.preventDefault();
+        this.useSlash(chosen.command);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.menu.set(null);
+        return;
+      }
+    }
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
       void this.submit();
     }
   }
