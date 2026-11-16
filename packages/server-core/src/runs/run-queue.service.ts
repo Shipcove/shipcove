@@ -37,6 +37,28 @@ export class RunQueueService {
     return rows;
   }
 
+  /**
+   * Retire (`text` absent) ou modifie un message encore en attente. Verrou sur la ligne : une
+   * promotion concurrente (`startNext`) l'ignore, et un message déjà promu n'est plus en attente.
+   * Les autres messages gardent leur ordre. Renvoie `false` si le message n'est plus en attente.
+   */
+  async withdraw(workspaceId: string, conversationId: string, messageId: string, change?: { text: string }): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      const [m] = await tx
+        .select({ id: messages.id })
+        .from(messages)
+        .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId), eq(messages.pendingDelivery, true), sql`${messages.deletedAt} is null`))
+        .for('update');
+      if (!m) return false;
+      await tx
+        .update(messages)
+        .set(change ? { text: change.text } : { pendingDelivery: false, deletedAt: new Date() })
+        .where(eq(messages.id, messageId));
+      await this.events.append(workspaceId, [{ type: 'queue.updated', runId: null, data: { messages: await this.list(conversationId, tx) } }], tx);
+      return true;
+    });
+  }
+
   /** Lance un run pour le plus ancien message en attente, si aucun run n'est actif. */
   async startNext(conversationId: string): Promise<string | null> {
     try {

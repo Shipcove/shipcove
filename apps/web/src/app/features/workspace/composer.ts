@@ -88,8 +88,19 @@ const TOP_MODELS = 4;
             @for (q of store.queued(); track q.messageId) {
               <div class="flex items-center gap-2 rounded-lg bg-stone-100 px-3 py-1.5 text-sm dark:bg-stone-800">
                 <span class="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent-500"></span>
-                <span class="min-w-0 flex-1 truncate">{{ q.text }}</span>
-                <span class="shrink-0 text-xs text-stone-500">En file d’attente</span>
+                @if (editingQueued() === q.messageId) {
+                  <textarea class="input min-w-0 flex-1 resize-y !py-1 text-sm" rows="2" [(ngModel)]="queuedDraft" name="queuedDraft" aria-label="Modifier le message en attente"
+                    (keydown)="onQueuedKey($event, q.messageId)"></textarea>
+                  <button class="btn-ghost shrink-0 !px-2 !py-0.5 text-xs" (click)="saveQueued(q.messageId)" [disabled]="!queuedDraft.trim()">Enregistrer</button>
+                  <button class="btn-ghost shrink-0 !px-2 !py-0.5 text-xs" (click)="editingQueued.set(null)">Annuler</button>
+                } @else {
+                  <span class="min-w-0 flex-1 truncate" [title]="q.text">{{ q.text }}</span>
+                  <span class="shrink-0 text-xs text-stone-500">En file d’attente</span>
+                  @if (store.isOwner()) {
+                    <button class="btn-ghost shrink-0 !p-1" (click)="editQueued(q)" title="Modifier" [attr.aria-label]="'Modifier le message en attente : ' + q.text"><cap-icon name="edit" [size]="13" /></button>
+                    <button class="btn-ghost shrink-0 !p-1 hover:text-red-600" (click)="removeQueued(q.messageId)" title="Supprimer" [attr.aria-label]="'Supprimer le message en attente : ' + q.text"><cap-icon name="trash" [size]="13" /></button>
+                  }
+                }
               </div>
             }
           </div>
@@ -279,6 +290,44 @@ export class Composer {
     const q = t.startsWith('/') ? t.slice(1).split(/\s/)[0].toLowerCase() : '';
     return this.slashCommands().filter((c) => c.command.slice(1).toLowerCase().includes(q));
   });
+  /** Message en attente en cours de modification. */
+  protected readonly editingQueued = signal<string | null>(null);
+  protected queuedDraft = '';
+
+  protected editQueued(q: { messageId: string; text: string }): void {
+    this.queuedDraft = q.text;
+    this.editingQueued.set(q.messageId);
+  }
+
+  protected async saveQueued(messageId: string): Promise<void> {
+    const text = this.queuedDraft.trim();
+    if (!text) return;
+    try {
+      await this.store.editQueued(messageId, text);
+      this.editingQueued.set(null);
+    } catch (err) {
+      this.toast.error(err);
+    }
+  }
+
+  protected onQueuedKey(e: KeyboardEvent, messageId: string): void {
+    e.stopPropagation();
+    if (e.key === 'Escape') this.editingQueued.set(null);
+    else if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      void this.saveQueued(messageId);
+    }
+  }
+
+  protected async removeQueued(messageId: string): Promise<void> {
+    try {
+      await this.store.removeQueued(messageId);
+      if (this.editingQueued() === messageId) this.editingQueued.set(null);
+    } catch (err) {
+      this.toast.error(err);
+    }
+  }
+
   /** Commande sélectionnée au clavier dans le menu slash (index dans la liste filtrée). */
   protected readonly slashActive = signal(0);
 

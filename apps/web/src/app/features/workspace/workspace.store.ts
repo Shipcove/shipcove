@@ -121,6 +121,17 @@ export class WorkspaceStore {
     await this.api.post(`/workspaces/${ws.id}/messages`, { text, attachmentIds, delivery, modelId: ws.modelId ?? undefined, answersTo }, { 'Idempotency-Key': idempotencyKey() });
   }
 
+  /** File d'attente : retrait ou modification d'un message pas encore transmis (mise à jour locale immédiate, SSE ensuite). */
+  async removeQueued(messageId: string): Promise<void> {
+    await this.api.delete(`/workspaces/${this.workspace()!.id}/messages/${messageId}`);
+    this.queued.update((l) => l.filter((q) => q.messageId !== messageId));
+  }
+
+  async editQueued(messageId: string, text: string): Promise<void> {
+    await this.api.patch(`/workspaces/${this.workspace()!.id}/messages/${messageId}`, { text });
+    this.queued.update((l) => l.map((q) => (q.messageId === messageId ? { ...q, text } : q)));
+  }
+
   /** Retour en arrière des fichiers : état d'avant un run, ou génération explicite (annulation). */
   async rewind(target: { runId: string } | { generation: number }): Promise<void> {
     await this.api.post(`/workspaces/${this.workspace()!.id}/rewind`, target);

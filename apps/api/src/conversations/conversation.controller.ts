@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Inject, Param, Post, Query, Sse, type MessageEvent } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Inject, Param, Patch, Post, Query, Sse, type MessageEvent } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { Observable } from 'rxjs';
@@ -32,6 +32,7 @@ import { IdempotencyService } from '../common/idempotency.service.js';
 import { DEFAULT_TITLE, WorkspacesService } from '../workspaces/workspaces.service.js';
 
 const uuid = { schema: z.uuid() };
+const EditQueuedMessageSchema = z.object({ text: z.string().trim().min(1).max(100_000) });
 
 /** Message de réponse à un formulaire de questions de Pi (`ask_user`). */
 function answersMeta(body: { answersTo?: string }): Record<string, unknown> | null {
@@ -225,6 +226,33 @@ export class ConversationController {
       if (w.titleSource === 'auto' && w.name === DEFAULT_TITLE) void this.workspacesService.generateTitle(id, body.text).catch(() => undefined);
       return result;
     });
+  }
+
+  /** Retire un message de la file d'attente avant sa transmission à Pi. */
+  @Delete('messages/:messageId')
+  @HttpCode(204)
+  async withdrawQueued(@Param('id', uuid) id: string, @Param('messageId', uuid) messageId: string, @CurrentUser() user: AuthUser): Promise<void> {
+    await this.access.requireWorkspaceOwner(user, id);
+    const [conv] = await this.db.select({ id: conversations.id }).from(conversations).where(eq(conversations.workspaceId, id));
+    if (!conv || !(await this.runQueue.withdraw(id, conv.id, messageId))) {
+      throw new AppError('conflict', 'Ce message n’est plus en attente : il a déjà été transmis à Pi');
+    }
+  }
+
+  /** Modifie le texte d'un message encore en file d'attente. */
+  @Patch('messages/:messageId')
+  async editQueued(
+    @Param('id', uuid) id: string,
+    @Param('messageId', uuid) messageId: string,
+    @Body({ schema: EditQueuedMessageSchema }) body: z.infer<typeof EditQueuedMessageSchema>,
+    @CurrentUser() user: AuthUser,
+  ): Promise<{ messageId: string }> {
+    await this.access.requireWorkspaceOwner(user, id);
+    const [conv] = await this.db.select({ id: conversations.id }).from(conversations).where(eq(conversations.workspaceId, id));
+    if (!conv || !(await this.runQueue.withdraw(id, conv.id, messageId, { text: body.text }))) {
+      throw new AppError('conflict', 'Ce message n’est plus en attente : il a déjà été transmis à Pi');
+    }
+    return { messageId };
   }
 
   @Post('runs/:runId/interrupt')
