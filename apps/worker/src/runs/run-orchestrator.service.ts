@@ -128,7 +128,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
 
   async onApplicationBootstrap(): Promise<void> {
     this.jobs.register('run.start', (p) => this.execute((p as { runId: string }).runId), { concurrency: this.env.RUN_CONCURRENCY, leaseMs: RUN_LEASE_MS });
-    await this.notifier.on('cap_run_control', (payload) => void this.onControl(payload));
+    // Une erreur (base indisponible un instant) ne doit pas devenir un rejet non géré : il arrêterait le worker.
+    await this.notifier.on('cap_run_control', (payload) => void this.onControl(payload).catch((e: Error) => this.logger.warn(`contrôle de run : ${e.message}`)));
   }
 
   /* ------------------------------ Contrôle ----------------------------- */
@@ -282,7 +283,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     };
     this.active.set(runId, ctx);
     const flusher = setInterval(() => void this.flush(ctx), FLUSH_MS);
-    const heartbeat = setInterval(() => void this.heartbeat(ctx), RUN_LEASE_MS / 4);
+    // Battement : un échec ponctuel est rattrapé au suivant (le bail couvre plusieurs battements).
+    const heartbeat = setInterval(() => void this.heartbeat(ctx).catch((e: Error) => this.logger.warn(`battement (${runId}) : ${e.message}`)), RUN_LEASE_MS / 4);
 
     let outcome: { error: string | null } = { error: null };
     try {
@@ -344,16 +346,20 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       // Session Pi et contexte pour la reprise après destruction de la sandbox.
       const sessionFile = await runtime.sessionFile().catch(() => null);
       const stats = await runtime.sessionStats().catch(() => null);
-      await this.db
-        .update(conversations)
-        .set({
-          ...(sessionFile ? { piSessionPath: sessionFile } : {}),
-          ...(stats ? { contextTokens: stats.contextTokens, contextWindow: stats.contextWindow } : {}),
-          updatedAt: new Date(),
-        })
-        .where(eq(conversations.id, conv.id));
-      await runtime.close();
-      this.active.delete(runId);
+      try {
+        await this.db
+          .update(conversations)
+          .set({
+            ...(sessionFile ? { piSessionPath: sessionFile } : {}),
+            ...(stats ? { contextTokens: stats.contextTokens, contextWindow: stats.contextWindow } : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(conversations.id, conv.id));
+      } finally {
+        // Pi est toujours arrêté, même si l'enregistrement de la session échoue.
+        await runtime.close();
+        this.active.delete(runId);
+      }
     }
 
     // Conversation sans dépôt où Pi en a cloné un : rattachement (Pi est arrêté, le dépôt peut être remonté à la racine).

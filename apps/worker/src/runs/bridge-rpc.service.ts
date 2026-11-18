@@ -44,7 +44,7 @@ export class BridgeRpcService {
         const paths = res.changed.map((c) => toUserPath(c.path)).filter((p): p is string => !!p);
         ctx.toolFiles.set(toolCallId, paths.slice(0, 200));
         return JSON.stringify({ ok: true, text: `checkpoint ${res.generation}` });
-      } catch (err) {
+      } catch {
         // L'agent poursuit ; l'état « non synchronisé » est signalé et un nouveau checkpoint sera tenté.
         ctx.toolFiles.set(toolCallId, []);
         return JSON.stringify({ ok: false, text: 'checkpoint en échec (nouvelle tentative programmée)' });

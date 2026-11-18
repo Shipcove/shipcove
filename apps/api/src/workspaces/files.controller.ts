@@ -299,6 +299,7 @@ export function assertEditablePath(path: string): void {
   const bad =
     path.startsWith('/') ||
     path.endsWith('/') ||
+    // oxlint-disable-next-line no-control-regex -- refus voulu des caractères de contrôle dans un chemin
     /[\\\x00-\x1f]/.test(path) ||
     segs.some((s) => s === '' || s === '.' || s === '..') ||
     segs.includes('.git') ||

@@ -64,7 +64,7 @@ export class ServicesService {
     if (!existing && running.length >= maxServicesPerWorkspace) {
       throw new Error(`Limite de ${maxServicesPerWorkspace} services atteinte : arrêtez-en un (action « stop ») avant d’en lancer un autre`);
     }
-    const merged = { ...c.defaultEnv, ...(req.env ?? {}) };
+    const merged = { ...c.defaultEnv, ...req.env };
     const missing: string[] = [];
     const resolved: Record<string, string> = {};
     for (const [k, v] of Object.entries(merged)) {
