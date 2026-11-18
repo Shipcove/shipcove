@@ -291,6 +291,7 @@ export class PiAgentRuntime implements AgentRuntime {
           tokensBefore: r?.tokensBefore ?? null,
           summary: typeof r?.summary === 'string' ? r.summary : null,
           error: (msg.errorMessage as string) ?? null,
+          willRetry: msg.willRetry === true,
         });
         return;
       }

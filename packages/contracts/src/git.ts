@@ -42,6 +42,18 @@ export interface GitStatusDto {
   source: 'sandbox' | 'unavailable';
 }
 
+/** Branches du dépôt de la sandbox, pour choisir la branche de travail. */
+export interface GitBranchesDto {
+  available: boolean;
+  /** Branche courante ; `null` si HEAD est détaché ou la sandbox arrêtée. */
+  current: string | null;
+  local: Array<{ name: string; date: string | null }>;
+  /** Branches de `origin` sans branche locale du même nom. */
+  remote: Array<{ name: string; date: string | null }>;
+}
+
+export const GitCheckoutSchema = z.object({ branch: z.string().min(1).max(255) });
+
 export const GitOperationRequestSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('fetch') }),
   z.object({ action: z.literal('pull'), branch: z.string().max(255).optional() }),
@@ -74,6 +86,8 @@ export interface ApprovalDto {
   action: GitActionKind;
   status: 'pending' | 'approved' | 'rejected' | 'expired' | 'consumed';
   requestedBy: 'agent' | 'user';
+  /** Appel d'outil de Pi à l'origine de la demande (carte d'approbation dans la conversation). */
+  toolCallId: string | null;
   repository: string;
   target: string;
   /** SHA local exact couvert par l'approbation. */

@@ -39,8 +39,9 @@
       </table>
 
       <h2>Suivre et contrôler les modifications</h2>
-      <h3>Panneau « Modifications »</h3>
-      <p>Le panneau latéral liste les fichiers ajoutés, modifiés ou supprimés, avec leurs compteurs de lignes, et affiche pour chacun un <strong>diff de type Git</strong> (unifié ou côte à côte). Trois portées : depuis le début de la conversation, depuis le dernier run, ou par rapport au dernier commit Git.</p>
+      <h3>Onglet « Git »</h3>
+      <p>Le panneau latéral indique la <strong>branche de travail</strong> et permet d’en changer (branches locales, ou distantes : la branche locale est alors créée). Le sélecteur suit les changements de branche faits par Pi ; un changement de votre part est noté dans la conversation et signalé à Pi à son prochain tour. Il est indisponible pendant que Pi travaille, et Git refuse le changement si vos modifications non commitées entrent en conflit.</p>
+      <p>Dessous, le <strong>git diff</strong> par rapport au dernier commit : fichiers ajoutés, modifiés ou supprimés avec leurs compteurs de lignes ; cliquez sur un fichier pour voir ses différences (unifié ou côte à côte). Le reste — commits, push, pull requests — se fait en conversation avec Pi. Chaque commit fait dans la sandbox porte la mention <code>Co-Authored-By: Shipcove</code> (adresse réglée par l’administrateur).</p>
       <h3>Explorateur de fichiers</h3>
       <p>L’icône de fichier ouvre l’explorateur (recherche, arborescence, onglets). L’édition manuelle est désactivée par défaut ; si l’administrateur l’active, une sauvegarde est refusée si Pi a modifié le fichier entre-temps (aucun écrasement silencieux).</p>
       <h3>Revenir en arrière</h3>
@@ -65,7 +66,7 @@
       <ol>
         <li>Rattachez votre compte : <strong>Paramètres → Connexions Git → Connecter via …</strong> (OAuth, forges configurées par l’administrateur).</li>
         <li>Pi travaille ensuite en autonomie avec <code>git</code>, <code>gh</code> et <code>glab</code>, en votre nom : il pousse ses branches, ouvre des <strong>pull / merge requests</strong>, suit la CI, lit les journaux et répond aux revues.</li>
-        <li>Pour la branche par défaut ou une branche protégée, une fusion ou une suppression de branche, il crée une <strong>demande d’approbation</strong> : vérifiez l’opération exacte dans l’onglet <strong>Approbations</strong>. Une approbation ne sert qu’une fois ; si la branche a changé depuis, une nouvelle demande est nécessaire.</li>
+        <li>Pour la branche par défaut ou une branche protégée, une fusion ou une suppression de branche, il crée une <strong>demande d’approbation</strong>, affichée dans la conversation sous son message : vérifiez l’opération exacte (commits, diff), puis <strong>Approuver</strong> ou <strong>Refuser</strong>. Une approbation ne sert qu’une fois ; si la branche a changé depuis, une nouvelle demande est nécessaire.</li>
       </ol>
       <div class="callout"><p>Votre jeton GitHub / GitLab n’entre jamais dans la sandbox : la plateforme l’ajoute au passage. Les réglages du dépôt, les accès et les clés ou jetons durables restent hors de portée de l’agent. Chaque écriture de Pi sur une forge est journalisée.</p></div>
 

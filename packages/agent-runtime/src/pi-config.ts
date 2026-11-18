@@ -49,6 +49,13 @@ export function buildModelsJson(gatewayBaseUrl: string, models: PiModelConfig[])
  */
 export const PI_KEEP_RECENT_TOKENS = 20_000;
 
+/**
+ * Marge que Pi garde libre dans la fenêtre de contexte : il compacte automatiquement à la fin d'un
+ * tour dès que le contexte dépasse `fenêtre − marge`. Fixée explicitement pour que la plateforme
+ * sache quand attendre cette compaction avant de clore le run.
+ */
+export const PI_RESERVE_TOKENS = 16_384;
+
 export function buildSettingsJson(defaultModel: string): string {
   return JSON.stringify(
     {
@@ -60,7 +67,7 @@ export function buildSettingsJson(defaultModel: string): string {
       steeringMode: 'one-at-a-time',
       followUpMode: 'one-at-a-time',
       sessionDir: '/workspace-state/pi-sessions',
-      compaction: { keepRecentTokens: PI_KEEP_RECENT_TOKENS },
+      compaction: { keepRecentTokens: PI_KEEP_RECENT_TOKENS, reserveTokens: PI_RESERVE_TOKENS },
     },
     null,
     2,

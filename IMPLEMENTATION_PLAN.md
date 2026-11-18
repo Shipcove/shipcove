@@ -115,3 +115,8 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
 - 2026-11-18 : outil Pi `share_files` (fichiers proposés au téléchargement : copie prise par le
   worker depuis /workspace ou /tmp, secrets masqués dans les fichiers texte, cartes dans la
   conversation, téléchargement en lecture partagée via `/workspaces/:id/agent-files/:id`).
+- 2026-11-18 : panneau latéral simplifié (onglets Modifications et Approbations retirés) : onglet
+  Git = branche de travail (sélecteur, suit Pi ; changement par l'utilisateur noté dans le fil et
+  signalé à Pi) + git diff vs HEAD ; approbations Git dans la conversation, sous l'appel d'outil de
+  Pi ; mention « Co-Authored-By: Shipcove » sur chaque commit (hooks globaux de la sandbox relayés
+  vers ceux du dépôt, consigne à Pi ; adresse réglable `git.coAuthorEmail`).

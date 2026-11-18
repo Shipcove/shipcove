@@ -27,6 +27,7 @@ import { isUniqueViolation } from '@cap/server-core';
 import { LeaseService } from '@cap/storage';
 import type { WorkerEnv } from '../env.js';
 import { CheckpointService } from './checkpoint.service.js';
+import { GIT_HOOKS_DIR, coAuthorTrailer, gitHookFiles } from './git-hooks.js';
 import { SkillsMaterializer } from '../mcp/skills-materializer.service.js';
 
 export interface ActiveSandbox {
@@ -382,12 +383,16 @@ export class SandboxManager {
     }));
     const [owner] = await this.db.select({ name: users.displayName, email: users.email }).from(users).where(eq(users.id, ws.ownerId));
     const gw = this.env.GATEWAY_INTERNAL_URL.replace(/\/$/, '');
+    const trailer = await this.commitTrailer();
     const gitconfig = [
       '[user]',
       `\tname = ${owner.name.replace(/[\n\r]/g, ' ')}`,
       `\temail = ${owner.email}`,
       `[http "${gw}/git/"]`,
       `\textraHeader = Authorization: Bearer ${sb.runToken}`,
+      // Hooks de la plateforme (mention de co-auteur), relayés vers ceux du dépôt.
+      '[core]',
+      `\thooksPath = ${GIT_HOOKS_DIR}`,
       // Forges (ADR 0013) : le jeton de run, remplacé par la gateway par le jeton OAuth.
       '[credential]',
       '\thelper =',
@@ -399,6 +404,7 @@ export class SandboxManager {
       { path: 'home/agent/.pi/agent/models.json', content: buildModelsJson(`${gw}/llm/v1`, piModels) },
       { path: 'home/agent/.pi/agent/settings.json', content: buildSettingsJson(def?.litellmModel ?? '') },
       { path: 'home/agent/.gitconfig', content: gitconfig, mode: 0o600 },
+      ...gitHookFiles(trailer),
       { path: 'home/agent/.config/glab-cli/config.yml', content: await this.glabConfig(sb, ws.ownerId), mode: 0o600 },
       { path: CA_FILE.slice(1), content: caPem ?? '', mode: 0o644 },
       ...(await this.skills.files(ws)),
@@ -410,6 +416,11 @@ export class SandboxManager {
   }
 
   /** Écrit des fichiers via un flux tar (sans shell ni interpolation). */
+  /** Mention de co-auteur ajoutée aux commits de la sandbox (réglage `git.coAuthorEmail`). */
+  async commitTrailer(): Promise<string | null> {
+    return coAuthorTrailer((await this.settings.section('git')).coAuthorEmail);
+  }
+
   async writeFiles(handle: SandboxHandle, files: Array<{ path: string; content: string | Buffer; mode?: number }>): Promise<void> {
     const pack = tar.pack();
     const proc = await this.provider.exec(handle, ['tar', '-x', '-f', '-', '-C', '/', '--no-same-owner'], { stdin: pack.pipe(new PassThrough()) });

@@ -1,56 +1,52 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
-import type { GitStatusDto } from '@cap/contracts';
-import { Api, idempotencyKey } from '../../core/api.service';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, output, signal, untracked } from '@angular/core';
+import type { GitBranchesDto } from '@cap/contracts';
+import { Api } from '../../core/api.service';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
+import { ChangesPanel } from './changes-panel';
 import { WorkspaceStore } from './workspace.store';
 
-/** Statut Git et opérations (les publications passent par une approbation). */
+/**
+ * Onglet Git : branche de travail (sélecteur, suit les changements de branche faits par Pi) et
+ * git diff du répertoire de travail par rapport à HEAD, fichier par fichier. Le reste (commits,
+ * push, PR…) se fait en conversation avec Pi.
+ */
 @Component({
   selector: 'cap-git-panel',
-  imports: [FormsModule, Icon],
+  imports: [Icon, ChangesPanel],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="h-full space-y-4 overflow-y-auto p-4 text-sm">
-      <div class="flex items-center gap-2">
-        <button class="btn-secondary !py-1" (click)="load()"><cap-icon name="refresh" [size]="13" /> Statut</button>
-        <button class="btn-secondary !py-1" (click)="op({ action: 'fetch' })" [disabled]="busy()">Fetch</button>
-        <button class="btn-secondary !py-1" (click)="op({ action: 'pull' })" [disabled]="busy()">Pull (ff-only)</button>
-      </div>
-      @if (status(); as s) {
-        @if (!s.available) {
-          <p class="text-stone-500">Statut indisponible : démarrez le workspace (ou le projet n’a pas de dépôt).</p>
+    <div class="flex h-full flex-col">
+      @if (store.isOwner()) {
+      <div class="flex items-center gap-2 border-b border-stone-200 px-3 py-2 dark:border-stone-800">
+        <cap-icon name="git" [size]="14" class="shrink-0 text-stone-500" />
+        @if (branches(); as b) {
+          @if (!b.available) {
+            <span class="text-xs text-stone-500">Branche indisponible : démarrez la conversation (ou rattachez un dépôt).</span>
+          } @else {
+            <label class="sr-only" for="git-branch">Branche de travail</label>
+            <select id="git-branch" class="input !w-auto max-w-full min-w-0 flex-1 !py-1 font-mono text-xs" [value]="b.current ?? ''" (change)="checkout($event)"
+              [disabled]="switching() || !!store.activeRun()" [title]="store.activeRun() ? 'Disponible quand Pi a terminé sa réponse' : 'Changer de branche de travail'">
+              @if (!b.current) { <option value="" disabled>HEAD détaché</option> }
+              <optgroup label="Branches locales">
+                @for (br of b.local; track br.name) { <option [value]="br.name">{{ br.name }}</option> }
+              </optgroup>
+              @if (b.remote.length) {
+                <optgroup label="Branches distantes (origin)">
+                  @for (br of b.remote; track br.name) { <option [value]="br.name">{{ br.name }}</option> }
+                </optgroup>
+              }
+            </select>
+            @if (switching()) { <span class="h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent-500" aria-label="Changement de branche en cours"></span> }
+          }
         } @else {
-          <div class="card p-3">
-            <div class="flex items-center gap-2"><cap-icon name="git" [size]="14" /><span class="font-mono">{{ s.branch }}</span>
-              @if (s.upstream) { <span class="text-xs text-stone-500">→ {{ s.upstream }} (↑{{ s.ahead }} ↓{{ s.behind }})</span> }</div>
-            <div class="mt-2 grid grid-cols-2 gap-2 text-xs">
-              <div>Indexés : {{ s.staged.length }}</div><div>Modifiés : {{ s.unstaged.length }}</div>
-              <div>Non suivis : {{ s.untracked.length }}</div><div [class.text-red-600]="s.conflicted.length">Conflits : {{ s.conflicted.length }}</div>
-            </div>
-          </div>
+          <span class="text-xs text-stone-500">Chargement…</span>
         }
+      </div>
       }
-      <form class="card space-y-2 p-3" (ngSubmit)="push()">
-        <div class="font-medium">Publier une branche</div>
-        <p class="text-xs text-stone-500">Le push est exécuté par la plateforme après votre approbation explicite (commits et diff affichés).</p>
-        <div class="grid grid-cols-2 gap-2">
-          <input class="input !py-1" name="local" placeholder="Branche locale" [(ngModel)]="local" required />
-          <input class="input !py-1" name="remote" placeholder="Branche distante (idem)" [(ngModel)]="remote" />
-        </div>
-        <button class="btn-secondary !py-1" [disabled]="busy() || !local">Demander le push</button>
-      </form>
-      <form class="card space-y-2 p-3" (ngSubmit)="pr()">
-        <div class="font-medium">Pull request / Merge request</div>
-        <div class="grid grid-cols-2 gap-2">
-          <input class="input !py-1" name="src" placeholder="Branche source" [(ngModel)]="source" required />
-          <input class="input !py-1" name="tgt" placeholder="Branche cible" [(ngModel)]="target" required />
-        </div>
-        <input class="input !py-1" name="title" placeholder="Titre" [(ngModel)]="title" required />
-        <textarea class="input" rows="3" name="body" placeholder="Description" [(ngModel)]="body"></textarea>
-        <button class="btn-secondary !py-1" [disabled]="busy() || !source || !target || !title">Demander la création</button>
-      </form>
+      <div class="min-h-0 flex-1">
+        <cap-changes-panel fixedScope="git_head" [refresh]="refresh()" (openFile)="openFile.emit($event)" />
+      </div>
     </div>
   `,
   host: { class: 'block h-full' },
@@ -58,47 +54,59 @@ import { WorkspaceStore } from './workspace.store';
 export class GitPanel {
   private readonly api = inject(Api);
   private readonly toast = inject(ToastService);
-  private readonly store = inject(WorkspaceStore);
-  protected readonly status = signal<GitStatusDto | null>(null);
-  protected readonly busy = signal(false);
-  protected local = '';
-  protected remote = '';
-  protected source = '';
-  protected target = 'main';
-  protected title = '';
-  protected body = '';
+  protected readonly store = inject(WorkspaceStore);
+  readonly openFile = output<string>();
+  protected readonly branches = signal<GitBranchesDto | null>(null);
+  protected readonly switching = signal(false);
+  protected readonly refresh = signal(0);
+  private readonly workspaceId = computed(() => this.store.workspace()?.id ?? null);
+  /** Sandbox démarrée / arrêtée : la branche devient (in)disponible. */
+  private readonly sandboxStatus = computed(() => this.store.workspace()?.status ?? null);
+  /** Fin d'un run : Pi a pu changer de branche. */
+  private readonly runKey = computed(() => this.store.activeRun()?.id ?? null);
+
+  constructor() {
+    effect(() => {
+      // Un `git switch` de Pi modifie des fichiers (checkpoint → filesVersion) ; on relit la branche.
+      this.store.filesVersion();
+      this.sandboxStatus();
+      this.runKey();
+      if (this.workspaceId() && this.store.isOwner()) untracked(() => void this.load());
+    });
+  }
+
+  private loading: Promise<void> | null = null;
 
   async load(): Promise<void> {
-    try {
-      this.status.set(await this.api.get<GitStatusDto>(`/workspaces/${this.store.workspace()!.id}/git/status`));
-      const s = this.status();
-      if (s?.branch && !this.local) {
-        this.local = s.branch;
-        this.source = s.branch;
+    if (this.loading) return this.loading;
+    this.loading = (async () => {
+      try {
+        this.branches.set(await this.api.get<GitBranchesDto>(`/workspaces/${this.workspaceId()}/git/branches`));
+      } catch {
+        this.branches.set({ available: false, current: null, local: [], remote: [] });
+      } finally {
+        this.loading = null;
       }
-    } catch (err) {
-      this.toast.error(err);
-    }
+    })();
+    return this.loading;
   }
 
-  protected async op(body: Record<string, unknown>): Promise<void> {
-    this.busy.set(true);
+  protected async checkout(ev: Event): Promise<void> {
+    const select = ev.target as HTMLSelectElement;
+    const branch = select.value;
+    const previous = this.branches()?.current ?? '';
+    if (!branch || branch === previous) return;
+    this.switching.set(true);
     try {
-      const r = await this.api.post<{ ok?: boolean; output?: string; summary?: string }>(`/workspaces/${this.store.workspace()!.id}/git/operations`, body, { 'Idempotency-Key': idempotencyKey() });
-      this.toast.show(r.summary ? `Approbation demandée : ${r.summary}` : r.output || 'Terminé', r.ok === false ? 'error' : 'success');
-      await this.store.loadApprovals();
-      await this.load();
+      await this.api.post(`/workspaces/${this.workspaceId()}/git/checkout`, { branch });
+      this.toast.show(`Branche de travail : ${branch}`, 'success');
     } catch (err) {
+      select.value = previous;
       this.toast.error(err);
     } finally {
-      this.busy.set(false);
+      this.switching.set(false);
+      await this.load();
+      this.refresh.update((v) => v + 1);
     }
-  }
-
-  protected push() {
-    return this.op({ action: 'push', localBranch: this.local, remoteBranch: this.remote || this.local, force: false });
-  }
-  protected pr() {
-    return this.op({ action: 'create_pull_request', sourceBranch: this.source, targetBranch: this.target, title: this.title, body: this.body, draft: false });
   }
 }

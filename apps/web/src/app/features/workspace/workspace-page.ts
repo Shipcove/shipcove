@@ -7,8 +7,6 @@ import { ConfirmService, deleteConversationDialog } from '../../core/confirm.ser
 import { ToastService } from '../../core/toast.service';
 import { LayoutService } from '../../core/layout.service';
 import { Icon } from '../../shared/icon';
-import { ApprovalsPanel } from './approvals-panel';
-import { ChangesPanel } from './changes-panel';
 import { Composer } from './composer';
 import { Conversation } from './conversation';
 import { FilesPane } from './files-pane';
@@ -17,17 +15,17 @@ import { PreviewsPanel } from './previews-panel';
 import { ShareDialog } from './share-dialog';
 import { WorkspaceStore } from './workspace.store';
 
-type Tab = 'changes' | 'git' | 'approvals' | 'previews';
+type Tab = 'git' | 'previews';
 /** Volet de droite : un seul à la fois (panneau latéral ou explorateur de fichiers). */
 type RightPane = 'panel' | 'files' | null;
 
 /**
  * Écran workspace (SPEC §16.1 + PO-1) : conversation centrale et un volet droit exclusif —
- * panneau latéral (Modifications / Git / Approbations / Previews) ou explorateur de fichiers.
+ * panneau latéral (Git / Previews) ou explorateur de fichiers.
  */
 @Component({
   selector: 'cap-workspace-page',
-  imports: [FormsModule, Icon, Conversation, Composer, FilesPane, ChangesPanel, GitPanel, ApprovalsPanel, PreviewsPanel, ShareDialog],
+  imports: [FormsModule, Icon, Conversation, Composer, FilesPane, GitPanel, PreviewsPanel, ShareDialog],
   providers: [WorkspaceStore],
   host: { class: 'block h-full', '(document:keydown.escape)': 'closeOverlay()' },
   styles: `
@@ -126,9 +124,7 @@ type RightPane = 'panel' | 'files' | null;
               </div>
               <div class="min-h-0 flex-1">
                 @switch (tab()) {
-                  @case ('changes') { <cap-changes-panel (openFile)="openFile($event)" /> }
-                  @case ('git') { <cap-git-panel /> }
-                  @case ('approvals') { <cap-approvals-panel /> }
+                  @case ('git') { <cap-git-panel (openFile)="openFile($event)" /> }
                   @case ('previews') { <cap-previews-panel /> }
                 }
               </div>
@@ -151,7 +147,7 @@ export class WorkspacePage implements OnDestroy {
   /** Volet ouvert d'office seulement s'il tient à côté de la conversation. */
   protected readonly pane = signal<RightPane>(this.layout.wide() ? 'panel' : null);
   protected readonly filesExpanded = signal(false);
-  protected readonly tab = signal<Tab>('changes');
+  protected readonly tab = signal<Tab>('git');
   protected readonly filePath = signal<string | null>(null);
   protected readonly openFiles = signal<string[]>([]);
   protected readonly sharing = signal(false);
@@ -166,14 +162,8 @@ export class WorkspacePage implements OnDestroy {
   protected readonly tabs = computed(() => {
     const owner = this.store.isOwner();
     return [
-      { id: 'changes' as Tab, label: 'Modifications', icon: 'diff', count: 0 },
-      ...(owner
-        ? [
-            { id: 'git' as Tab, label: 'Git', icon: 'git', count: 0 },
-            { id: 'approvals' as Tab, label: 'Approbations', icon: 'shield', count: this.store.pendingApprovals().length },
-            { id: 'previews' as Tab, label: 'Previews', icon: 'globe', count: 0 },
-          ]
-        : []),
+      { id: 'git' as Tab, label: 'Git', icon: 'git', count: 0 },
+      ...(owner ? [{ id: 'previews' as Tab, label: 'Previews', icon: 'globe', count: 0 }] : []),
     ];
   });
 
@@ -203,11 +193,14 @@ export class WorkspacePage implements OnDestroy {
       const id = this.workspaceId();
       untracked(() => void this.store.open(id).catch((err) => this.error.set(err?.message ?? 'Conversation introuvable')));
     });
+    // Lien de notification « approbation requise » : la demande est dans la conversation, sous
+    // l'appel d'outil de Pi ; on y fait défiler une fois les demandes chargées.
+    let scrolledTo: string | null = null;
     effect(() => {
-      if (this.approval()) {
-        this.tab.set('approvals');
-        this.pane.set('panel');
-      }
+      const id = this.approval();
+      if (!id || scrolledTo === id || !this.store.approvals().some((a) => a.id === id)) return;
+      scrolledTo = id;
+      setTimeout(() => document.getElementById(`approval-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
     });
   }
 

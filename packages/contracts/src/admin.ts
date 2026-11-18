@@ -153,6 +153,12 @@ export const PlatformSettingsSchema = z.object({
       insecureHttpHosts: z.array(z.string().regex(/^[a-z0-9.-]+(:\d+)?$/i).max(255)).max(20).default([]),
       /** Rattachement par jeton d'accès personnel (désactivé : OAuth via les forges configurées). */
       allowPersonalTokens: z.boolean().default(false),
+      /**
+       * Adresse de la mention « Co-Authored-By: Shipcove <adresse> » ajoutée à chaque commit fait
+       * dans les sandboxes (vide : aucune mention). Elle ne doit correspondre à aucun compte d'une
+       * forge, qui lui attribuerait ces commits.
+       */
+      coAuthorEmail: z.union([z.literal(''), z.email().max(254)]).default('noreply@shipcove.dev'),
     })
     .prefault({}),
   conversations: z

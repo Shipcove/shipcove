@@ -11,9 +11,9 @@ import {
   workspaces,
   type Database,
 } from '@cap/database';
-import { PI_KEEP_RECENT_TOKENS, PI_PROVIDER, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
+import { PI_KEEP_RECENT_TOKENS, PI_PROVIDER, PI_RESERVE_TOKENS, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
 import { DB, ENV, EnvironmentService, EventsService, NotificationService, modelAllowedFor, ObjectStorage, PgNotifier, QuotaService, RunQueueService, StreamScrubber, redactString, scrubDeep, scrubSecrets, type NewEvent } from '@cap/server-core';
-import type { ToolFileDto } from '@cap/contracts';
+import { contextPercent, type ToolFileDto } from '@cap/contracts';
 import { toUserPath } from '@cap/storage';
 import { execCollect } from '@cap/sandbox';
 import { SKILLS_DIR, expandSkillCommands } from './skill-expansion.js';
@@ -24,6 +24,7 @@ import { SandboxManager, type ActiveSandbox } from '../sandbox/sandbox-manager.s
 import { SetupService } from '../sandbox/setup.service.js';
 import { NO_REPOSITORY_PROMPT, RepositoryAttachService } from '../sandbox/repository-attach.service.js';
 import { ScreenshotsService } from '../sandbox/screenshots.service.js';
+import { coAuthorPrompt } from '../sandbox/git-hooks.js';
 
 /** Outils après lesquels on recherche de nouvelles captures d'écran. */
 const SCREENSHOT_TOOLS = new Set(['bash', 'browser_screenshot']);
@@ -64,6 +65,14 @@ interface RunContext {
   scrubbers: Map<string, StreamScrubber>;
   /** Marqueur de compaction déjà inscrit dans le fil pour ce run. */
   compactionMarked?: boolean;
+  /** Compaction de Pi en cours. */
+  compacting?: boolean;
+  /**
+   * Fin de tour reçue, run pas encore clos : Pi lance sa compaction automatique APRÈS avoir signalé
+   * la fin du tour. Clore aussitôt le fermerait en pleine compaction (contexte laissé au-delà de la
+   * fenêtre jusqu'au message suivant).
+   */
+  endPending?: { error: string | null; timer: NodeJS.Timeout } | null;
 }
 
 /**
@@ -83,6 +92,11 @@ export function nothingToCompact(error: string): string | null {
   if (/nothing to compact/i.test(error)) return 'Rien à compacter : la conversation est encore courte';
   return null;
 }
+
+/** Délai pour que Pi démarre sa compaction automatique après la fin d'un tour. */
+const COMPACTION_GRACE_MS = 5_000;
+/** Borne de sécurité : durée maximale d'attente d'une compaction automatique avant de clore le run. */
+const COMPACTION_MAX_WAIT_MS = 10 * 60_000;
 
 /** Commande shell qui clone un dépôt (git, gh, glab). */
 const CLONE_RE = /\b(?:git|gh\s+repo|glab\s+repo)\s+clone\b/;
@@ -136,6 +150,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     if (msg.action === 'interrupt') {
       ctx.interruptRequested = true;
       await ctx.runtime.abort();
+      // Tour déjà fini, run en attente de la compaction automatique (que `abort` n'arrête pas) : clos tout de suite.
+      if (ctx.endPending) this.finishRun(ctx, { error: ctx.endPending.error });
       return;
     }
     // Les messages « à la suite » passent par la file durable (RunQueueService), pas par Pi.
@@ -152,6 +168,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     if (r?.status === 'interrupting' && !ctx.interruptRequested) {
       ctx.interruptRequested = true;
       await ctx.runtime.abort();
+      if (ctx.endPending) this.finishRun(ctx, { error: ctx.endPending.error });
     }
   }
 
@@ -222,7 +239,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       skillDirs: [],
       plugins: await this.sandboxes.availablePlugins(sandbox),
       ...(planMode ? { tools: PLAN_MODE_TOOLS } : {}),
-      appendSystemPrompt: [planMode ? PLAN_MODE_PROMPT : null, ws.repositoryId ? null : NO_REPOSITORY_PROMPT].filter(Boolean).join('\n\n') || undefined,
+      appendSystemPrompt:
+        [planMode ? PLAN_MODE_PROMPT : null, ws.repositoryId ? null : NO_REPOSITORY_PROMPT, coAuthorPrompt(await this.sandboxes.commitTrailer().catch(() => null))].filter(Boolean).join('\n\n') || undefined,
     });
     // Variables et secrets du dépôt : processus de Pi (donc ses commandes) uniquement,
     // jamais écrits sur disque par la plateforme. Les variables de la plateforme l'emportent.
@@ -618,8 +636,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           this.push(ctx, { type: 'message.completed', runId: ctx.runId, data: { messageId: id, text: textEnd.text, stopReason: e.stopReason } });
           if (e.usage) {
             const stats = await ctx.runtime.sessionStats().catch(() => null);
-            const percent = stats?.contextTokens && stats.contextWindow ? Math.min(100, Math.round((stats.contextTokens / stats.contextWindow) * 100)) : null;
-            this.push(ctx, { type: 'usage.updated', runId: ctx.runId, data: { contextPercent: percent } });
+            this.push(ctx, { type: 'usage.updated', runId: ctx.runId, data: { contextPercent: contextPercent(stats?.contextTokens, stats?.contextWindow) } });
           }
           break;
         }
@@ -690,18 +707,44 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           // File interne de Pi (guidage) : non exposée, la file utilisateur est durable côté plateforme.
           break;
         case 'compaction_start':
+          ctx.compacting = true;
+          // Compaction automatique de fin de tour : le run reste ouvert jusqu'à sa fin (borne de sécurité).
+          if (ctx.endPending) this.armEnd(ctx, COMPACTION_MAX_WAIT_MS);
           this.push(ctx, { type: 'compaction.started', runId: ctx.runId, data: { reason: e.reason } });
           break;
         case 'compaction_end': {
+          ctx.compacting = false;
           const nothing = e.error ? nothingToCompact(e.error) : null;
           await this.compactionMarker(ctx, nothing ? { tokensBefore: null, summary: null, error: null, skipped: nothing } : { tokensBefore: e.tokensBefore, summary: e.summary, error: e.error });
+          // Jauge de contexte à jour (inconnue tant que le modèle n'a pas répondu après la compaction).
+          const stats = await ctx.runtime.sessionStats().catch(() => null);
+          this.push(ctx, { type: 'usage.updated', runId: ctx.runId, data: { contextPercent: contextPercent(stats?.contextTokens, stats?.contextWindow) } });
+          if (ctx.endPending) {
+            if (e.willRetry) {
+              // Contexte dépassé : Pi relance le tour après la compaction, une nouvelle fin de tour suivra.
+              clearTimeout(ctx.endPending.timer);
+              ctx.endPending = null;
+            } else {
+              this.finishRun(ctx, { error: ctx.endPending.error });
+            }
+          }
           break;
         }
-        case 'agent_end':
-          ctx.done({ error: e.error });
+        case 'agent_end': {
+          // Compaction automatique probable (contexte au-delà du seuil de Pi, ou erreur pouvant venir
+          // d'un dépassement) : le run attend qu'elle démarre, puis qu'elle se termine.
+          const stats = e.error ? null : await ctx.runtime.sessionStats().catch(() => null);
+          const likely = !!e.error || (stats?.contextTokens != null && !!stats.contextWindow && stats.contextTokens > stats.contextWindow - PI_RESERVE_TOKENS);
+          if (!likely && !ctx.compacting) {
+            this.finishRun(ctx, { error: e.error });
+            break;
+          }
+          ctx.endPending = { error: e.error, timer: setTimeout(() => undefined, 0) };
+          this.armEnd(ctx, ctx.compacting ? COMPACTION_MAX_WAIT_MS : COMPACTION_GRACE_MS);
           break;
+        }
         case 'process_exit':
-          ctx.done({ error: e.code === 0 ? null : `Pi s’est arrêté (code ${e.code}) : ${redactString(e.stderr.slice(-500))}` });
+          this.finishRun(ctx, { error: e.code === 0 ? null : `Pi s’est arrêté (code ${e.code}) : ${redactString(e.stderr.slice(-500))}` });
           break;
         default:
           break;
@@ -709,6 +752,24 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     } catch (err) {
       this.logger.error(`événement ${e.type} (${ctx.runId}) : ${(err as Error).message}`);
     }
+  }
+
+  /** Clôt le run (fin de tour, éventuellement après la compaction automatique de Pi). */
+  private finishRun(ctx: RunContext, result: { error: string | null }): void {
+    if (ctx.endPending) clearTimeout(ctx.endPending.timer);
+    ctx.endPending = null;
+    ctx.done(result);
+  }
+
+  /** (Ré)arme le délai au-delà duquel une fin de tour en attente clôt le run sans attendre davantage. */
+  private armEnd(ctx: RunContext, ms: number): void {
+    const pending = ctx.endPending;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pending.timer = setTimeout(() => {
+      // Compaction démarrée entre-temps : sa fin clôt le run (ou la borne de sécurité, réarmée au démarrage).
+      if (ctx.endPending === pending && (!ctx.compacting || ms === COMPACTION_MAX_WAIT_MS)) this.finishRun(ctx, { error: pending.error });
+    }, ms);
   }
 
   /** Checkpoint lié à un appel d'outil (appelé par l'extension puis, à défaut, sur fin d'outil). */

@@ -324,7 +324,8 @@ export class WorkspaceStore {
         this.quotaPaused.set(null);
         return;
       case 'usage.updated':
-        if (typeof d['contextPercent'] === 'number') this.contextPercent.set(d['contextPercent'] as number);
+        // `null` après une compaction : taille inconnue jusqu'à la prochaine réponse du modèle.
+        if (typeof d['contextPercent'] === 'number' || d['contextPercent'] === null) this.contextPercent.set(d['contextPercent'] as number | null);
         void this.refreshUsage();
         return;
       case 'approval.required':
