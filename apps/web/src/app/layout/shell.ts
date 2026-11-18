@@ -10,6 +10,7 @@ import { ThemeService } from '../core/theme.service';
 import { ToastService } from '../core/toast.service';
 import { ConfirmService, deleteConversationDialog, leaveShareDialog } from '../core/confirm.service';
 import { Icon } from '../shared/icon';
+import { SourceFooter } from '../shared/source-footer';
 import { LayoutService } from '../core/layout.service';
 
 interface NavItem {
@@ -26,7 +27,7 @@ const COLLAPSED_KEY = 'cap.sidebar.collapsedRepos';
  */
 @Component({
   selector: 'cap-shell',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, NgTemplateOutlet, Icon],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, NgTemplateOutlet, Icon, SourceFooter],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '(document:keydown.escape)': 'layout.drawerOpen.set(false)' },
   styles: `
@@ -108,6 +109,7 @@ const COLLAPSED_KEY = 'cap.sidebar.collapsedRepos';
             <button class="btn-ghost !p-1.5" (click)="toggleTheme()" [attr.aria-label]="theme.isDark() ? 'Thème clair' : 'Thème sombre'"><cap-icon [name]="theme.isDark() ? 'sun' : 'moon'" /></button>
             <button class="btn-ghost !p-1.5" (click)="auth.logout()" aria-label="Se déconnecter"><cap-icon name="logout" /></button>
           </div>
+          <div class="px-3 pb-2"><cap-source-footer /></div>
         </aside>
       } @else if (layout.desktop()) {
         <button class="btn-ghost fixed top-2 left-2 z-30 !p-1.5" (click)="layout.setCollapsed(false)" aria-label="Afficher la navigation"><cap-icon name="sidebar" /></button>
