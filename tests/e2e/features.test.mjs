@@ -954,12 +954,15 @@ test('onglet Git : branches, changement de branche (refusé pendant un run, sign
   const branches = await owner.get(`/workspaces/${ws.id}/git/branches`);
   assert.equal(branches.status, 200);
   assert.equal(branches.body.current, 'feature');
+  // En-tête : branche enregistrée et diffusée après le `git switch` de Pi.
+  assert.equal((await owner.get(`/workspaces/${ws.id}`)).body.branch, 'feature');
   assert.deepEqual(branches.body.local.map((b) => b.name).sort(), ['feature', 'main']);
 
   // Changement par l'utilisateur : nom invalide refusé, puis note dans le fil.
   assert.equal((await owner.post(`/workspaces/${ws.id}/git/checkout`, { branch: '--orphan' })).status, 400);
   assert.equal((await owner.post(`/workspaces/${ws.id}/git/checkout`, { branch: 'main' })).status, 200);
   assert.equal((await owner.get(`/workspaces/${ws.id}/git/branches`)).body.current, 'main');
+  assert.equal((await owner.get(`/workspaces/${ws.id}`)).body.branch, 'main');
   const conv = await owner.get(`/workspaces/${ws.id}/conversation`);
   assert.ok(conv.body.messages.some((m) => m.role === 'system' && m.meta?.kind === 'branch_switched' && m.text === 'Branche de travail : feature → main'));
   // Réservé au propriétaire.

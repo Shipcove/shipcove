@@ -416,6 +416,24 @@ export class SandboxManager {
   }
 
   /** Écrit des fichiers via un flux tar (sans shell ni interpolation). */
+  /**
+   * Branche de travail : relue dans la sandbox (après une commande de Pi, en fin de run, après un
+   * changement par l'utilisateur) ; si elle a changé, enregistrée et diffusée (en-tête, onglet Git).
+   * HEAD détaché ou pas de dépôt : rien n'est changé.
+   */
+  async syncBranch(sb: ActiveSandbox): Promise<string | null> {
+    const r = await execCollect(this.provider, sb.handle, ['git', '-C', '/workspace', 'symbolic-ref', '--quiet', '--short', 'HEAD'], { timeoutMs: 10_000 });
+    const branch = r.exitCode === 0 ? r.stdout.toString('utf8').trim() : '';
+    if (!branch) return null;
+    const changed = await this.db
+      .update(workspaces)
+      .set({ branch })
+      .where(and(eq(workspaces.id, sb.workspaceId), sql`${workspaces.branch} is distinct from ${branch}`))
+      .returning({ id: workspaces.id });
+    if (changed.length) await this.events.emit(sb.workspaceId, 'workspace.branch', { branch });
+    return branch;
+  }
+
   /** Mention de co-auteur ajoutée aux commits de la sandbox (réglage `git.coAuthorEmail`). */
   async commitTrailer(): Promise<string | null> {
     return coAuthorTrailer((await this.settings.section('git')).coAuthorEmail);
@@ -441,12 +459,19 @@ export class SandboxManager {
     if (!ws.repositoryId) return; // conversation sans dépôt : répertoire vide
     const [repo] = await this.db.select().from(repositories).where(eq(repositories.id, ws.repositoryId));
     const url = `${this.env.GATEWAY_INTERNAL_URL.replace(/\/$/, '')}/git/${repo.id}.git`;
-    const branch = ws.branch ?? repo.defaultBranch;
-    const r = await execCollect(this.provider, sb.handle, ['git', 'clone', '--branch', branch, '--', url, '/workspace'], {
-      timeoutMs: 15 * 60_000,
-      env: { GIT_TERMINAL_PROMPT: '0' },
-      workdir: '/',
-    });
+    let branch = ws.branch ?? repo.defaultBranch;
+    const clone = (b: string) =>
+      execCollect(this.provider, sb.handle, ['git', 'clone', '--branch', b, '--', url, '/workspace'], {
+        timeoutMs: 15 * 60_000,
+        env: { GIT_TERMINAL_PROMPT: '0' },
+        workdir: '/',
+      });
+    let r = await clone(branch);
+    // Branche de travail enregistrée mais jamais poussée (créée par Pi) : branche par défaut.
+    if (r.exitCode !== 0 && branch !== repo.defaultBranch && /Remote branch .* not found/i.test(r.stderr.toString('utf8'))) {
+      branch = repo.defaultBranch;
+      r = await clone(branch);
+    }
     if (r.exitCode !== 0) {
       // Dépôt vide (aucune branche) : init locale avec le remote configuré.
       const msg = r.stderr.toString('utf8');
@@ -456,7 +481,7 @@ export class SandboxManager {
         throw new Error(`Clonage impossible : ${msg.replace(/Bearer \S+/g, 'Bearer [REDACTED]').slice(0, 500)}`);
       }
     }
-    if (!ws.branch) await this.db.update(workspaces).set({ branch }).where(eq(workspaces.id, ws.id));
+    if (ws.branch !== branch) await this.db.update(workspaces).set({ branch }).where(eq(workspaces.id, ws.id));
     await this.alignOrigin(sb, ws).catch((err) => this.logger.warn(`Remote origin : ${(err as Error).message}`));
   }
 

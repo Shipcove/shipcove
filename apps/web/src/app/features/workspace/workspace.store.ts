@@ -357,6 +357,13 @@ export class WorkspaceStore {
         this.bumpFiles();
         return;
       }
+      case 'workspace.branch': {
+        // Pi (git switch) ou l'utilisateur a changé de branche : en-tête, barre latérale, onglet Git.
+        const changes = { branch: d['branch'] as string };
+        this.workspace.update((w) => (w ? { ...w, ...changes } : w));
+        this.conversations.patch(e.workspaceId, changes);
+        return;
+      }
       case 'model.changed':
         this.workspace.update((w) => (w ? { ...w, modelId: d['modelId'] as string } : w));
         return;

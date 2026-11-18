@@ -181,6 +181,7 @@ export class SandboxRpcService implements OnApplicationBootstrap {
       triggerKey: `checkout:${p.userId}:${p.branch}:${Date.now()}`,
     });
     await this.sandboxes.touch(p.workspaceId);
+    await this.sandboxes.syncBranch(sb).catch(() => null);
     if (from !== p.branch) await this.branchNote(p.workspaceId, from, p.branch);
     return { ok: true, branch: p.branch, output };
   }
