@@ -70,8 +70,8 @@ describe('PiAgentRuntime', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(events).toEqual([
       { type: 'compaction_start', reason: 'manual' },
-      { type: 'compaction_end', tokensBefore: 12000, summary: 'Résumé', error: null },
-      { type: 'compaction_end', tokensBefore: null, summary: null, error: 'rien à compacter' },
+      { type: 'compaction_end', tokensBefore: 12000, summary: 'Résumé', error: null, willRetry: false },
+      { type: 'compaction_end', tokensBefore: null, summary: null, error: 'rien à compacter', willRetry: false },
     ]);
   });
 

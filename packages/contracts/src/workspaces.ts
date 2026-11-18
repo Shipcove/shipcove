@@ -296,3 +296,13 @@ export const RewindSchema = z
   .refine((v) => (v.runId ? 1 : 0) + (v.generation ? 1 : 0) === 1, 'runId ou generation requis');
 export type Rewind = z.infer<typeof RewindSchema>;
 
+
+/**
+ * Remplissage de la fenêtre de contexte, en %, borné à 0–100 ; `null` si inconnu (par ex. juste
+ * après une compaction, tant que le modèle n'a pas répondu). Pi peut dépasser la fenêtre déclarée
+ * pendant un long tour (il ne compacte qu'entre deux tours) : la jauge est alors pleine.
+ */
+export function contextPercent(tokens: number | null | undefined, window: number | null | undefined): number | null {
+  if (tokens == null || !window || window <= 0) return null;
+  return Math.max(0, Math.min(100, Math.round((tokens / window) * 100)));
+}

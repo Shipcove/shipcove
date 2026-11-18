@@ -6,6 +6,7 @@ import { z } from 'zod';
 import {
   CreateShareSchema,
   SendMessageSchema,
+  contextPercent,
   toAttachmentDto,
   type ConversationDto,
   type ConversationShareDto,
@@ -134,7 +135,7 @@ export class ConversationController {
       queued: await this.runQueue.list(conv.id),
       lastEventId,
       context: {
-        percent: conv.contextTokens && conv.contextWindow ? Math.round((conv.contextTokens / conv.contextWindow) * 100) : null,
+        percent: contextPercent(conv.contextTokens, conv.contextWindow),
       },
     };
   }
