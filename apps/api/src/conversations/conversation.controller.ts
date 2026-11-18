@@ -108,6 +108,7 @@ export class ConversationController {
           isError: c.isError,
           filesTouched: c.filesTouched,
           images: c.images,
+          files: c.files,
           startedAt: c.startedAt.toISOString(),
           completedAt: c.completedAt?.toISOString() ?? null,
           durationMs: c.durationMs,

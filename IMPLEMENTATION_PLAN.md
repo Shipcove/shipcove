@@ -112,3 +112,6 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
 - 2026-11-15 : interface (blocs de code et sorties d'outils colorés, explorateur sans boucle,
   arrêt d'un run, ouverture des previews et cookie vide dans la passerelle) ; plugin Pi `ask`
   (questions à choix dans la conversation, réponse rattachée à l'appel, mode Plan).
+- 2026-11-18 : outil Pi `share_files` (fichiers proposés au téléchargement : copie prise par le
+  worker depuis /workspace ou /tmp, secrets masqués dans les fichiers texte, cartes dans la
+  conversation, téléchargement en lecture partagée via `/workspaces/:id/agent-files/:id`).

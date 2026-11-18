@@ -127,6 +127,13 @@
       "when": 1794776725235,
       "tag": "0017_skills_simplify",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795001173522,
+      "tag": "0018_agent_shared_files",
+      "breakpoints": true
     }
   ]
 }

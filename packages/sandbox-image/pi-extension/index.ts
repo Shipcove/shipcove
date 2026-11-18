@@ -11,13 +11,15 @@
  *     checkpoint indépendant sur `tool_execution_end` : la sécurité ne dépend pas de cette extension.
  *  2. Outils plateforme pour les opérations Git distantes : ils créent des demandes d'approbation
  *     (push, PR/MR, merge, suppression de branche) exécutées hors sandbox après décision humaine.
- *  3. Pont MCP : outils MCP autorisés par la politique, relayés par le worker.
+ *  3. `share_files` : fichiers proposés au téléchargement dans la conversation (copiés par le worker).
+ *  4. Pont MCP : outils MCP autorisés par la politique, relayés par le worker.
  */
 import type { ExtensionAPI, ExtensionContext } from '@mariozechner/pi-coding-agent';
 import { Type } from 'typebox';
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
-const READ_ONLY_TOOLS = new Set(['read', 'grep', 'find', 'ls']);
+const READ_ONLY_TOOLS = new Set(['read', 'grep', 'find', 'ls', 'share_files']);
 
 async function rpc(ctx: ExtensionContext, method: string, params: unknown): Promise<{ ok: boolean; text: string; data?: unknown }> {
   const raw = await ctx.ui.input('__cap_rpc__', JSON.stringify({ method, params }));
@@ -148,7 +150,30 @@ export default function platformBridge(pi: ExtensionAPI) {
     },
   });
 
-  // 3. Services d'appui (bases de données, caches, files…) : catalogue approuvé par
+  // 3. Fichiers proposés au téléchargement : copiés par la plateforme et affichés dans la
+  //    conversation sous forme de cartes téléchargeables.
+  pi.registerTool({
+    name: 'share_files',
+    label: 'Fichiers à télécharger',
+    description:
+      'Offers files from the sandbox to the user as downloads, shown as file cards in the conversation (a copy is taken now: later changes are not reflected). ' +
+      `Paths are absolute or relative to the working directory, under /workspace or /tmp; at most 10 files. To share a folder, archive it first (zip or tar).`,
+    promptSnippet: 'Proposer des fichiers au téléchargement dans la conversation (README, rapport, export, archive…)',
+    promptGuidelines: [
+      'When you create a file that the user will want to take away — a README or other document, a report, an export (CSV, JSON), a generated image, a build or an archive — call share_files with it once it is finished, without being asked, so the user can download it from the conversation.',
+      'Do not share ordinary source files you edited as part of the task (the user sees them in the changes panel), only deliverables; share a file again after changing it substantially.',
+    ],
+    parameters: Type.Object({
+      paths: Type.Array(Type.String({ minLength: 1, maxLength: 1024 }), { minItems: 1, maxItems: 10, description: 'Fichiers à proposer (chemins absolus ou relatifs)' }),
+    }),
+    async execute(toolCallId, params, _signal, _onUpdate, ctx) {
+      const paths = params.paths.map((p) => resolve(process.cwd(), p));
+      const r = await rpc(ctx, 'files.share', { toolCallId, paths });
+      return reply(r);
+    },
+  });
+
+  // 4. Services d'appui (bases de données, caches, files…) : catalogue approuvé par
   //    l'administrateur ; Pi les lance lui-même quand il en a besoin, rien ne démarre sans lui.
   let catalog: Array<{ key: string; name: string; image: string; port: number | null; defaultEnv: Record<string, string>; maxMemoryMb: number }> = [];
   try {
@@ -191,7 +216,7 @@ export default function platformBridge(pi: ExtensionAPI) {
     });
   }
 
-  // 4. Pont MCP : la liste des outils autorisés est fournie par le worker au démarrage.
+  // 5. Pont MCP : la liste des outils autorisés est fournie par le worker au démarrage.
   let mcpTools: McpToolConfig[] = [];
   try {
     mcpTools = JSON.parse(readFileSync('/run/cap/mcp-tools.json', 'utf8')) as McpToolConfig[];

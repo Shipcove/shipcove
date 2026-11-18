@@ -14,6 +14,7 @@ import { SetupService } from './sandbox/setup.service.js';
 import { RepositoryAttachService } from './sandbox/repository-attach.service.js';
 import { ServicesService } from './sandbox/services.service.js';
 import { ScreenshotsService } from './sandbox/screenshots.service.js';
+import { AgentFilesService } from './sandbox/agent-files.service.js';
 import { SandboxRpcService } from './rpc/sandbox-rpc.service.js';
 import { EmailService } from './email/email.service.js';
 import { MaintenanceService } from './maintenance/maintenance.service.js';
@@ -35,6 +36,7 @@ export class WorkerModule {
         RepositoryAttachService,
         ServicesService,
         ScreenshotsService,
+        AgentFilesService,
         SandboxManager,
         GitBrokerService,
         McpBridgeService,

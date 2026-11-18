@@ -201,3 +201,36 @@ export class ScreenshotsController {
     res.send(buf);
   }
 }
+
+/**
+ * Fichiers proposés au téléchargement par Pi (outil `share_files`) : comme les captures, visibles
+ * par quiconque peut lire la conversation. Toujours servis en téléchargement, jamais interprétés
+ * par le navigateur (HTML, SVG… produits dans la sandbox).
+ */
+@ApiTags('attachments')
+@Controller('workspaces/:id/agent-files')
+export class AgentFilesController {
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    private readonly storage: ObjectStorage,
+    private readonly access: AccessService,
+  ) {}
+
+  @Get(':attachmentId')
+  async get(@Param('id', uuid) id: string, @Param('attachmentId', uuid) attachmentId: string, @CurrentUser() user: AuthUser, @Res() res: Response) {
+    await this.access.requireWorkspaceRead(user, id);
+    const [a] = await this.db
+      .select()
+      .from(attachments)
+      .where(and(eq(attachments.id, attachmentId), eq(attachments.workspaceId, id), eq(attachments.source, 'agent'), eq(attachments.status, 'ready'), isNull(attachments.deletedAt)));
+    if (!a) throw new AppError('not_found', 'Fichier introuvable');
+    const buf = await this.storage.getBuffer(this.storage.attachmentsBucket, a.storageKey);
+    if (!buf) throw new AppError('not_found', 'Fichier indisponible');
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(a.fileName)}`);
+    res.setHeader('Cache-Control', 'private, max-age=86400, immutable');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.send(buf);
+  }
+}
