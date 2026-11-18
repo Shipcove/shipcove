@@ -1,0 +1,113 @@
+{{- $name := printf "%s-worker" (include "shipcove.fullname" .) -}}
+{{- $gw := include "shipcove.gatewayHost" . -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+# Jeton monté : API Kubernetes (Pods des sandboxes) et, le cas échéant, authentification Vault.
+automountServiceAccountToken: true
+---
+# Droits du worker limités au namespace des sandboxes : Pods (sandboxes et services d'appui),
+# exécution interne, journaux, Secrets de registre des services, NetworkPolicies des services.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Values.sandbox.namespace }}
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [create, get, list, watch, delete, deletecollection]
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create, get]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create, update, delete, deletecollection]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [create, get, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Values.sandbox.namespace }}
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "shipcove.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  selector:
+    matchLabels: {{- include "shipcove.selector" (dict "ctx" . "component" "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "shipcove.selector" (dict "ctx" . "component" "worker") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $name }}
+      {{- include "shipcove.podDefaults" . | nindent 6 }}
+      # Fin propre des runs en cours (interruption, checkpoint) avant l'arrêt.
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: worker
+          image: {{ include "shipcove.image" (dict "ctx" . "name" "worker") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 3001 }
+          env:
+            {{- include "shipcove.commonEnv" (dict "ctx" . "component" "worker" "db" "worker") | nindent 12 }}
+            - name: PORT
+              value: "3001"
+            - name: SANDBOX_PROVIDER
+              value: kubernetes
+            - name: K8S_NAMESPACE
+              value: {{ .Values.sandbox.namespace | quote }}
+            - name: SANDBOX_IMAGE
+              value: {{ include "shipcove.sandboxImage" . | quote }}
+            {{- with .Values.sandbox.runtimeClassName }}
+            - name: K8S_RUNTIME_CLASS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.sandbox.imagePullSecrets }}
+            - name: K8S_IMAGE_PULL_SECRETS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.sandbox.nodeSelector }}
+            - name: K8S_NODE_SELECTOR
+              value: {{ toJson . | quote }}
+            {{- end }}
+            - name: GATEWAY_INTERNAL_URL
+              value: {{ printf "http://%s:8081" $gw | quote }}
+            - name: EGRESS_PROXY_URL
+              value: {{ printf "http://%s:3128" $gw | quote }}
+            - name: RUN_CONCURRENCY
+              value: {{ .Values.worker.runConcurrency | quote }}
+            - name: JOB_CONCURRENCY
+              value: {{ .Values.worker.jobConcurrency | quote }}
+            {{- with .Values.worker.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- include "shipcove.probes" (dict "path" "/health/live" "port" "http") | nindent 10 }}
+          securityContext: {{ toYaml .Values.securityContext | nindent 12 }}
+          resources: {{ toYaml .Values.worker.resources | nindent 12 }}
+          volumeMounts: {{- include "shipcove.commonMounts" (dict "ctx" .) | nindent 12 }}
+      volumes: {{- include "shipcove.commonVolumes" (dict "ctx" . "component" "worker" "tmp" "8Gi") | nindent 8 }}

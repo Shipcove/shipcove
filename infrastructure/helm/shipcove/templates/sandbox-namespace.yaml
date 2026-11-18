@@ -1,0 +1,94 @@
+{{- $ns := .Values.sandbox.namespace -}}
+{{- if .Values.sandbox.createNamespace }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $ns }}
+  labels:
+    {{- include "shipcove.labels" . | nindent 4 }}
+    # Sandboxes : profil `restricted`. Services d'appui (images officielles qui abandonnent root au
+    # démarrage, quelques capacités) : profil `baseline`, appliqué au namespace.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+  annotations:
+    helm.sh/resource-policy: keep
+---
+{{- end }}
+{{- with .Values.sandbox.quota }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: shipcove-sandboxes
+  namespace: {{ $ns }}
+  labels: {{- include "shipcove.labels" $ | nindent 4 }}
+spec:
+  hard: {{ toYaml . | nindent 4 }}
+---
+{{- end }}
+{{- if .Values.networkPolicies.enabled }}
+# Tout est interdit par défaut dans le namespace des sandboxes, entrées comme sorties.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: shipcove-default-deny
+  namespace: {{ $ns }}
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# Sandboxes : sorties vers la gateway (LLM, Git, proxy d'egress filtré), le DNS du cluster et leurs
+# propres services d'appui (ceux-ci n'acceptent que leur sandbox : politique créée par le worker).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: shipcove-sandbox-egress
+  namespace: {{ $ns }}
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/component: sandbox }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ .Release.Namespace }} }
+          podSelector:
+            matchLabels: {{- include "shipcove.selector" (dict "ctx" . "component" "gateway") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 8081 }
+        - { protocol: TCP, port: 3128 }
+    - to:
+        - namespaceSelector:
+            matchLabels: {{ toYaml .Values.networkPolicies.dns.namespaceSelector | nindent 14 }}
+          podSelector:
+            matchLabels: {{ toYaml .Values.networkPolicies.dns.podSelector | nindent 14 }}
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/component: service }
+---
+# Sandboxes : entrées depuis le proxy des previews uniquement (ports applicatifs ouverts par
+# l'utilisateur ; la liste blanche est appliquée par la preview).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: shipcove-sandbox-ingress
+  namespace: {{ $ns }}
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/component: sandbox }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ .Release.Namespace }} }
+          podSelector:
+            matchLabels: {{- include "shipcove.selector" (dict "ctx" . "component" "preview") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 1024, endPort: 65535 }
+{{- end }}

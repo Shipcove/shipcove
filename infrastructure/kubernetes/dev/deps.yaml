@@ -1,0 +1,189 @@
+# Dépendances de RECETTE pour Shipcove sur Kubernetes (kind) : PostgreSQL, Vault en mode dev,
+# Garage (S3), LiteLLM et un fournisseur LLM factice. Données éphémères, secrets de test :
+# JAMAIS en production (utiliser des services managés ou des charts dédiés, durcis).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shipcove-deps
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: postgres-init, namespace: shipcove-deps }
+data:
+  10-init.sql: |
+    CREATE DATABASE litellm;
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: postgres, namespace: shipcove-deps }
+spec:
+  selector: { matchLabels: { app: postgres } }
+  template:
+    metadata: { labels: { app: postgres } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18.7-alpine
+          env:
+            - { name: POSTGRES_USER, value: cap }
+            - { name: POSTGRES_PASSWORD, value: cap-dev-password }
+            - { name: POSTGRES_DB, value: cap }
+          ports: [{ containerPort: 5432 }]
+          readinessProbe: { exec: { command: [pg_isready, -U, cap, -d, cap] }, periodSeconds: 3 }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql }
+            - { name: init, mountPath: /docker-entrypoint-initdb.d }
+      volumes:
+        - { name: data, emptyDir: {} }
+        - { name: init, configMap: { name: postgres-init } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: postgres, namespace: shipcove-deps }
+spec: { selector: { app: postgres }, ports: [{ port: 5432 }] }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: vault, namespace: shipcove-deps }
+spec:
+  selector: { matchLabels: { app: vault } }
+  template:
+    metadata: { labels: { app: vault } }
+    spec:
+      containers:
+        - name: vault
+          image: hashicorp/vault:2.2.2
+          args: [server, -dev, -dev-listen-address=0.0.0.0:8200]
+          env:
+            - { name: VAULT_DEV_ROOT_TOKEN_ID, value: root }
+          ports: [{ containerPort: 8200 }]
+          readinessProbe: { httpGet: { path: /v1/sys/health, port: 8200 }, periodSeconds: 3 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: vault, namespace: shipcove-deps }
+spec: { selector: { app: vault }, ports: [{ port: 8200 }] }
+---
+apiVersion: v1
+kind: Secret
+metadata: { name: garage, namespace: shipcove-deps }
+stringData:
+  rpc_secret: 4f1d6d5a0b8e2c7f9a3b6c1d8e0f2a4b6c8d0e1f3a5b7c9d1e3f5a7b9c1d3e5f
+  admin_token: garage-dev-admin-token
+  metrics_token: garage-dev-metrics-token
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: garage, namespace: shipcove-deps }
+data:
+  garage.toml: |
+    metadata_dir = "/var/lib/garage/meta"
+    data_dir = "/var/lib/garage/data"
+    db_engine = "sqlite"
+    replication_factor = 1
+    rpc_bind_addr = "[::]:3901"
+    rpc_public_addr = "127.0.0.1:3901"
+    rpc_secret_file = "/secrets/rpc_secret"
+    [s3_api]
+    s3_region = "garage"
+    api_bind_addr = "[::]:3900"
+    root_domain = ".s3.garage.localhost"
+    [admin]
+    api_bind_addr = "[::]:3903"
+    admin_token_file = "/secrets/admin_token"
+    metrics_token_file = "/secrets/metrics_token"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: garage, namespace: shipcove-deps }
+spec:
+  selector: { matchLabels: { app: garage } }
+  template:
+    metadata: { labels: { app: garage } }
+    spec:
+      containers:
+        - name: garage
+          image: dxflrs/garage:v2.5.0
+          ports: [{ containerPort: 3900 }, { containerPort: 3903 }]
+          volumeMounts:
+            - { name: config, mountPath: /etc/garage.toml, subPath: garage.toml }
+            - { name: secrets, mountPath: /secrets }
+            - { name: meta, mountPath: /var/lib/garage/meta }
+            - { name: data, mountPath: /var/lib/garage/data }
+      volumes:
+        - { name: config, configMap: { name: garage } }
+        - { name: secrets, secret: { secretName: garage, defaultMode: 0600 } }
+        - { name: meta, emptyDir: {} }
+        - { name: data, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: garage, namespace: shipcove-deps }
+spec:
+  selector: { app: garage }
+  ports: [{ name: s3, port: 3900 }, { name: admin, port: 3903 }]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: litellm, namespace: shipcove-deps }
+data:
+  config.yaml: |
+    general_settings:
+      store_model_in_db: true
+      disable_spend_logs: false
+    litellm_settings:
+      drop_params: true
+      request_timeout: 600
+      num_retries: 0
+      telemetry: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: litellm, namespace: shipcove-deps }
+spec:
+  selector: { matchLabels: { app: litellm } }
+  template:
+    metadata: { labels: { app: litellm } }
+    spec:
+      containers:
+        - name: litellm
+          image: ghcr.io/berriai/litellm:v1.109.1
+          args: [--config, /app/config.yaml, --port, "4000"]
+          env:
+            - { name: DATABASE_URL, value: postgresql://cap:cap-dev-password@postgres:5432/litellm }
+            - { name: LITELLM_MASTER_KEY, value: sk-dev-master-key }
+            - { name: STORE_MODEL_IN_DB, value: "True" }
+            - { name: LITELLM_LOG, value: ERROR }
+            - { name: NO_DOCS, value: "True" }
+          ports: [{ containerPort: 4000 }]
+          readinessProbe: { httpGet: { path: /health/liveliness, port: 4000 }, periodSeconds: 5, failureThreshold: 60 }
+          volumeMounts: [{ name: config, mountPath: /app/config.yaml, subPath: config.yaml }]
+      volumes:
+        - { name: config, configMap: { name: litellm } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: litellm, namespace: shipcove-deps }
+spec: { selector: { app: litellm }, ports: [{ port: 4000 }] }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: mock-llm, namespace: shipcove-deps }
+spec:
+  selector: { matchLabels: { app: mock-llm } }
+  template:
+    metadata: { labels: { app: mock-llm } }
+    spec:
+      containers:
+        - name: mock-llm
+          image: node:26-bookworm-slim
+          command: [node, /app/server.mjs]
+          ports: [{ containerPort: 4010 }]
+          volumeMounts: [{ name: app, mountPath: /app }]
+      volumes:
+        - { name: app, configMap: { name: mock-llm } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: mock-llm, namespace: shipcove-deps }
+spec: { selector: { app: mock-llm }, ports: [{ port: 4010 }] }

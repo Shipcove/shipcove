@@ -1,0 +1,12 @@
+apiVersion: v2
+name: shipcove
+description: Shipcove — plateforme de développement assistée par agent (API, worker, gateway, previews, interface web) et ses sandboxes Kubernetes.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.29.0-0"
+license: AGPL-3.0-only
+home: https://github.com/Shipcove/shipcove
+sources:
+  - https://github.com/Shipcove/shipcove
+keywords: [ai, agent, sandbox, developer-platform]

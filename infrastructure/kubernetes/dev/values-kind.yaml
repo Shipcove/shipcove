@@ -1,0 +1,40 @@
+# Valeurs de recette (kind) : images locales, dépendances de deps.yaml, exposition par NodePort
+# (http://localhost:28080, previews http://<port>-<conversation>.preview.localhost:28090).
+image:
+  registry: ""
+  tag: 0.1.0
+  pullPolicy: Never
+publicUrl: http://localhost:28080
+preview:
+  domain: preview.localhost
+  scheme: http
+  publicPort: "28090"
+bootstrapAdmin:
+  existingSecret: shipcove-admin
+database:
+  existingSecret: shipcove-database
+vault:
+  address: http://vault.shipcove-deps.svc.cluster.local:8200
+s3:
+  endpoint: http://garage.shipcove-deps.svc.cluster.local:3900
+  region: garage
+litellm:
+  url: http://litellm.shipcove-deps.svc.cluster.local:4000
+vaultSetup:
+  enabled: true
+  tokenSecret: shipcove-vault-admin
+  infraSecret: shipcove-infra
+api:
+  replicas: 2
+  cookieSecure: false
+gateway:
+  replicas: 1
+web:
+  replicas: 1
+ingress:
+  enabled: false
+nodePorts:
+  web: 30080
+  preview: 30090
+sandbox:
+  image: shipcove-sandbox:0.1.0

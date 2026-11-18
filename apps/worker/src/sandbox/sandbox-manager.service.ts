@@ -72,7 +72,7 @@ export class SandboxManager {
     const noProxyHosts = [new URL(env.GATEWAY_INTERNAL_URL).hostname];
     this.provider =
       env.SANDBOX_PROVIDER === 'kubernetes'
-        ? new KubernetesSandboxProvider({ namespace: env.K8S_NAMESPACE, egressProxyUrl: env.EGRESS_PROXY_URL, noProxyHosts, runtimeClassName: env.K8S_RUNTIME_CLASS, inCluster: true })
+        ? new KubernetesSandboxProvider({ namespace: env.K8S_NAMESPACE, egressProxyUrl: env.EGRESS_PROXY_URL, noProxyHosts, runtimeClassName: env.K8S_RUNTIME_CLASS, imagePullSecrets: env.K8S_IMAGE_PULL_SECRETS, nodeSelector: env.K8S_NODE_SELECTOR, inCluster: true })
         : new DockerSandboxProvider({ socketPath: env.DOCKER_SOCKET, guard: env.DOCKER_GUARD_URL && env.DOCKER_GUARD_TOKEN ? { url: env.DOCKER_GUARD_URL, token: env.DOCKER_GUARD_TOKEN } : undefined, network: env.SANDBOX_NETWORK, egressProxyUrl: env.EGRESS_PROXY_URL, noProxyHosts, runtime: env.SANDBOX_RUNTIME });
   }
 

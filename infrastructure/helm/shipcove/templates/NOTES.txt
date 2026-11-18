@@ -1,0 +1,12 @@
+Shipcove {{ .Chart.AppVersion }} est installé dans le namespace {{ .Release.Namespace }}.
+
+  Application : {{ .Values.publicUrl }}
+  Previews    : {{ .Values.preview.scheme }}://<port>-<conversation>.{{ .Values.preview.domain }}
+  Sandboxes   : namespace {{ .Values.sandbox.namespace }}{{ if not .Values.networkPolicies.enabled }} — ATTENTION : NetworkPolicies désactivées, les sandboxes ne sont pas isolées{{ end }}
+
+Suivi :
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+  kubectl -n {{ .Values.sandbox.namespace }} get pods
+
+Le réseau du cluster doit appliquer les NetworkPolicies (Calico, Cilium, kindnet…) : sinon les
+sandboxes joignent tout le cluster. Voir docs/operations/kubernetes.md.

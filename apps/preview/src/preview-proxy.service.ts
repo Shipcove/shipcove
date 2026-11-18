@@ -124,7 +124,8 @@ export class PreviewProxyService implements OnModuleInit, OnModuleDestroy {
         res.writeHead(r.statusCode ?? 502, r.headers);
         r.pipe(res);
       });
-      up.on('error', () => {
+      up.on('error', (err: NodeJS.ErrnoException) => {
+        this.logger.warn(`Preview ${auth.ws}:${auth.port} → ${auth.target.host}:${auth.target.port} : ${err.code ?? err.message}`);
         if (!res.headersSent) res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Le serveur de l’application ne répond pas sur ce port');
         else res.end();
       });
