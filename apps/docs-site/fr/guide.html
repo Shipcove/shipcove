@@ -2,7 +2,7 @@
 <html lang="fr">
   <head>
     <title>Guide utilisateur</title>
-    <meta name="description" content="Travailler avec Pi : conversations, dépôts Git, file d'attente, mode Plan, modifications, retour en arrière, pièces jointes, Git, previews, partage et quotas." />
+    <meta name="description" content="Travailler avec Pi : conversations, dépôts Git, file d'attente, mode Plan, plan de tâches, onglet Git, retour en arrière, captures d'écran, fichiers à télécharger, approbations, previews, partage et quotas." />
   </head>
   <body>
     <main>
@@ -12,10 +12,11 @@
       <h2>Conversations</h2>
       <p>Tout part d’une <strong>conversation</strong>. La page d’accueil est une nouvelle conversation : écrivez votre demande et envoyez-la. Chaque conversation a ses fichiers, sa sandbox et son historique ; le partage du code entre conversations passe par Git.</p>
       <ul>
-        <li><strong>Dépôt Git facultatif</strong> : sous la zone de saisie, <em>Aucun dépôt</em> ouvre la liste des dépôts accessibles avec vos <a href="/git.html">connexions Git</a> (recherche incluse). Le dépôt est cloné sur sa branche par défaut, via la passerelle de la plateforme : aucun jeton n’entre dans la sandbox. Sans dépôt, Pi dispose d’une sandbox vide.</li>
+        <li><strong>Dépôt Git facultatif</strong> : sous la zone de saisie, <em>Aucun dépôt</em> ouvre la liste des dépôts accessibles avec vos <a href="git.html">connexions Git</a> (recherche incluse). Le dépôt est cloné sur sa branche par défaut, via la passerelle de la plateforme : aucun jeton n’entre dans la sandbox. Sans dépôt, Pi dispose d’une sandbox vide.</li>
         <li><strong>Titre automatique</strong> : généré à partir du premier message (par le modèle choisi par l’administrateur, sinon le début du message). Renommez-le depuis l’en-tête (icône crayon ou double-clic) : votre titre n’est plus jamais remplacé.</li>
         <li><strong>Barre latérale</strong> : les conversations sont regroupées par dépôt Git (groupes repliables, <em>+</em> pour démarrer une conversation dans ce dépôt), puis celles sans dépôt, classées par date (aujourd’hui, hier, 7 et 30 derniers jours, plus ancien).</li>
         <li>La sandbox démarre au premier message et s’arrête après une période d’inactivité (15 minutes par défaut). Ses fichiers et l’état de Pi sont restaurés au message suivant.</li>
+        <li><strong>En-tête</strong> : à droite, <em>Partager</em>, puis trois volets — l’<strong>explorateur de fichiers</strong>, le <strong>panneau</strong> (onglets Git et Previews) et le <strong>plan</strong> de Pi — dont un seul est ouvert à la fois, puis la suppression de la conversation.</li>
         <li>Une conversation peut être <strong>mise en veille</strong> depuis son en-tête, et <strong>supprimée</strong> depuis son en-tête ou la corbeille qui apparaît au survol dans la barre latérale. La suppression est <strong>définitive</strong> : une tâche en cours est interrompue et la file d’attente annulée, puis la sandbox et ses services, les sauvegardes (checkpoints et état de Pi), les fichiers, pièces jointes, captures et tout l’historique sont effacés. Seule la consommation reste comptée dans votre quota.</li>
       </ul>
 
@@ -26,6 +27,9 @@
       <ul>
         <li><strong>File d’attente</strong> : un message envoyé pendant une génération est mis en file et affiché au-dessus de la zone de saisie ; il est traité automatiquement à la fin de la tâche en cours.</li>
         <li><strong>Interrompre</strong> : le bouton carré, ou <kbd>Échap</kbd> deux fois de suite, arrête Pi proprement ; ce qui a été écrit est conservé.</li>
+        <li><strong>Durée</strong> : le temps écoulé depuis le début de la tâche s’affiche à côté de « Pi travaille… ».</li>
+        <li><strong>Défilement</strong> : la conversation suit le travail de Pi tant que vous êtes en bas. Remontez pour relire : elle ne vous ramène plus en bas, et un bouton <strong>↓</strong> au-dessus de la zone de saisie vous y renvoie. Envoyer un message ramène toujours en bas.</li>
+        <li><strong>Étapes</strong> : raisonnements et commandes consécutifs sont regroupés dans un bloc repliable ; une commande en échec est signalée par une croix rouge sur sa carte.</li>
       </ul>
       <h3>Zone de saisie</h3>
       <table>
@@ -33,7 +37,7 @@
         <tbody>
           <tr><td><strong>+</strong></td><td>Ajouter des fichiers ou des photos (<kbd>Ctrl</kbd>+<kbd>U</kbd>), commandes slash, connecteurs (MCP).</td></tr>
           <tr><td><strong>Modèle · effort</strong></td><td>Choix du modèle (parmi les modèles activés par l’administrateur) et du niveau de raisonnement.</td></tr>
-          <tr><td><strong>Mode</strong></td><td><em>Autonome</em> (par défaut) ou <em>Plan</em> : Pi n’a alors que des outils de lecture et propose un plan sans rien modifier.</td></tr>
+          <tr><td><strong>Mode</strong></td><td><em>Autonome</em> (par défaut) ou <em>Plan</em> : Pi n’a alors que des outils de lecture et rédige un plan d’implémentation sans rien modifier ; vous repassez en mode autonome pour qu’il l’exécute.</td></tr>
           <tr><td><strong>Anneau</strong></td><td>Utilisation de vos quotas en pourcentage (orange à partir de 70 %, rouge à partir de 90 %).</td></tr>
         </tbody>
       </table>
@@ -60,7 +64,7 @@
       <p>Glissez-déposez, collez ou ajoutez des fichiers (20 Mo et 10 fichiers par message par défaut). Les images sont transmises au modèle s’il les accepte ; les autres fichiers sont déposés dans la sandbox (<code>/workspace/.cap/attachments/…</code>, hors Git). Les exécutables, les archives dangereuses ou trop volumineuses une fois décompressées et les types incohérents sont refusés.</p>
 
       <h2>Services, environnement et dépendances</h2>
-      <p>Pi lance lui-même, quand il en a besoin, les services approuvés par l’administrateur (PostgreSQL, Redis, RabbitMQ…), joignables sur <code>localhost</code> dans la sandbox. Le script de démarrage des sandboxes (registres, miroirs, outils) est défini par l’administrateur de la plateforme : voir <a href="/environnement.html">Environnement et services</a>.</p>
+      <p>Pi lance lui-même, quand il en a besoin, les services approuvés par l’administrateur (PostgreSQL, Redis, RabbitMQ…), joignables sur <code>localhost</code> dans la sandbox. Le script de démarrage des sandboxes (registres, miroirs, outils) est défini par l’administrateur de la plateforme : voir <a href="environnement.html">Environnement et services</a>.</p>
 
       <h2>Git : publier le travail</h2>
       <ol>
@@ -71,7 +75,7 @@
       <div class="callout"><p>Votre jeton GitHub / GitLab n’entre jamais dans la sandbox : la plateforme l’ajoute au passage. Les réglages du dépôt, les accès et les clés ou jetons durables restent hors de portée de l’agent. Chaque écriture de Pi sur une forge est journalisée.</p></div>
 
       <h2>Plan de Pi</h2>
-      <p>Pour une tâche complexe, Pi établit un <strong>plan</strong> : la liste de ses étapes, tenue à jour pendant qu’il travaille. Le bouton <em>Plan</em>, à droite de <em>Partager</em>, ouvre ce plan à côté de la conversation : la tâche en cours est signalée (et une pastille apparaît sur le bouton), les tâches terminées sont cochées et barrées. Pour une demande simple, Pi n’en fait pas.</p>
+      <p>Pour une tâche complexe (trois étapes ou plus, plusieurs fichiers à modifier), Pi établit un <strong>plan</strong> : la liste de ses étapes, tenue à jour pendant qu’il travaille. Le bouton <em>Plan</em> de l’en-tête ouvre ce plan à côté de la conversation : la tâche en cours est signalée (et une pastille apparaît sur le bouton), les tâches terminées sont cochées et barrées, un compteur indique l’avancement. Pour une demande simple, Pi n’en fait pas. À ne pas confondre avec le <em>mode Plan</em>, où Pi prépare un plan sans rien modifier.</p>
 
       <h2>Questions de Pi</h2>
       <p>Quand une décision vous revient (périmètre, choix techniques, compromis), Pi vous pose ses questions sous forme de <strong>formulaire</strong> dans la conversation : choix unique ou multiple, option recommandée signalée, réponse libre « Autre ». <strong>Valider ces choix</strong> envoie vos réponses et Pi reprend. Il s’arrête en attendant : la sandbox peut se mettre en veille, rien n’expire. Les questions sont aussi possibles en mode Plan.</p>
@@ -83,7 +87,7 @@
       <p>Quand Pi produit un livrable — un README, un rapport, un export CSV, une image, une archive… — il le propose au téléchargement : une <strong>carte par fichier</strong> s’affiche dans la conversation (nom, type, taille), cliquez pour le télécharger. Le fichier est copié au moment où Pi le partage : s’il le modifie ensuite, il le partage à nouveau. Vous pouvez aussi simplement lui demander « donne-moi le fichier X ». Les personnes avec qui la conversation est partagée peuvent aussi télécharger ces fichiers.</p>
 
       <h2>Previews</h2>
-      <p>Lorsque Pi lance un serveur (port 3000, 5173…), ouvrez-le depuis l’onglet <strong>Previews</strong> : il est servi sur un domaine distinct, protégé par un jeton. Trois ports par conversation par défaut.</p>
+      <p>Lorsque Pi lance un serveur (port 3000, 5173…), ouvrez-le depuis l’onglet <strong>Previews</strong> du panneau : il est servi sur un domaine distinct, protégé par un jeton. Trois ports par conversation par défaut.</p>
 
       <h2>Partage</h2>
       <p>Le bouton de partage donne un accès <strong>en lecture seule</strong> à la conversation et aux fichiers à des utilisateurs nommés de la plateforme (recherche par nom ou identifiant) ; il est révocable à tout moment. Personne d’autre — administrateurs compris — ne peut lire une conversation privée.</p>

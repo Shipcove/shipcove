@@ -266,7 +266,10 @@ Sans eux, les suites concernées s'ignorent.
 
 ## Documentation
 
-- **Site de documentation** : [`apps/docs-site`](apps/docs-site) (`pnpm docs:dev`).
+- **Site de documentation** : [`apps/docs-site`](apps/docs-site), en français et en anglais (langue
+  choisie d'après le navigateur). `pnpm docs:dev` pour le développer ; `pnpm docs:build` produit un
+  site statique dans `apps/docs-site/dist`, à publier tel quel sur n'importe quel hébergement
+  (`DOCS_BASE=/docs/ pnpm docs:build` pour un sous-dossier).
 - **Guides d'exploitation** : [`docs/operations`](docs/operations)
   - Docker Compose ;
   - Kubernetes (chart Helm) ;

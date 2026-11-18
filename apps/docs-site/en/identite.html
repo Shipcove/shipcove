@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Identity and SSO</title>
+    <meta name="description" content="Local accounts, MFA, OIDC/Keycloak, SAML 2.0, LDAP/Active Directory, GitHub and GitLab OAuth, MFA policy of providers, account linking." />
+  </head>
+  <body>
+    <main>
+      <h1>Identity and SSO</h1>
+      <p class="lead">The platform has its own identity management; external providers are optional and managed in <strong>Administration → IAM &amp; sign-in</strong>.</p>
+
+      <h2>Local accounts and MFA</h2>
+      <ul>
+        <li>Passwords hashed with Argon2id, temporary lockout after failures, rate limiting per IP address.</li>
+        <li><strong>TOTP</strong> two-factor authentication with recovery codes; policy: optional, required for administrators (default) or for everyone.</li>
+        <li>Open or closed sign-up, email verification, invitations, forgotten password.</li>
+        <li>Server-side sessions, revocable individually or globally.</li>
+      </ul>
+
+      <h2>Identity providers</h2>
+      <p>Each provider is <strong>registered</strong> (disabled), <strong>tested</strong> then <strong>enabled</strong>. Secrets (client secret, bind password, SAML key) are written to Vault and never shown again. The console displays the callback URL to declare with the provider: <code>https://&lt;your-domain&gt;/api/v1/auth/sso/&lt;id&gt;/callback</code>.</p>
+
+      <h3>OIDC / Keycloak</h3>
+      <p>Confidential client, standard flow, PKCE S256.</p>
+      <pre><code>{
+  "issuer": "https://sso.example.com/realms/company",
+  "clientId": "shipcove",
+  "scopes": ["openid", "profile", "email"],
+  "mfa": "auto"
+}</code></pre>
+
+      <h3>SAML 2.0</h3>
+      <p>Download the service provider metadata (link in the console) and import it into your provider; assertions must be signed. Prefer a persistent NameID.</p>
+      <pre><code>{
+  "entryPoint": "https://sso.example.com/realms/company/protocol/saml",
+  "issuer": "shipcove",
+  "idpCert": "MIIC…",
+  "emailAttribute": "email",
+  "nameAttribute": "displayName",
+  "mfa": "auto"
+}</code></pre>
+
+      <h3>LDAP / Active Directory</h3>
+      <pre><code>{
+  "url": "ldaps://ldap.example.com",
+  "bindDn": "cn=svc-coding,ou=services,dc=example,dc=com",
+  "searchBase": "ou=people,dc=example,dc=com",
+  "searchFilter": "(|(uid={{username}})(sAMAccountName={{username}}))",
+  "usernameAttribute": "uid",
+  "emailAttribute": "mail",
+  "nameAttribute": "cn"
+}</code></pre>
+      <p>The service account only needs read access. The username entered is escaped in the filter; an empty password is refused (no anonymous bind).</p>
+
+      <h3>GitHub and GitLab</h3>
+      <p>For <strong>signing in</strong> to the platform: a dedicated OAuth application, optionally restricted to GitHub organizations or GitLab groups. (Connecting Git accounts to work on repositories is separate: see <a href="git.html">Git forges</a>.)</p>
+
+      <h2>MFA policy of providers</h2>
+      <table>
+        <thead><tr><th><code>mfa</code> value</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td><code>auto</code></td><td>Local MFA applies, unless the provider attests MFA (OIDC <code>amr</code>/<code>acr</code>, SAML <code>AuthnContextClassRef</code>).</td></tr>
+          <tr><td><code>require_idp</code></td><td>Sign-in refused without MFA attested by the provider.</td></tr>
+          <tr><td><code>trust_idp</code></td><td>The provider enforces MFA itself.</td></tr>
+          <tr><td><code>local</code></td><td>Always the local policy (LDAP, GitHub, GitLab).</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Account linking</h2>
+      <ul>
+        <li>An external identity is linked by the provider’s stable identifier, <strong>never by email address</strong>.</li>
+        <li>First sign-in: an account is created if automatic creation is enabled, unless the address already belongs to an account. The user then signs in with that account and links the identity in <strong>Settings → Security → Sign-in identities</strong>.</li>
+        <li>The last sign-in method of an account cannot be removed.</li>
+      </ul>
+    </main>
+  </body>
+</html>

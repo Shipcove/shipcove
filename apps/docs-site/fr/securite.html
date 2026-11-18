@@ -21,7 +21,7 @@
       <ul>
         <li>La sandbox reçoit un <strong>jeton de run</strong> à durée limitée, utilisable seulement auprès de la gateway (LLM, lecture Git, outils de la plateforme).</li>
         <li>Clés de modèles, jetons Git, secrets SSO et MCP sont dans <strong>Vault</strong> ; l’API ne les renvoie jamais.</li>
-        <li>Les secrets de dépôt sont <strong>masqués</strong> dans les sorties, le flux temps réel, la base et retirés des requêtes vers le fournisseur LLM.</li>
+        <li>Les valeurs secrètes injectées dans l’agent sont <strong>masquées</strong> dans les sorties, le flux temps réel, la base, et retirées des requêtes vers le fournisseur LLM.</li>
         <li>Chaque service a sa propre identité Vault et une politique limitée à ses chemins.</li>
       </ul>
 
@@ -29,7 +29,7 @@
       <ul>
         <li><code>git</code>, <code>gh</code> et <code>glab</code> fonctionnent dans la sandbox avec le <strong>jeton de run</strong>. La gateway termine le TLS des <strong>seules forges</strong> avec une autorité propre à l’installation (clé privée dans Vault), puis remplace ce jeton par le jeton OAuth de l’utilisateur. Le jeton de la forge n’entre jamais dans la sandbox.</li>
         <li><strong>Garde-fous</strong> appliqués par la gateway, quel que soit l’outil : pas de push sur la branche par défaut ni sur une branche protégée, pas de fusion, de suppression de branche ou de tag, de modification des réglages ou des accès du dépôt, ni de création de clé, de jeton, de runner ou de secret de CI.</li>
-        <li>Ces opérations passent par le broker, <strong>après approbation de l’opération exacte</strong> (commit figé, branche, cible) ; une approbation est à usage unique et invalidée si la branche a bougé.</li>
+        <li>Ces opérations passent par le broker, <strong>après approbation de l’opération exacte</strong> (commit figé, branche, cible), dans la conversation ; une approbation est à usage unique et invalidée si la branche a bougé.</li>
         <li>Chaque écriture de l’agent sur une forge, et chaque refus, est audité (<code>git.agent_write</code>).</li>
         <li>Un jeton n’est présenté qu’à l’hôte de sa connexion ; HTTPS est obligatoire sauf exception explicite de l’administrateur.</li>
       </ul>
@@ -43,7 +43,7 @@
       </ul>
 
       <h2>Fichiers</h2>
-      <p>Pièces jointes et archives contrôlées (type réel, taille décompressée, nombre d’entrées, chemins), analyse antivirus par ClamAV si <code>CLAMAV_HOST</code> est configuré, <strong>bloquante en cas d’indisponibilité</strong>, exécutables refusés.</p>
+      <p>Pièces jointes et archives contrôlées (type réel, taille décompressée, nombre d’entrées, chemins), analyse antivirus par ClamAV si <code>CLAMAV_HOST</code> est configuré, <strong>bloquante en cas d’indisponibilité</strong>, exécutables refusés. Les fichiers que Pi propose au téléchargement sont toujours servis en pièce jointe, jamais interprétés par le navigateur.</p>
 
       <h2>Confidentialité</h2>
       <p>Une conversation n’est lisible que par son propriétaire et les personnes avec qui il l’a partagée nommément — <strong>les administrateurs plateforme compris</strong>. Les actions d’administration sont auditées ; la rétention est configurable avec gel légal.</p>
@@ -52,7 +52,7 @@
       <ul>
         <li><strong>Garde Docker</strong> : seul le service <code>docker-guard</code> accède au socket Docker. Le worker l’appelle sur un réseau interne dédié, avec un secret partagé ; le garde n’accepte que des sandboxes et services conformes (non privilégiés, sans capacité ajoutée, sans montage de l’hôte, limites obligatoires) et seulement sur les conteneurs de la plateforme. Un worker compromis ne peut donc pas prendre la main sur l’hôte.</li>
         <li><strong>gVisor</strong> (optionnel) : <code>CAP_SANDBOX_RUNTIMES=runsc</code> pour isoler en plus les sandboxes du noyau de l’hôte.</li>
-        <li><strong>Vault</strong> : en production, déverrouillage par un service de clés (<code>auto</code>) ou par des clés réparties entre opérateurs, chiffrées pour leurs clés PGP (<code>manual</code>) ; le jeton root est révoqué après l’amorçage. Voir <a href="/exploitation.html#vault">Exploitation</a>.</li>
+        <li><strong>Vault</strong> : en production, déverrouillage par un service de clés (<code>auto</code>) ou par des clés réparties entre opérateurs, chiffrées pour leurs clés PGP (<code>manual</code>) ; le jeton root est révoqué après l’amorçage. Voir <a href="exploitation.html#vault">Exploitation</a>.</li>
         <li><strong>TLS</strong> : point d’entrée Caddy intégré (profil <code>tls</code>), certificats automatiques ; un certificat de preview n’est émis que pour une preview ouverte.</li>
       </ul>
 
@@ -62,7 +62,7 @@
           <li><strong>Mode de Vault</strong> : le mode par défaut (<code>file</code>) garde clés et jeton root sur disque ; choisissez <code>manual</code> ou <code>auto</code> <em>avant</em> la première installation.</li>
           <li><strong>Garde Docker</strong> : il reste un composant de confiance (accès root effectif) ; dédiez l’hôte à la plateforme.</li>
           <li><strong>Trafic interne</strong> : les liaisons entre services Compose ne sont pas chiffrées (même hôte) ; à chiffrer pour un déploiement multi-hôte.</li>
-          <li><strong>Secrets de dépôt</strong> : utilisables par l’agent de toute conversation sur le dépôt ; réservez-y des identifiants de développement.</li>
+          <li><strong>Script de démarrage</strong> : stocké en clair et exécuté dans chaque sandbox, où l’agent peut lire ce qu’il écrit (<code>~/.npmrc</code>…) ; n’y mettez que des identifiants en lecture seule.</li>
           <li><strong>Forges</strong> : pendant un run, l’agent agit sur <em>tous</em> les dépôts accessibles à l’utilisateur (pousser des branches, ouvrir des PR, commenter). Une injection de prompt peut l’y pousser ; elle ne peut ni fusionner, ni toucher la branche par défaut, ni emporter le jeton.</li>
         </ul>
       </div>

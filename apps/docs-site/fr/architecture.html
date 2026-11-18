@@ -40,7 +40,7 @@
       <ol class="steps">
         <li><h3>Message</h3><p>L’API enregistre le message et crée un job (ou le met en file si un run est en cours).</p></li>
         <li><h3>Sandbox</h3><p>Le worker prend le job, crée ou réveille la sandbox, restaure le dernier checkpoint depuis S3, écrit la configuration de Pi (skills, MCP, catalogue des services) et lance le script de démarrage si nécessaire.</p></li>
-        <li><h3>Pi</h3><p>Pi tourne en mode RPC ; l’extension <em>platform-bridge</em> lui fournit les outils de la plateforme (Git, services, approbations). Ses appels LLM passent par la gateway avec un jeton de run.</p></li>
+        <li><h3>Pi</h3><p>Pi tourne en mode RPC. L’extension <em>platform-bridge</em> lui fournit les outils de la plateforme (opérations Git approuvées, services d’appui, fichiers à télécharger, MCP) ; des plugins ajoutent les questions à l’utilisateur (<code>ask_user</code>), les captures d’écran (<code>browser_screenshot</code>) et le plan de tâches (<code>update_plan</code>). Ses appels LLM passent par la gateway avec un jeton de run.</p></li>
         <li><h3>Flux</h3><p>Les événements (texte, outils, fichiers) sont masqués, persistés et diffusés en SSE à toutes les instances de l’API via <code>NOTIFY</code>.</p></li>
         <li><h3>Checkpoint</h3><p>En fin de run, le worker pousse un checkpoint incrémental vers S3. La sandbox s’arrête après le délai d’inactivité ; elle peut être recréée n’importe où à partir du checkpoint.</p></li>
       </ol>
@@ -54,7 +54,7 @@
       </ul>
 
       <h2>Décisions d’architecture</h2>
-      <p>Les ADR sont dans <a href="https://github.com/Shipcove/shipcove/tree/main/docs/adr"><code>docs/adr</code></a> :</p>
+      <p>Les ADR sont dans <a href="https://github.com/Shipcove/shipcove/tree/develop/docs/adr"><code>docs/adr</code></a> :</p>
       <ul>
         <li>0001 Architecture générale · 0002 Stack et versions · 0003 Coordination PostgreSQL</li>
         <li>0004 Intégration de Pi · 0005 Gateway LLM et quotas · 0006 Checkpoints S3</li>

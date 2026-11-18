@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Contributing</title>
+    <meta name="description" content="Developing the platform: pnpm monorepo, local infrastructure, migrations, unit and end-to-end tests, images, documentation, project rules." />
+  </head>
+  <body>
+    <main>
+      <h1>Contributing</h1>
+      <p class="lead">pnpm monorepo in TypeScript 6 (ESM): Angular 22, NestJS 12, Drizzle, Zod 4, Vitest.</p>
+
+      <h2>Layout</h2>
+      <table>
+        <thead><tr><th>Folder</th><th>Content</th></tr></thead>
+        <tbody>
+          <tr><td><code>apps/web</code></td><td>Angular interface (signals, zoneless) and Tailwind 4</td></tr>
+          <tr><td><code>apps/api</code>, <code>apps/worker</code>, <code>apps/gateway</code>, <code>apps/preview</code></td><td>NestJS services</td></tr>
+          <tr><td><code>apps/docs-site</code></td><td>This site (Vite, HTML, Tailwind)</td></tr>
+          <tr><td><code>packages/contracts</code></td><td>Zod schemas shared by the front end and the back end</td></tr>
+          <tr><td><code>packages/database</code></td><td>Drizzle schema and migrations</td></tr>
+          <tr><td><code>packages/sandbox</code>, <code>packages/sandbox-image</code></td><td>Docker / Kubernetes providers, sandbox image and Pi extension and plugins</td></tr>
+          <tr><td><code>infrastructure/docker</code></td><td>Compose stack, Dockerfiles, bootstrap</td></tr>
+          <tr><td><code>tests/e2e</code></td><td>End-to-end tests</td></tr>
+          <tr><td><code>docs</code></td><td>ADRs and operations guides</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Getting started</h2>
+      <pre><code>pnpm install
+pnpm dev:infra          # PostgreSQL, Vault, Garage, LiteLLM, Mailpit, mock LLM
+pnpm build
+pnpm typecheck &amp;&amp; pnpm lint</code></pre>
+      <p>Prerequisites: Node.js 26, pnpm 12.18, Docker.</p>
+
+      <h2>Database</h2>
+      <pre><code>pnpm db:generate        # new migration after a schema change</code></pre>
+      <p>Migrations are versioned in <code>packages/database/migrations</code> and applied by the <code>migrate</code> service at startup.</p>
+
+      <h2>Tests</h2>
+      <pre><code>pnpm test:infra:up              # PostgreSQL, Vault, S3 for integration tests
+pnpm test                       # unit and integration tests (Vitest)
+cd tests/e2e &amp;&amp; pnpm test       # end-to-end on the Compose stack (dev profile)</code></pre>
+      <p>The end-to-end suite covers the interface (Playwright), the functional flows, Git against a real GitLab, SSO against Keycloak and OpenLDAP, and resilience (loss of an API, of the worker, S3, LiteLLM, Vault failures). Optional providers, in <code>tests/e2e</code>: <code>pnpm sso:up</code> (Keycloak, OpenLDAP), <code>pnpm forge:up</code> (GitLab CE); without them, the related suites are skipped.</p>
+
+      <h2>Images</h2>
+      <pre><code>pnpm images:build                                   # local images cap-*:0.1.0
+CAP_REGISTRY=ghcr.io/shipcove/ CAP_VERSION=0.2.0 pnpm images:build</code></pre>
+      <p>The CI only builds and publishes the images when a version tag is created (<code>vX.Y.Z</code>, checked before the build):</p>
+      <pre><code>git tag -a v0.3.0 -m "Shipcove 0.3.0"
+git push origin v0.3.0</code></pre>
+
+      <h2>Documentation</h2>
+      <pre><code>pnpm docs:dev                       # http://localhost:5174
+pnpm docs:build                     # static site in apps/docs-site/dist
+DOCS_BASE=/docs/ pnpm docs:build    # publishing in a subfolder</code></pre>
+      <p>The site is bilingual: each page exists in <code>apps/docs-site/fr/</code> and <code>apps/docs-site/en/</code>, under the same name; add it to the navigation (titles in both languages) in <code>vite.config.js</code>. Internal links are written relative (<code>guide.html</code>). The root page picks the language from the browser (English by default) and remembers the choice made with the selector. The <code>dist</code> folder can be published as is on any static hosting.</p>
+
+      <h2>Project rules</h2>
+      <ul>
+        <li><strong>Dependencies</strong>: only versions published more than two weeks ago are accepted (<code>minimumReleaseAge</code>); install scripts are refused by default.</li>
+        <li><strong>Contracts</strong>: every API input is validated by a schema from <code>@cap/contracts</code>.</li>
+        <li><strong>Secrets</strong>: never in the repository, the logs or the API responses.</li>
+        <li><strong>Decisions</strong>: a structural change comes with an ADR.</li>
+        <li><strong>License</strong>: the code is under the AGPL v3; a contribution is published under that license.</li>
+      </ul>
+    </main>
+  </body>
+</html>

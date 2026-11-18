@@ -19,11 +19,12 @@ npm install -g pnpm@10</code></pre>
         <li>Ce qu’il produit dans <code>/workspace</code> est conservé (checkpoint) ; le reste (<code>~/.npmrc</code>, configuration pip, outils globaux dans <code>~/.local</code>) vit avec la sandbox et est refait à la suivante.</li>
         <li>Sa sortie apparaît dans la conversation ; en cas d’échec, l’agent est informé et le run continue. Durée maximale : 20 minutes par défaut.</li>
         <li>Les hôtes contactés doivent figurer dans le <strong>réseau sortant autorisé</strong> (même page).</li>
+        <li><code>uv</code> ne lit pas la configuration de pip : pour un index privé, écrivez aussi <code>~/.config/uv/uv.toml</code> (<code>[[index]]</code> avec <code>default = true</code>).</li>
       </ul>
       <div class="callout warn"><p>Le script est stocké en clair et s’exécute dans la sandbox, où l’agent peut lire les fichiers qu’il écrit : n’y mettez que des identifiants en lecture seule, à portée minimale.</p></div>
 
       <h2>Image de sandbox</h2>
-      <p>Toutes les sandboxes utilisent l’image <strong>par défaut</strong> déclarée par l’administrateur. L’image officielle <code>ghcr.io/shipcove/shipcove-sandbox</code> contient Pi (et son plugin de captures d’écran), Git, Python, uv, Node.js, npm, Playwright et Chromium ; une image dérivée part de celle-ci (<code>FROM ghcr.io/shipcove/shipcove-sandbox:&lt;version&gt;@sha256:…</code>), par exemple pour ajouter un JDK, Go ou Rust. Changer l’image par défaut recrée les sandboxes au run suivant.</p>
+      <p>Toutes les sandboxes utilisent l’image <strong>par défaut</strong> déclarée par l’administrateur. L’image officielle <code>ghcr.io/shipcove/shipcove-sandbox</code> contient Pi (et ses plugins : questions, captures d’écran, plan), Git, Python, uv, Node.js, npm, Playwright et Chromium ; une image dérivée part de celle-ci (<code>FROM ghcr.io/shipcove/shipcove-sandbox:&lt;version&gt;@sha256:…</code>), par exemple pour ajouter un JDK, Go ou Rust. Changer l’image par défaut recrée les sandboxes au run suivant.</p>
 
       <h2>Services lancés par l’agent</h2>
       <p>Pi démarre <strong>lui-même, quand il en a besoin</strong>, des bases de données, caches ou files de messages choisis dans un <strong>catalogue géré par l’administrateur</strong> (<em>Administration → Sandboxes &amp; previews</em>) : image, port, sonde de santé, variables par défaut, mémoire. Rien ne démarre tant que l’agent ne le demande pas ; aucun réglage côté utilisateur.</p>
