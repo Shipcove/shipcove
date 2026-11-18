@@ -43,6 +43,12 @@ export function buildModelsJson(gatewayBaseUrl: string, models: PiModelConfig[])
   );
 }
 
+/**
+ * Contexte récent que la compaction de Pi garde tel quel (seul ce qui précède est résumé).
+ * Fixé explicitement pour que la plateforme sache quand une compaction n'a rien à résumer.
+ */
+export const PI_KEEP_RECENT_TOKENS = 20_000;
+
 export function buildSettingsJson(defaultModel: string): string {
   return JSON.stringify(
     {
@@ -54,6 +60,7 @@ export function buildSettingsJson(defaultModel: string): string {
       steeringMode: 'one-at-a-time',
       followUpMode: 'one-at-a-time',
       sessionDir: '/workspace-state/pi-sessions',
+      compaction: { keepRecentTokens: PI_KEEP_RECENT_TOKENS },
     },
     null,
     2,
