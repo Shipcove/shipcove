@@ -26,6 +26,7 @@ supprimer exige une **approbation humaine**.
 - [Sécurité](#sécurité)
 - [Documentation](#documentation)
 - [État du projet et limites](#état-du-projet-et-limites)
+- [Licence](#licence)
 
 ## Fonctionnalités
 
@@ -276,3 +277,17 @@ Compose. Restent à faire **avant une mise en production** :
 - **Images de sandbox** : registre interne, vérification de conformité, caches de dépendances.
 - **CI**, tests de charge, audit de sécurité externe (une revue interne a été faite, voir le journal
   d'`IMPLEMENTATION_PLAN.md`).
+
+## Licence
+
+Shipcove est un logiciel libre, publié sous licence **GNU Affero General Public License v3**
+([`LICENSE`](LICENSE)), avec les conditions additionnelles de sa section 7 décrites dans
+[`NOTICE`](NOTICE) :
+
+- **Attribution** : toute version modifiée doit afficher dans son interface la mention
+  « Basé sur Shipcove — https://github.com/Shipcove/shipcove ».
+- **Code source** : quiconque propose une version modifiée à des utilisateurs par le réseau doit
+  leur donner accès à son code source (section 13 de l'AGPL).
+- **Marque** : la licence n'accorde aucun droit sur le nom « Shipcove » ni sur le logo ; une
+  version modifiée distribuée ou hébergée pour d'autres doit porter un autre nom. Voir la
+  [politique de marque](TRADEMARKS.md).
