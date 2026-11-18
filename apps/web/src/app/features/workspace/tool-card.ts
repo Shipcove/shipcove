@@ -4,13 +4,14 @@ import { Icon } from '../../shared/icon';
 import { WorkspaceStore } from './workspace.store';
 import { CodeBlock } from '../../shared/code-block';
 import { AskForm } from './ask-form';
+import { SharedFiles } from './shared-files';
 
 export function toolIcon(name: string): string {
-  return ({ bash: 'terminal', read: 'eye', write: 'file', edit: 'edit', browser_screenshot: 'image' } as Record<string, string>)[name] ?? (name.startsWith('platform_') ? 'git' : name.startsWith('mcp__') ? 'puzzle' : 'cpu');
+  return ({ bash: 'terminal', read: 'eye', write: 'file', edit: 'edit', browser_screenshot: 'image', share_files: 'download' } as Record<string, string>)[name] ?? (name.startsWith('platform_') ? 'git' : name.startsWith('mcp__') ? 'puzzle' : 'cpu');
 }
 
 export function toolLabel(name: string): string {
-  return ({ bash: 'Commande', read: 'Lecture', write: 'Écriture', edit: 'Modification', browser_screenshot: 'Capture d’écran' } as Record<string, string>)[name] ?? name;
+  return ({ bash: 'Commande', read: 'Lecture', write: 'Écriture', edit: 'Modification', browser_screenshot: 'Capture d’écran', share_files: 'Fichiers à télécharger' } as Record<string, string>)[name] ?? name;
 }
 
 /** Argument principal d'un appel (commande, chemin, URL…), sur une ligne. */
@@ -25,11 +26,13 @@ export function toolSummary(call: ToolCallDto): string {
  */
 @Component({
   selector: 'cap-tool-card',
-  imports: [Icon, CodeBlock, AskForm],
+  imports: [Icon, CodeBlock, AskForm, SharedFiles],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (call().toolName === 'ask_user') {
       <cap-ask-form [call]="call()" />
+    } @else if (call().toolName === 'share_files') {
+      <cap-shared-files [call]="call()" />
     } @else {
     <div class="my-1.5 min-w-0 overflow-hidden rounded-lg border border-stone-200 bg-stone-50 text-sm dark:border-stone-800 dark:bg-stone-900/70">
       <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-stone-100 dark:hover:bg-stone-800/70" (click)="open.set(!open())" [attr.aria-expanded]="open()">

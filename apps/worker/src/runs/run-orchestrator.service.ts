@@ -13,6 +13,7 @@ import {
 } from '@cap/database';
 import { PI_PROVIDER, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
 import { DB, ENV, EnvironmentService, EventsService, NotificationService, modelAllowedFor, ObjectStorage, PgNotifier, QuotaService, RunQueueService, StreamScrubber, redactString, scrubDeep, scrubSecrets, type NewEvent } from '@cap/server-core';
+import type { ToolFileDto } from '@cap/contracts';
 import { toUserPath } from '@cap/storage';
 import { execCollect } from '@cap/sandbox';
 import { SKILLS_DIR, expandSkillCommands } from './skill-expansion.js';
@@ -46,6 +47,8 @@ interface RunContext {
   lastAssistantMessageId: string | null;
   toolStarts: Map<string, number>;
   toolFiles: Map<string, string[]>;
+  /** Fichiers proposés au téléchargement par appel d'outil (`share_files`, via le bridge). */
+  sharedFiles: Map<string, ToolFileDto[]>;
   /** Appels `bash` qui clonent un dépôt (rattachement automatique, issue #1). */
   cloneCalls?: Set<string>;
   pending: NewEvent[];
@@ -234,6 +237,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       lastAssistantMessageId: null,
       toolStarts: new Map(),
       toolFiles: new Map(),
+      sharedFiles: new Map(),
       pending: [],
       lastToolOutputAt: new Map(),
       done,
@@ -615,7 +619,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           const started = ctx.toolStarts.get(e.toolCallId) ?? Date.now();
           const durationMs = Date.now() - started;
           // Checkpoint indépendant de l'extension (défense en profondeur) : idempotent par clé.
-          if (!['read', 'grep', 'find', 'ls'].includes(e.toolName) && !ctx.toolFiles.has(e.toolCallId)) {
+          if (!['read', 'grep', 'find', 'ls', 'share_files'].includes(e.toolName) && !ctx.toolFiles.has(e.toolCallId)) {
             await this.checkpointForTool(ctx, e.toolCallId).catch(() => undefined);
           }
           // Dépôt cloné à la racine : rattaché tout de suite (un clone en sous-dossier attend la fin du run).
@@ -629,6 +633,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
                 return [];
               })
             : [];
+          const sharedFiles = ctx.sharedFiles.get(e.toolCallId) ?? [];
+          ctx.sharedFiles.delete(e.toolCallId);
           await this.db
             .update(toolCalls)
             .set({
@@ -638,6 +644,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
               isError: e.isError,
               filesTouched: files,
               images,
+              files: sharedFiles,
               completedAt: new Date(),
               durationMs,
             })
@@ -646,7 +653,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           this.push(ctx, {
             type: 'tool.completed',
             runId: ctx.runId,
-            data: { toolCallId: e.toolCallId, isError: e.isError, output: out, truncated: out.length < output.length, durationMs, filesTouched: files, images },
+            data: { toolCallId: e.toolCallId, isError: e.isError, output: out, truncated: out.length < output.length, durationMs, filesTouched: files, images, files: sharedFiles },
           });
           await this.sandboxes.touch(ctx.workspaceId);
           break;

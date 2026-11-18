@@ -9,9 +9,12 @@ export type TimelineRow =
   | { kind: 'text'; key: string; m: MessageDto }
   /** Étapes consécutives (raisonnement, commandes) sans texte du modèle entre elles. */
   | { kind: 'steps'; key: string; steps: Step[] }
-  /** Appel d'outil interactif (formulaire `ask_user`) : jamais replié dans un groupe. */
+  /** Appel d'outil à garder visible (formulaire `ask_user`, fichiers `share_files`) : jamais replié dans un groupe. */
   | { kind: 'interactive'; key: string; call: ToolCallDto }
   | { kind: 'error'; key: string; m: MessageDto };
+
+/** Outils affichés hors des groupes d'étapes : l'utilisateur doit les voir sans rien déplier. */
+const STANDALONE_TOOLS = new Set(['ask_user', 'share_files']);
 
 /**
  * Aplati les messages en lignes et regroupe les raisonnements et appels d'outils consécutifs.
@@ -43,7 +46,7 @@ export function buildTimeline(messages: MessageDto[]): TimelineRow[] {
       rows.push({ kind: 'text', key: `${m.id}:text`, m });
     }
     for (const call of m.toolCalls) {
-      if (call.toolName === 'ask_user') {
+      if (STANDALONE_TOOLS.has(call.toolName)) {
         close();
         rows.push({ kind: 'interactive', key: call.id, call });
       } else {

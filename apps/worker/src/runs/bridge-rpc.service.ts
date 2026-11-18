@@ -7,6 +7,7 @@ import { SandboxManager } from '../sandbox/sandbox-manager.service.js';
 import { GitBrokerService } from '../git/git-broker.service.js';
 import { McpBridgeService } from '../mcp/mcp-bridge.service.js';
 import { ServicesService } from '../sandbox/services.service.js';
+import { AgentFilesService } from '../sandbox/agent-files.service.js';
 import type { RunContext } from './run-orchestrator.service.js';
 
 /**
@@ -24,6 +25,7 @@ export class BridgeRpcService {
     private readonly mcp: McpBridgeService,
     private readonly services: ServicesService,
     private readonly environment: EnvironmentService,
+    private readonly agentFiles: AgentFilesService,
   ) {}
 
   async handle(ctx: RunContext, req: BridgeRequest): Promise<string> {
@@ -62,6 +64,17 @@ export class BridgeRpcService {
         case 'mcp.call': {
           const text = await this.mcp.call(ctx, String(params?.server), String(params?.tool), (params?.arguments as Record<string, unknown>) ?? {});
           return JSON.stringify({ ok: true, text });
+        }
+        case 'files.share': {
+          const toolCallId = String(params?.toolCallId ?? '');
+          const { files, errors } = await this.agentFiles.share(ctx.sandbox, params?.paths, ctx.secretValues);
+          // Rattachés à l'appel d'outil à sa fin (carte de téléchargement dans la conversation).
+          if (toolCallId && files.length) ctx.sharedFiles.set(toolCallId, [...(ctx.sharedFiles.get(toolCallId) ?? []), ...files]);
+          const lines = [
+            ...(files.length ? [`Proposé${files.length > 1 ? 's' : ''} au téléchargement dans la conversation : ${files.map((f) => f.path).join(', ')}`] : []),
+            ...errors.map((e) => `Non partagé — ${e}`),
+          ];
+          return JSON.stringify({ ok: files.length > 0, text: lines.join('\n') });
         }
         case 'services.catalog':
           return JSON.stringify({ ok: true, text: await this.services.catalogText() });

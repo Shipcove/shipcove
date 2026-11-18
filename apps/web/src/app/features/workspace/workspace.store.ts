@@ -250,6 +250,7 @@ export class WorkspaceStore {
           isError: false,
           filesTouched: [],
           images: [],
+          files: [],
           startedAt: e.ts,
           completedAt: null,
           durationMs: null,
@@ -271,6 +272,7 @@ export class WorkspaceStore {
           durationMs: d['durationMs'] as number,
           filesTouched: d['filesTouched'] as string[],
           images: (d['images'] as ToolCallDto['images'] | undefined) ?? t.images ?? [],
+          files: (d['files'] as ToolCallDto['files'] | undefined) ?? t.files ?? [],
           completedAt: e.ts,
         }));
         return;

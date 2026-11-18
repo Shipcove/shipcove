@@ -202,6 +202,8 @@ export const toolCalls = pgTable(
     filesTouched: jsonb().$type<string[]>().notNull().default([]),
     /** Captures d'écran produites pendant l'appel (pièces jointes `source = agent`). */
     images: jsonb().$type<Array<{ attachmentId: string; fileName: string; width: number | null; height: number | null }>>().notNull().default([]),
+    /** Fichiers proposés au téléchargement par Pi (outil `share_files`, pièces jointes `source = agent`). */
+    files: jsonb().$type<Array<{ attachmentId: string; fileName: string; path: string; size: number; kind: 'image' | 'text' | 'archive' | 'binary' }>>().notNull().default([]),
     startedAt: ts().notNull().defaultNow(),
     completedAt: ts(),
     durationMs: integer(),

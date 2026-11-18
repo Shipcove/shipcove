@@ -23,7 +23,7 @@ import { WorkspacesController } from './workspaces/workspaces.controller.js';
 import { WorkspacesService } from './workspaces/workspaces.service.js';
 import { FilesController } from './workspaces/files.controller.js';
 import { PreviewsController } from './workspaces/previews.controller.js';
-import { AttachmentsController, ScreenshotsController } from './workspaces/attachments.controller.js';
+import { AgentFilesController, AttachmentsController, ScreenshotsController } from './workspaces/attachments.controller.js';
 import { RewindController } from './workspaces/rewind.controller.js';
 import { SandboxRpcClient } from './workspaces/sandbox-rpc.client.js';
 import { ConversationController, SharesController } from './conversations/conversation.controller.js';
@@ -60,6 +60,7 @@ export class AppModule {
         PreviewsController,
         AttachmentsController,
         ScreenshotsController,
+        AgentFilesController,
         RewindController,
         WorkspaceGitController,
         ApprovalsController,

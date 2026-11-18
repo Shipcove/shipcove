@@ -935,6 +935,58 @@ test('captures d’écran : plugin browser de Pi (Chromium de la sandbox), scrip
   assert.ok(!JSON.stringify(files.body ?? {}).includes('screenshots'), 'captures exclues des fichiers persistés');
 });
 
+test('fichiers à télécharger : share_files copie les livrables de Pi, servis en téléchargement, lisibles en partage, confinés à /workspace et /tmp', async () => {
+  const owner = await newUser();
+  const ws = await workspace(owner, 'Livrables');
+  const conv = await owner.get(`/workspaces/${ws.id}/conversation`);
+  const setup = "printf '# Mon projet\\n\\nBonjour.\\n' > README.md && mkdir -p /tmp/out && printf 'a,b\\n1,2\\n' > /tmp/out/export.csv && mkdir -p docs";
+  const sent = await owner.post(
+    `/workspaces/${ws.id}/messages`,
+    {
+      text:
+        `Écris un README. [[tool:bash ${JSON.stringify({ command: setup })}]] ` +
+        `[[tool:share_files ${JSON.stringify({ paths: ['README.md', '/tmp/out/export.csv', '/etc/hostname', 'docs', 'absent.txt'] })}]] ` +
+        `[[tool:share_files ${JSON.stringify({ paths: ['/etc/passwd'] })}]]`,
+    },
+    { 'Idempotency-Key': `f-${uid()}` },
+  );
+  assert.equal(sent.status, 201, JSON.stringify(sent.body));
+  const events = await owner.events(ws.id, conv.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === sent.body.runId, 300_000);
+  assert.equal(events.at(-1).type, 'run.completed', JSON.stringify(events.at(-1)));
+  const done = events.filter((e) => e.type === 'tool.completed');
+  assert.equal(done.length, 3, JSON.stringify(done.map((e) => e.data.output)));
+  const [, shared, refused] = done;
+  assert.ok(!shared.data.isError, shared.data.output);
+  assert.deepEqual(shared.data.files.map((f) => [f.fileName, f.path, f.kind]), [
+    ['README.md', '/workspace/README.md', 'text'],
+    ['export.csv', '/tmp/out/export.csv', 'text'],
+  ]);
+  assert.match(shared.data.output, /\/etc\/hostname : seuls les fichiers/);
+  assert.match(shared.data.output, /docs : ce n’est pas un fichier/);
+  assert.match(shared.data.output, /absent\.txt : fichier introuvable/);
+  assert.ok(refused.data.isError, 'aucun fichier partageable : appel en échec');
+  assert.equal((refused.data.files ?? []).length, 0);
+
+  // Persistés dans la conversation et servis en téléchargement (jamais interprétés par le navigateur).
+  const reloaded = await owner.get(`/workspaces/${ws.id}/conversation`);
+  const call = reloaded.body.messages.flatMap((m) => m.toolCalls).find((c) => c.toolName === 'share_files' && c.files.length);
+  assert.equal(call.files.length, 2);
+  const path = `/workspaces/${ws.id}/agent-files/${call.files[0].attachmentId}`;
+  const res = await fetch(`${BASE}/api/v1${path}`, { headers: { Cookie: [...owner.cookies].map(([k, v]) => `${k}=${v}`).join('; ') } });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-type'), 'application/octet-stream');
+  assert.match(res.headers.get('content-disposition') ?? '', /^attachment; filename\*=UTF-8''README\.md$/);
+  assert.equal(await res.text(), '# Mon projet\n\nBonjour.\n');
+
+  // Lecture partagée : refusé à un tiers, autorisé une fois la conversation partagée.
+  const peer = await newUser();
+  assert.equal((await fetchBinary(peer, path)).status, 404);
+  assert.equal((await owner.post(`/conversations/${ws.conversationId}/shares`, { userId: peer.id })).status, 201);
+  assert.equal((await fetchBinary(peer, path)).status, 200);
+  // Pas une pièce jointe utilisateur : non supprimable par cette voie.
+  assert.equal((await owner.del(`/workspaces/${ws.id}/attachments/${call.files[0].attachmentId}`)).status, 404);
+});
+
 test('questions de Pi (plugin ask) : formulaire dans la conversation, réponse rattachée, Pi reprend ; disponible en mode Plan', async () => {
   const owner = await newUser();
   const ws = await workspace(owner, 'Questions');

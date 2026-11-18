@@ -123,6 +123,19 @@ export interface ToolImageDto {
   height: number | null;
 }
 
+/**
+ * Fichier proposé au téléchargement par Pi (outil `share_files`) : copie prise au moment du partage,
+ * servie par `/workspaces/:id/agent-files/:attachmentId`.
+ */
+export interface ToolFileDto {
+  attachmentId: string;
+  fileName: string;
+  /** Chemin du fichier dans la sandbox au moment du partage. */
+  path: string;
+  size: number;
+  kind: 'image' | 'text' | 'archive' | 'binary';
+}
+
 export interface ToolCallDto {
   id: string;
   runId: string;
@@ -135,6 +148,7 @@ export interface ToolCallDto {
   isError: boolean;
   filesTouched: string[];
   images: ToolImageDto[];
+  files: ToolFileDto[];
   startedAt: string;
   completedAt: string | null;
   durationMs: number | null;
