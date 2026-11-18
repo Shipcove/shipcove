@@ -6,6 +6,7 @@ import { Icon } from '../../shared/icon';
 import { BytesPipe } from '../../shared/pipes';
 import { CodeEditor } from '../../shared/monaco';
 import { WorkspaceStore } from './workspace.store';
+import { t, tr } from '../../core/i18n';
 
 /** Visualisation (lecture seule par défaut) et édition contrôlée d'un fichier. */
 @Component({
@@ -22,34 +23,34 @@ import { WorkspaceStore } from './workspace.store';
           <span class="ml-auto flex items-center gap-1">
             @if (canEdit()) {
               @if (!editing()) {
-                <button class="btn-ghost !px-2 !py-0.5 text-xs" (click)="editing.set(true)"><cap-icon name="edit" [size]="12" /> Modifier</button>
+                <button class="btn-ghost !px-2 !py-0.5 text-xs" (click)="editing.set(true)"><cap-icon name="edit" [size]="12" /> {{ t('Modifier') }}</button>
               } @else {
-                <button class="btn-ghost !px-2 !py-0.5 text-xs" (click)="cancel()">Annuler</button>
-                <button class="btn-accent !px-2 !py-0.5 text-xs" (click)="save()" [disabled]="saving() || draft() === file()?.content">Enregistrer</button>
+                <button class="btn-ghost !px-2 !py-0.5 text-xs" (click)="cancel()">{{ t('Annuler') }}</button>
+                <button class="btn-accent !px-2 !py-0.5 text-xs" (click)="save()" [disabled]="saving() || draft() === file()?.content">{{ t('Enregistrer') }}</button>
               }
             } @else {
-              <span class="badge bg-stone-200 text-stone-600 dark:bg-stone-800 dark:text-stone-400"><cap-icon name="lock" [size]="11" /> Lecture seule</span>
+              <span class="badge bg-stone-200 text-stone-600 dark:bg-stone-800 dark:text-stone-400"><cap-icon name="lock" [size]="11" /> {{ t('Lecture seule') }}</span>
             }
           </span>
         </div>
         <div class="min-h-0 flex-1">
           @if (file(); as f) {
             @if (f.content === null) {
-              <p class="p-4 text-sm text-stone-500">{{ f.binary ? 'Fichier binaire : aperçu indisponible.' : 'Fichier trop volumineux pour l’affichage.' }}</p>
+              <p class="p-4 text-sm text-stone-500">{{ f.binary ? t('Fichier binaire : aperçu indisponible.') : t('Fichier trop volumineux pour l’affichage.') }}</p>
             } @else {
               <cap-code-editor [value]="f.content" [path]="f.path" [readOnly]="!editing()" (changed)="draft.set($event)" />
             }
           } @else if (error()) {
             <p class="p-4 text-sm text-red-600">{{ error() }}</p>
           } @else {
-            <p class="p-4 text-sm text-stone-500">Chargement…</p>
+            <p class="p-4 text-sm text-stone-500">{{ t('Chargement…') }}</p>
           }
         </div>
       } @else {
         <div class="flex h-full flex-col items-center justify-center gap-2 px-8 text-center">
           <cap-icon name="folder" [size]="22" class="text-stone-400" />
-          <p class="text-sm font-medium text-stone-700 dark:text-stone-300">Les fichiers ouverts apparaissent ici</p>
-          <p class="max-w-64 text-xs text-stone-500">Sélectionnez un fichier dans l’arborescence, ou cliquez sur un chemin de fichier dans la conversation.</p>
+          <p class="text-sm font-medium text-stone-700 dark:text-stone-300">{{ t('Les fichiers ouverts apparaissent ici') }}</p>
+          <p class="max-w-64 text-xs text-stone-500">{{ t('Sélectionnez un fichier dans l’arborescence, ou cliquez sur un chemin de fichier dans la conversation.') }}</p>
         </div>
       }
     </div>
@@ -57,6 +58,7 @@ import { WorkspaceStore } from './workspace.store';
   host: { class: 'block h-full' },
 })
 export class FilePanel {
+  protected readonly t = t;
   readonly path = input<string | null>(null);
   private readonly api = inject(Api);
   private readonly toast = inject(ToastService);
@@ -88,7 +90,7 @@ export class FilePanel {
       this.draft.set(f.content);
     } catch (err) {
       this.file.set(null);
-      this.error.set(err instanceof ApiError ? err.message : 'Lecture impossible');
+      this.error.set(err instanceof ApiError ? tr(err.message) : t('Lecture impossible'));
     }
   }
 
@@ -105,11 +107,11 @@ export class FilePanel {
     this.saving.set(true);
     try {
       await this.api.put(`/workspaces/${this.store.workspace()!.id}/files`, { path: f.path, content: this.draft() }, { 'If-Match': `"${f.etag}"` });
-      this.toast.show('Fichier enregistré et sauvegardé (checkpoint)', 'success');
+      this.toast.show(t('Fichier enregistré et sauvegardé (checkpoint)'), 'success');
       this.editing.set(false);
       await this.load(f.path);
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'edit_conflict') this.toast.show('Conflit : le fichier a été modifié entre-temps. Rechargez pour voir la nouvelle version.', 'error', 10_000);
+      if (err instanceof ApiError && err.code === 'edit_conflict') this.toast.show(t('Conflit : le fichier a été modifié entre-temps. Rechargez pour voir la nouvelle version.'), 'error', 10_000);
       else this.toast.error(err);
     } finally {
       this.saving.set(false);

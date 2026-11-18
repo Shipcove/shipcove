@@ -51,7 +51,7 @@ type RightPane = 'panel' | 'files' | 'plan' | null;
               }
               <span class="badge shrink-0" [class]="statusClass()">{{ statusLabel() }}</span>
               @if (ws.access === 'shared_read') { <span class="badge shrink-0 bg-sky-100 text-sky-800" [title]="t('Lecture seule (partagé)')">{{ t('Lecture seule') }}</span> }
-              @if (ws.agentMode === 'plan') { <span class="badge hidden shrink-0 bg-sky-100 text-sky-800 sm:inline-flex" [title]="t('Pi n\'a que des outils en lecture seule')">{{ t('Mode plan') }}</span> }
+              @if (ws.agentMode === 'plan') { <span class="badge hidden shrink-0 bg-sky-100 text-sky-800 sm:inline-flex" [title]="t('Pi n’a que des outils en lecture seule')">{{ t('Mode plan') }}</span> }
             </div>
             <div class="flex min-w-0 items-center gap-2 text-xs text-stone-500">
               @if (ws.repository; as r) {

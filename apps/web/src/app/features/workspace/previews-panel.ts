@@ -5,6 +5,7 @@ import { Api } from '../../core/api.service';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
 import { WorkspaceStore } from './workspace.store';
+import { t } from '../../core/i18n';
 
 /** Previews : ports exposés via la Preview Gateway (origine distincte). */
 @Component({
@@ -15,31 +16,32 @@ import { WorkspaceStore } from './workspace.store';
     <div class="h-full space-y-3 overflow-y-auto p-4 text-sm">
       <form class="flex items-end gap-2" (ngSubmit)="openPort()">
         <div><label class="label" for="port">Port</label><input id="port" class="input !w-28 !py-1" type="number" name="port" min="1024" max="65535" [(ngModel)]="port" /></div>
-        <div class="flex-1"><label class="label" for="plabel">Libellé</label><input id="plabel" class="input !py-1" name="label" [(ngModel)]="label" placeholder="ex. serveur de dev" /></div>
-        <button class="btn-secondary !py-1">Exposer</button>
+        <div class="flex-1"><label class="label" for="plabel">{{ t('Libellé') }}</label><input id="plabel" class="input !py-1" name="label" [(ngModel)]="label" [placeholder]="t('ex. serveur de dev')" /></div>
+        <button class="btn-secondary !py-1">{{ t('Exposer') }}</button>
       </form>
-      <p class="text-xs text-stone-500">Au plus {{ store.config()?.previews?.maxPortsPerWorkspace ?? 3 }} ports simultanés. Les previews s’ouvrent sur un domaine séparé et ne reçoivent pas vos cookies de session.</p>
+      <p class="text-xs text-stone-500">{{ t('Au plus {n} ports simultanés. Les previews s’ouvrent sur un domaine séparé et ne reçoivent pas vos cookies de session.', { n: store.config()?.previews?.maxPortsPerWorkspace ?? 3 }) }}</p>
       @for (p of previews(); track p.id) {
         <div class="card flex items-center gap-2 p-3">
           <cap-icon name="globe" [size]="14" />
           <span class="font-mono">:{{ p.port }}</span><span class="text-stone-500">{{ p.label }}</span>
-          <button class="btn-secondary ml-auto !py-1" (click)="visit(p)">Ouvrir</button>
-          <button class="btn-ghost !p-1" (click)="close(p)" aria-label="Fermer la preview"><cap-icon name="x" [size]="14" /></button>
+          <button class="btn-secondary ml-auto !py-1" (click)="visit(p)">{{ t('Ouvrir') }}</button>
+          <button class="btn-ghost !p-1" (click)="close(p)" [attr.aria-label]="t('Fermer la preview')"><cap-icon name="x" [size]="14" /></button>
         </div>
         @if (fallback()?.id === p.id) {
           <p class="-mt-1 px-1 text-xs text-stone-500">
-            Le navigateur a bloqué l’ouverture de l’onglet :
-            <a class="text-accent-700 underline dark:text-accent-500" [href]="fallback()!.url" target="_blank" rel="noopener noreferrer" (click)="fallback.set(null)">ouvrir la preview</a>
+            {{ t('Le navigateur a bloqué l’ouverture de l’onglet :') }}
+            <a class="text-accent-700 underline dark:text-accent-500" [href]="fallback()!.url" target="_blank" rel="noopener noreferrer" (click)="fallback.set(null)">{{ t('ouvrir la preview') }}</a>
           </p>
         }
       } @empty {
-        <p class="text-stone-500">Aucune preview ouverte. Demandez à Pi de démarrer un serveur (ex. <code>npm run dev -- --host 0.0.0.0 --port 5173</code>).</p>
+        <p class="text-stone-500">{{ t('Aucune preview ouverte. Demandez à Pi de démarrer un serveur (ex.') }} <code>npm run dev -- --host 0.0.0.0 --port 5173</code>).</p>
       }
     </div>
   `,
   host: { class: 'block h-full' },
 })
 export class PreviewsPanel implements OnInit {
+  protected readonly t = t;
   private readonly api = inject(Api);
   private readonly toast = inject(ToastService);
   protected readonly store = inject(WorkspaceStore);

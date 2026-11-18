@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import type { GitConnectionDto, RemoteRepositoryDto } from '@cap/contracts';
 import { Api, ApiError } from '../core/api.service';
 import { Icon } from './icon';
+import { t, tr } from '../core/i18n';
 
 export interface RepoChoice {
   gitConnectionId: string;
@@ -23,12 +24,12 @@ export interface RepoChoice {
   template: `
     <button type="button" class="flex max-w-full items-center sm:max-w-80 gap-1.5 rounded-md px-2 py-1 text-[13px] hover:bg-stone-200/70 dark:hover:bg-stone-800"
       [class.bg-stone-200]="open()" [class.dark:bg-stone-800]="open()" (click)="toggle()" aria-haspopup="listbox" [attr.aria-expanded]="open()"
-      [title]="value() ? value()!.host + '/' + value()!.fullName : 'Associer un dépôt Git (facultatif)'">
+      [title]="value() ? value()!.host + '/' + value()!.fullName : t('Associer un dépôt Git (facultatif)')">
       <cap-icon name="git" [size]="14" class="shrink-0 text-stone-500" />
       @if (value(); as v) {
         <span class="truncate font-mono text-stone-800 dark:text-stone-200">{{ v.fullName }}</span>
       } @else {
-        <span class="text-stone-500">Aucun dépôt</span>
+        <span class="text-stone-500">{{ t('Aucun dépôt') }}</span>
       }
       <cap-icon name="chevronDown" [size]="12" class="shrink-0 text-stone-400" />
     </button>
@@ -37,21 +38,21 @@ export interface RepoChoice {
       <div class="absolute left-0 z-30 w-[26rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-stone-200 bg-white shadow-lg dark:border-stone-700 dark:bg-stone-900"
         [class.top-full]="placement() === 'below'" [class.mt-1]="placement() === 'below'" [class.bottom-full]="placement() === 'above'" [class.mb-1]="placement() === 'above'">
         @if (!connections().length) {
-          <p class="p-3 text-sm text-stone-500">{{ loadingConnections() ? 'Chargement…' : 'Aucune connexion Git.' }}
-            @if (!loadingConnections()) { <a routerLink="/settings/git" class="underline" (click)="open.set(false)">Rattachez un compte GitHub ou GitLab</a> pour travailler sur un dépôt. }
+          <p class="p-3 text-sm text-stone-500">{{ loadingConnections() ? t('Chargement…') : t('Aucune connexion Git.') }}
+            @if (!loadingConnections()) { <a routerLink="/settings/git" class="underline" (click)="open.set(false)">{{ t('Rattachez un compte GitHub ou GitLab') }}</a> {{ t('pour travailler sur un dépôt.') }} }
           </p>
         } @else {
           <div class="flex gap-2 border-b border-stone-100 p-2 dark:border-stone-800">
             @if (connections().length > 1) {
-              <select class="input !w-auto !py-1.5 text-xs" [ngModel]="connectionId()" (ngModelChange)="selectConnection($event)" aria-label="Connexion Git">
+              <select class="input !w-auto !py-1.5 text-xs" [ngModel]="connectionId()" (ngModelChange)="selectConnection($event)" [attr.aria-label]="t('Connexion Git')">
                 @for (c of connections(); track c.id) { <option [value]="c.id">{{ c.host }} · {{ c.accountLogin }}</option> }
               </select>
             }
-            <input #search class="input !py-1.5" placeholder="Rechercher un dépôt…" autocomplete="off" [ngModel]="query()" (ngModelChange)="query.set($event); active.set(0)" (keydown)="onKey($event)" aria-label="Rechercher un dépôt" />
+            <input #search class="input !py-1.5" [placeholder]="t('Rechercher un dépôt…')" autocomplete="off" [ngModel]="query()" (ngModelChange)="query.set($event); active.set(0)" (keydown)="onKey($event)" [attr.aria-label]="t('Rechercher un dépôt')" />
           </div>
-          <ul role="listbox" aria-label="Dépôts" class="max-h-72 overflow-y-auto p-1">
+          <ul role="listbox" [attr.aria-label]="t('Dépôts')" class="max-h-72 overflow-y-auto p-1">
             <li role="option" [attr.aria-selected]="!value()" (click)="choose(null)" class="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800">
-              Aucun dépôt<span class="text-xs text-stone-400">— conversation libre</span>
+              {{ t('Aucun dépôt') }}<span class="text-xs text-stone-400">{{ t('— conversation libre') }}</span>
               @if (!value()) { <cap-icon name="check" [size]="14" class="ml-auto text-accent-600" /> }
             </li>
             @for (r of filtered(); track r.fullName; let i = $index) {
@@ -59,23 +60,24 @@ export interface RepoChoice {
                 [class.bg-stone-100]="i === active()" [class.dark:bg-stone-800]="i === active()">
                 <div class="flex items-center gap-2">
                   <span class="truncate font-mono text-sm">{{ r.fullName }}</span>
-                  @if (r.private) { <span class="badge shrink-0 bg-stone-200 text-stone-600 dark:bg-stone-700 dark:text-stone-300">privé</span> }
+                  @if (r.private) { <span class="badge shrink-0 bg-stone-200 text-stone-600 dark:bg-stone-700 dark:text-stone-300">{{ t('privé') }}</span> }
                   @if (r.fullName === value()?.fullName) { <cap-icon name="check" [size]="14" class="ml-auto shrink-0 text-accent-600" /> }
                 </div>
                 @if (r.description) { <div class="truncate text-xs text-stone-500">{{ r.description }}</div> }
               </li>
             } @empty {
-              <li class="px-3 py-2 text-sm text-stone-500">{{ loading() ? 'Chargement des dépôts…' : query() ? 'Aucun dépôt ne correspond.' : 'Aucun dépôt accessible avec cette connexion.' }}</li>
+              <li class="px-3 py-2 text-sm text-stone-500">{{ loading() ? t('Chargement des dépôts…') : query() ? t('Aucun dépôt ne correspond.') : t('Aucun dépôt accessible avec cette connexion.') }}</li>
             }
           </ul>
-          @if (error()) { <p class="border-t border-stone-100 px-3 py-1.5 text-xs text-red-600 dark:border-stone-800">{{ error() }} <button type="button" class="underline" (click)="loadRepos()">Réessayer</button></p> }
-          @else if (repos().length) { <div class="border-t border-stone-100 px-3 py-1.5 text-xs text-stone-500 dark:border-stone-800">{{ filtered().length }} / {{ repos().length }} dépôt(s)</div> }
+          @if (error()) { <p class="border-t border-stone-100 px-3 py-1.5 text-xs text-red-600 dark:border-stone-800">{{ error() }} <button type="button" class="underline" (click)="loadRepos()">{{ t('Réessayer') }}</button></p> }
+          @else if (repos().length) { <div class="border-t border-stone-100 px-3 py-1.5 text-xs text-stone-500 dark:border-stone-800">{{ t('{shown} / {total} dépôt(s)', { shown: filtered().length, total: repos().length }) }}</div> }
         }
       </div>
     }
   `,
 })
 export class RepoPicker {
+  protected readonly t = t;
   private readonly api = inject(Api);
   readonly value = model<RepoChoice | null>(null);
   readonly placement = input<'above' | 'below'>('below');
@@ -148,7 +150,7 @@ export class RepoPicker {
       this.cache.set(id, list);
       if (this.connectionId() === id) this.repos.set(list);
     } catch (e) {
-      this.error.set(e instanceof ApiError ? e.message : 'Impossible de lister les dépôts.');
+      this.error.set(e instanceof ApiError ? tr(e.message) : t('Impossible de lister les dépôts.'));
     } finally {
       this.loading.set(false);
     }

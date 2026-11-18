@@ -15,6 +15,7 @@ import { Api, ApiError, idempotencyKey } from '../../core/api.service';
 import { SseService, type SseHandle } from '../../core/sse.service';
 import { ToastService } from '../../core/toast.service';
 import { ConversationsService } from '../../core/conversations.service';
+import { t, tr } from '../../core/i18n';
 
 export interface PlatformConfig {
   editor: { manualEditingEnabled: boolean };
@@ -321,7 +322,7 @@ export class WorkspaceStore {
       case 'run.interrupted': {
         const status = e.type === 'run.completed' ? 'completed' : e.type === 'run.failed' ? 'failed' : 'interrupted';
         this.runs.update((l) => l.map((r) => (r.id === d['runId'] ? { ...r, status, endedAt: e.ts, error: (d['error'] as string) ?? (d['reason'] as string) ?? null } : r)));
-        if (e.type === 'run.failed') this.toast.show(`Échec du run : ${d['error']}`, 'error');
+        if (e.type === 'run.failed') this.toast.show(t('Échec du run : {error}', { error: tr(String(d['error'] ?? '')) }), 'error');
         this.compacting.set(false);
         void this.refreshUsage();
         this.bumpFiles();
@@ -350,14 +351,14 @@ export class WorkspaceStore {
         void this.refreshUsage();
         return;
       case 'approval.required':
-        this.toast.show(`Approbation requise : ${d['summary']}`, 'info', 10_000);
+        this.toast.show(t('Approbation requise : {summary}', { summary: tr(String(d['summary'] ?? '')) }), 'info', 10_000);
         void this.loadApprovals();
         return;
       case 'approval.resolved':
         void this.loadApprovals();
         return;
       case 'git.operation':
-        this.toast.show(String(d['detail'] ?? ''), d['status'] === 'succeeded' ? 'success' : d['status'] === 'failed' ? 'error' : 'info', 10_000);
+        this.toast.show(tr(String(d['detail'] ?? '')), d['status'] === 'succeeded' ? 'success' : d['status'] === 'failed' ? 'error' : 'info', 10_000);
         void this.loadApprovals();
         return;
       case 'workspace.status':

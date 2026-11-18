@@ -4,6 +4,7 @@ import type { AttachmentDto, ModelDto, UsageSummaryDto, WorkspaceDto } from '@ca
 import { ApiError, idempotencyKey } from '../../core/api.service';
 import type { RepoChoice } from '../../shared/repo-picker';
 import { WorkspaceStore, type PlatformConfig } from '../workspace/workspace.store';
+import { t, tr } from '../../core/i18n';
 
 const MODEL_KEY = 'cap.home.modelId';
 const EFFORT_KEY = 'cap.home.thinkingLevel';
@@ -91,10 +92,10 @@ export class DraftWorkspaceStore extends WorkspaceStore {
       for (const f of files) form.append('files', f, f.name);
       try {
         const res = await this.api.upload<AttachmentDto[]>(`/workspaces/${ws.id}/attachments`, form);
-        for (const a of res.filter((x) => x.status === 'rejected')) this.toast.show(`${a.fileName} refusé : ${a.rejectionReason}`, 'error', 10_000);
+        for (const a of res.filter((x) => x.status === 'rejected')) this.toast.show(t('{name} refusé : {reason}', { name: a.fileName, reason: tr(a.rejectionReason) }), 'error', 10_000);
         ids = res.filter((a) => a.status === 'ready').map((a) => a.id);
       } catch (err) {
-        this.toast.show(`Pièces jointes non envoyées : ${err instanceof ApiError ? err.message : 'erreur'}`, 'error', 10_000);
+        this.toast.show(t('Pièces jointes non envoyées : {error}', { error: err instanceof ApiError ? tr(err.message) : t('erreur') }), 'error', 10_000);
       }
     }
     await this.api.post(`/workspaces/${ws.id}/messages`, { text, attachmentIds: ids, delivery: 'new_run', modelId: draft.modelId ?? undefined }, { 'Idempotency-Key': idempotencyKey() });
@@ -107,7 +108,7 @@ function draftWorkspace(modelId: string | null, thinkingLevel: WorkspaceDto['thi
   return {
     id: '',
     ownerId: '',
-    name: 'Nouvelle conversation',
+    name: t('Nouvelle conversation'),
     titleSource: 'auto',
     repository: null,
     status: 'ready',

@@ -7,6 +7,7 @@ import { AskForm } from './ask-form';
 import { SharedFiles } from './shared-files';
 import { ApprovalCard } from './approval-card';
 import { ScreenshotStrip } from './screenshot-strip';
+import { t } from '../../core/i18n';
 
 /** Outils de Pi qui créent une demande d'approbation Git (affichée sous l'appel). */
 export const APPROVAL_TOOLS = new Set(['platform_git_push', 'platform_create_pull_request', 'platform_merge_pull_request', 'platform_delete_remote_branch']);
@@ -16,14 +17,14 @@ export function toolIcon(name: string): string {
 }
 
 export function toolLabel(name: string): string {
-  return ({ bash: 'Commande', read: 'Lecture', write: 'Écriture', edit: 'Modification', browser_screenshot: 'Capture d’écran', share_files: 'Fichiers à télécharger', update_plan: 'Plan', platform_git_push: 'Push (approbation)', platform_create_pull_request: 'Pull request (approbation)', platform_merge_pull_request: 'Fusion (approbation)', platform_delete_remote_branch: 'Suppression de branche (approbation)' } as Record<string, string>)[name] ?? name;
+  return ({ bash: t('Commande'), read: t('Lecture'), write: t('Écriture'), edit: t('Modification'), browser_screenshot: t('Capture d’écran'), share_files: t('Fichiers à télécharger'), update_plan: t('Plan'), platform_git_push: t('Push (approbation)'), platform_create_pull_request: t('Pull request (approbation)'), platform_merge_pull_request: t('Fusion (approbation)'), platform_delete_remote_branch: t('Suppression de branche (approbation)') } as Record<string, string>)[name] ?? name;
 }
 
 /** Argument principal d'un appel (commande, chemin, URL…), sur une ligne. */
 export function toolSummary(call: ToolCallDto): string {
   if (call.toolName === 'update_plan') {
     const items = parsePlan(call.args) ?? [];
-    return `${items.filter((i) => i.status === 'completed').length}/${items.length} tâches terminées`;
+    return t('{done}/{total} tâches terminées', { done: items.filter((i) => i.status === 'completed').length, total: items.length });
   }
   const a = (call.args ?? {}) as Record<string, unknown>;
   return String(a['command'] ?? a['path'] ?? a['file_path'] ?? a['url'] ?? a['local_branch'] ?? a['title'] ?? '').split('\n')[0].slice(0, 120);
@@ -51,10 +52,10 @@ export function toolSummary(call: ToolCallDto): string {
         <span class="font-medium">{{ label() }}</span>
         <span class="truncate font-mono text-xs text-stone-500">{{ summary() }}</span>
         <span class="ml-auto flex shrink-0 items-center gap-2 text-xs text-stone-500">
-          @if (call().filesTouched.length) { <span title="Fichiers modifiés">{{ call().filesTouched.length }} fichier(s)</span> }
+          @if (call().filesTouched.length) { <span [title]="t('Fichiers modifiés')">{{ t('{n} fichier(s)', { n: call().filesTouched.length }) }}</span> }
           @if (call().durationMs !== null) { <span>{{ duration() }}</span> }
           @switch (call().status) {
-            @case ('running') { <span class="h-2 w-2 animate-pulse rounded-full bg-accent-500" aria-label="En cours"></span> }
+            @case ('running') { <span class="h-2 w-2 animate-pulse rounded-full bg-accent-500" [attr.aria-label]="t('En cours')"></span> }
             @case ('failed') { <cap-icon name="x" [size]="14" class="text-red-600" /> }
             @case ('blocked') { <cap-icon name="lock" [size]="14" class="text-amber-600" /> }
             @default { <cap-icon name="check" [size]="14" class="text-emerald-600" /> }
@@ -69,7 +70,7 @@ export function toolSummary(call: ToolCallDto): string {
           @if (command()) {
             <cap-code-block [code]="command()" language="bash" label="bash" prompt="$" [wrap]="true" />
           } @else if (argsText()) {
-            <cap-code-block [code]="argsText()" language="json" label="paramètres" />
+            <cap-code-block [code]="argsText()" language="json" [label]="t('paramètres')" />
           }
           @if (call().output) {
             <cap-code-block [code]="call().output" label="sortie" maxHeight="24rem" />
@@ -92,6 +93,7 @@ export function toolSummary(call: ToolCallDto): string {
   `,
 })
 export class ToolCard {
+  protected readonly t = t;
   readonly call = input.required<ToolCallDto>();
   readonly openFile = output<string>();
   /** Captures sous l'appel ; masquées dans un groupe d'étapes, qui les affiche en dessous de lui. */

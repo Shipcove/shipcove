@@ -4,6 +4,7 @@ import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
 import { AgoPipe } from '../../shared/pipes';
 import { WorkspaceStore } from './workspace.store';
+import { t } from '../../core/i18n';
 
 /**
  * Demande d'approbation Git, affichée dans la conversation sous l'appel d'outil de Pi qui l'a
@@ -36,22 +37,23 @@ import { WorkspaceStore } from './workspace.store';
       }
       @if (a.diffStat) { <pre class="mt-2 max-h-40 overflow-auto rounded bg-stone-100 p-2 font-mono text-[11px] dark:bg-stone-800">{{ a.diffStat }}</pre> }
       @if (a.patchPreview) {
-        <button class="mt-1 text-xs text-accent-700 hover:underline dark:text-accent-500" (click)="expanded.set(!expanded())">{{ expanded() ? 'Masquer le diff' : 'Afficher le diff' }}</button>
+        <button class="mt-1 text-xs text-accent-700 hover:underline dark:text-accent-500" (click)="expanded.set(!expanded())">{{ expanded() ? t('Masquer le diff') : t('Afficher le diff') }}</button>
         @if (expanded()) { <pre class="mt-1 max-h-96 overflow-auto rounded bg-stone-900 p-2 font-mono text-[11px] text-stone-100">{{ a.patchPreview }}</pre> }
       }
       @if (a.operation; as op) {
-        @if (op.status !== 'awaiting_approval' && op.status !== 'rejected') { <div class="mt-2 text-xs">Exécution : <strong>{{ op.status }}</strong> @if (op.result) { — {{ op.result }} }</div> }
+        @if (op.status !== 'awaiting_approval' && op.status !== 'rejected') { <div class="mt-2 text-xs">{{ t('Exécution :') }} <strong>{{ op.status }}</strong> @if (op.result) { — {{ op.result }} }</div> }
       }
       @if (a.status === 'pending' && store.isOwner()) {
         <div class="mt-3 flex gap-2">
-          <button class="btn-accent !py-1" (click)="decide('approve')" [disabled]="busy()"><cap-icon name="check" [size]="13" /> Approuver</button>
-          <button class="btn-secondary !py-1" (click)="decide('reject')" [disabled]="busy()"><cap-icon name="x" [size]="13" /> Refuser</button>
+          <button class="btn-accent !py-1" (click)="decide('approve')" [disabled]="busy()"><cap-icon name="check" [size]="13" /> {{ t('Approuver') }}</button>
+          <button class="btn-secondary !py-1" (click)="decide('reject')" [disabled]="busy()"><cap-icon name="x" [size]="13" /> {{ t('Refuser') }}</button>
         </div>
       }
     </div>
   `,
 })
 export class ApprovalCard {
+  protected readonly t = t;
   readonly approval = input.required<ApprovalDto>();
   protected readonly store = inject(WorkspaceStore);
   private readonly toast = inject(ToastService);
@@ -59,10 +61,10 @@ export class ApprovalCard {
   protected readonly expanded = signal(false);
 
   protected label(a: string) {
-    return ({ push: 'Push', create_pull_request: 'Pull request', create_merge_request: 'Merge request', merge: 'Fusion', delete_remote_branch: 'Suppression de branche' } as Record<string, string>)[a] ?? a;
+    return ({ push: 'Push', create_pull_request: 'Pull request', create_merge_request: 'Merge request', merge: t('Fusion'), delete_remote_branch: t('Suppression de branche') } as Record<string, string>)[a] ?? a;
   }
   protected statusLabel(s: ApprovalDto['status']) {
-    return { pending: 'À approuver', approved: 'Approuvé', consumed: 'Exécuté', rejected: 'Refusé', expired: 'Expiré' }[s];
+    return { pending: t('À approuver'), approved: t('Approuvé'), consumed: t('Exécuté'), rejected: t('Refusé'), expired: t('Expiré') }[s];
   }
   protected badge(s: ApprovalDto['status']) {
     return { pending: 'bg-amber-100 text-amber-800', approved: 'bg-sky-100 text-sky-800', consumed: 'bg-emerald-100 text-emerald-800', rejected: 'bg-stone-200 text-stone-700', expired: 'bg-stone-200 text-stone-500' }[s];
@@ -71,7 +73,7 @@ export class ApprovalCard {
     this.busy.set(true);
     try {
       await this.store.decide(this.approval().id, d);
-      this.toast.show(d === 'approve' ? 'Approuvé : exécution en cours' : 'Refusé', d === 'approve' ? 'success' : 'info');
+      this.toast.show(d === 'approve' ? t('Approuvé : exécution en cours') : t('Refusé'), d === 'approve' ? 'success' : 'info');
     } catch (err) {
       this.toast.error(err);
     } finally {

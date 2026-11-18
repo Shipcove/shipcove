@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import hljs from 'highlight.js/lib/common';
+import { t } from '../core/i18n';
 
 const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -16,7 +17,7 @@ const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
       <div class="code-head">
         <span class="code-lang">{{ label() }}</span>
         <span class="code-actions">
-          <button type="button" class="code-action" data-code-action="copy" [class.done]="copied()" [title]="copied() ? 'Copié' : 'Copier'" aria-label="Copier" (click)="copy()"></button>
+          <button type="button" class="code-action" data-code-action="copy" [class.done]="copied()" [title]="copied() ? t('Copié') : t('Copier')" [attr.aria-label]="t('Copier')" (click)="copy()"></button>
         </span>
       </div>
       <pre [style.max-height]="maxHeight()"><code class="hljs">@if (prompt()) {<span class="code-prompt">{{ prompt() }} </span>}<span [innerHTML]="html()"></span></code></pre>
@@ -24,6 +25,7 @@ const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
   `,
 })
 export class CodeBlock {
+  protected readonly t = t;
   readonly code = input.required<string>();
   /** Langage pour la coloration (vide : texte brut). */
   readonly language = input('');
