@@ -118,8 +118,13 @@ export class WorkspaceStore {
 
   /* ------------------------------ Commandes ------------------------------ */
 
+  /** Demandes de retour en bas de la conversation (envoi d'un message), suivies par la vue. */
+  readonly scrollToBottomRequests = signal(0);
+
   async send(text: string, attachmentIds: string[], delivery: 'new_run' | 'steer' | 'follow_up' = 'new_run', answersTo?: string, command?: 'compact'): Promise<void> {
     const ws = this.workspace()!;
+    // Un nouveau message ramène toujours en bas, même après avoir remonté pour relire.
+    this.scrollToBottomRequests.update((v) => v + 1);
     await this.api.post(`/workspaces/${ws.id}/messages`, { text, attachmentIds, delivery, modelId: ws.modelId ?? undefined, answersTo, command }, { 'Idempotency-Key': idempotencyKey() });
   }
 

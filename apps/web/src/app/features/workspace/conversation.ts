@@ -1,5 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, output, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, afterNextRender, computed, effect, inject, output, signal, viewChild } from '@angular/core';
 import type { AttachmentDto, MessageDto } from '@cap/contracts';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
@@ -14,8 +14,8 @@ import { WorkspaceStore } from './workspace.store';
   imports: [NgTemplateOutlet, ToolCard, ScreenshotStrip, MarkdownPipe, CodeBlocksDirective, BytesPipe, TokensPipe, Icon],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div #scroller class="h-full overflow-x-hidden overflow-y-auto" (scroll)="onScroll()">
-      <div class="mx-auto max-w-3xl px-3 py-4 sm:px-6 sm:py-6">
+    <div #scroller class="h-full overflow-x-hidden overflow-y-auto" (scroll)="onScroll()" (wheel)="onWheel($event)">
+      <div #content class="mx-auto max-w-3xl px-3 py-4 sm:px-6 sm:py-6">
         @if (store.messages().length === 0) {
           <div class="mt-20 text-center text-stone-500">
             <div class="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-accent-100 font-mono text-xl font-bold text-accent-700 dark:bg-accent-700/20">π</div>
@@ -154,6 +154,13 @@ import { WorkspaceStore } from './workspace.store';
         }
       </div>
     </div>
+    @if (!atBottom()) {
+      <!-- Retour en bas : visible seulement quand on a remonté. -->
+      <button class="absolute bottom-3 left-1/2 z-10 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 shadow-md transition hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-700 dark:hover:text-white"
+        (click)="scrollToBottom(true)" aria-label="Revenir en bas de la conversation" title="Revenir en bas">
+        <cap-icon name="chevronDown" [size]="16" />
+      </button>
+    }
     @if (viewing(); as a) {
       <div class="fixed inset-0 z-50 flex flex-col bg-black/85 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" [attr.aria-label]="a.fileName" tabindex="-1"
         (click)="viewing.set(null)" (keydown.escape)="viewing.set(null)" #viewer>
@@ -169,7 +176,7 @@ import { WorkspaceStore } from './workspace.store';
       </div>
     }
   `,
-  host: { class: 'block h-full' },
+  host: { class: 'relative block h-full' },
 })
 export class Conversation {
   protected readonly linkify = linkify;
@@ -230,7 +237,15 @@ export class Conversation {
   protected readonly store = inject(WorkspaceStore);
   readonly openFile = output<string>();
   private readonly scroller = viewChild.required<ElementRef<HTMLElement>>('scroller');
-  private readonly stick = signal(true);
+  private readonly content = viewChild.required<ElementRef<HTMLElement>>('content');
+  /**
+   * Suivi du bas (comme OpenHands) : coupé seulement quand l'utilisateur remonte, rétabli quand il
+   * revient en bas. Un contenu qui grandit d'un coup (grosse sortie, capture) ne le coupe jamais.
+   */
+  private follow = true;
+  /** En bas (à 20 px près) : sinon, bouton de retour en bas. */
+  protected readonly atBottom = signal(true);
+  private lastScrollTop = 0;
 
   constructor() {
     effect(() => {
@@ -239,13 +254,55 @@ export class Conversation {
       if (el) queueMicrotask(() => el.nativeElement.focus());
     });
     effect(() => {
-      // Défilement automatique tant que l'utilisateur est en bas de la conversation.
+      // Nouveaux contenus : suivis tant que l'utilisateur n'a pas remonté.
       this.store.messages();
-      if (this.stick()) queueMicrotask(() => {
-        const el = this.scroller().nativeElement;
-        el.scrollTop = el.scrollHeight;
-      });
+      if (this.follow) requestAnimationFrame(() => this.pinToBottom());
     });
+    effect(() => {
+      // Envoi d'un message : retour en bas et suivi rétabli.
+      if (this.store.scrollToBottomRequests()) requestAnimationFrame(() => this.scrollToBottom(false));
+    });
+    // Hauteur qui change après coup (images, coloration du code, groupe déplié, flux de texte) :
+    // le bas reste collé tant que le suivi est actif.
+    const destroyRef = inject(DestroyRef);
+    afterNextRender(() => {
+      if (typeof ResizeObserver === 'undefined') return;
+      const ro = new ResizeObserver(() => {
+        if (this.follow) this.pinToBottom();
+        else this.updateAtBottom();
+      });
+      ro.observe(this.content().nativeElement);
+      ro.observe(this.scroller().nativeElement);
+      destroyRef.onDestroy(() => ro.disconnect());
+    });
+  }
+
+  /** Bas atteint, à 20 px près. */
+  private isAtBottom(el: HTMLElement): boolean {
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= 20;
+  }
+
+  private updateAtBottom(): void {
+    this.atBottom.set(this.isAtBottom(this.scroller().nativeElement));
+  }
+
+  private pinToBottom(): void {
+    const el = this.scroller().nativeElement;
+    el.scrollTop = el.scrollHeight;
+    this.lastScrollTop = el.scrollTop;
+    this.atBottom.set(true);
+  }
+
+  /** Retour en bas (bouton, envoi d'un message) : le suivi reprend. */
+  protected scrollToBottom(smooth: boolean): void {
+    this.follow = true;
+    const el = this.scroller().nativeElement;
+    if (smooth) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      this.atBottom.set(true);
+    } else {
+      this.pinToBottom();
+    }
   }
 
   protected readonly busy = signal(false);
@@ -282,7 +339,17 @@ export class Conversation {
 
   protected onScroll(): void {
     const el = this.scroller().nativeElement;
-    this.stick.set(el.scrollHeight - el.scrollTop - el.clientHeight < 80);
+    const bottom = this.isAtBottom(el);
+    // Remontée par l'utilisateur (un contenu qui rétrécit laisse, lui, la vue en bas).
+    if (el.scrollTop < this.lastScrollTop - 1 && !bottom) this.follow = false;
+    if (bottom) this.follow = true;
+    this.lastScrollTop = el.scrollTop;
+    this.atBottom.set(bottom);
+  }
+
+  /** Molette vers le haut : suivi coupé tout de suite, avant même l'événement de défilement. */
+  protected onWheel(e: WheelEvent): void {
+    if (e.deltaY < 0) this.follow = false;
   }
 
 }
