@@ -27,7 +27,7 @@ import { t } from '../../core/i18n';
       <div class="mt-1 text-xs text-stone-500">
         {{ a.repository }}
         @if (a.commitSha) { · <span class="font-mono">{{ a.commitSha.slice(0, 10) }}</span> }
-        @if (a.status === 'pending') { · expire {{ a.expiresAt | ago }} }
+        @if (a.status === 'pending') { · {{ t('expire {when}', { when: (a.expiresAt | ago) }) }} }
       </div>
       @if (a.title) { <div class="mt-2 font-medium">{{ a.title }}</div> }
       @if (a.commits.length) {

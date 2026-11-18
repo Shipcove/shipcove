@@ -1,4 +1,5 @@
 import { en } from '../i18n/en';
+import { enPatterns, enServer } from '../i18n/en-server';
 
 /**
  * Langue de l'interface (français ou anglais), fixée au démarrage :
@@ -34,6 +35,7 @@ export const locale = lang === 'fr' ? 'fr-FR' : 'en-US';
 if (typeof document !== 'undefined') document.documentElement.lang = lang;
 
 const dictionary: Record<string, string> | null = lang === 'en' ? en : null;
+const server: Record<string, string> | null = lang === 'en' ? { ...enServer, ...en } : null;
 
 /**
  * Texte de l'interface dans la langue courante. `params` remplace les `{nom}` du texte.
@@ -44,9 +46,20 @@ export function t(fr: string, params?: Record<string, string | number | null | u
   return params ? text.replace(/\{(\w+)\}/g, (m, k: string) => (k in params ? String(params[k] ?? '') : m)) : text;
 }
 
-/** Traduction d'un texte venu du serveur (message d'erreur…) s'il est connu, sinon tel quel. */
+/**
+ * Traduction d'un texte venu du serveur (message d'erreur, message système du fil) s'il est
+ * connu (`i18n/en-server.ts`, textes fixes puis motifs à valeurs variables), sinon tel quel.
+ */
 export function tr(text: string | null | undefined): string {
-  return text ? (dictionary?.[text] ?? text) : '';
+  if (!text) return '';
+  if (!server) return text;
+  const exact = server[text];
+  if (exact) return exact;
+  for (const [re, en] of enPatterns) {
+    const m = re.exec(text);
+    if (m) return en.replace(/\$(\d)/g, (_, i: string) => { const v = m[Number(i)] ?? ''; return server[v] ?? v; });
+  }
+  return text;
 }
 
 /** Change la langue de l'interface (enregistrée) et recharge la page. */

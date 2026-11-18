@@ -59,7 +59,7 @@ import { t } from '../../core/i18n';
       } @else {
         <div class="flex items-center justify-between px-3 py-1.5 text-xs text-stone-500">
           <span>{{ data()?.baseLabel }}</span>
-          <span>{{ filtered().length }} fichier(s) · <span class="text-emerald-600">+{{ totals().add }}</span> <span class="text-red-600">−{{ totals().del }}</span></span>
+          <span>{{ t('{n} fichier(s)', { n: filtered().length }) }} · <span class="text-emerald-600">+{{ totals().add }}</span> <span class="text-red-600">−{{ totals().del }}</span></span>
         </div>
         <ul class="min-h-0 flex-1 overflow-y-auto pb-2" role="list">
           @for (f of filtered(); track f.path) {

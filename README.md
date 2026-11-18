@@ -203,6 +203,13 @@ pnpm docs:dev           # site de documentation
 Le monorepo pnpm est en TypeScript 6 (ESM). Les contrats de l'API sont partagés entre le front et le
 back (`@cap/contracts`, Zod 4).
 
+**Interface multilingue (français, anglais)** : la langue suit celle du navigateur (anglais par
+défaut) et se change dans le pied de la barre latérale. Les textes sont écrits en français dans le
+code avec `t('…')` (`apps/web/src/app/core/i18n.ts`) ; leur traduction anglaise est dans
+`apps/web/src/app/i18n/en.ts`, celle des messages renvoyés par le serveur dans
+`apps/web/src/app/i18n/en-server.ts`. `pnpm lint` échoue si une traduction manque
+(`pnpm --filter web i18n:check` pour ce seul contrôle).
+
 **Politique de dépendances** : seules les versions publiées depuis plus de deux semaines sont
 acceptées (`minimumReleaseAge`). Les scripts d'installation sont refusés par défaut (`allowBuilds`).
 

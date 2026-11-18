@@ -71,7 +71,7 @@ type RightPane = 'panel' | 'files' | 'plan' | null;
           <div class="flex shrink-0 items-center gap-1 sm:gap-2">
             @if (contextPct() !== null) {
               <div class="hidden w-28 text-[11px] text-stone-500 md:block" [title]="t('Remplissage de la fenêtre de contexte du modèle')">
-                Contexte {{ contextPct() }}%
+                {{ t('Contexte {pct} %', { pct: contextPct() }) }}
                 <div class="h-1 rounded bg-stone-200 dark:bg-stone-800"><div class="h-1 rounded bg-accent-500" [style.width.%]="contextPct()"></div></div>
               </div>
             }

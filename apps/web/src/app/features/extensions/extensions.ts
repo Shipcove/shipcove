@@ -76,7 +76,7 @@ import { t } from '../../core/i18n';
                   <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-stone-500">
                     <span class="badge bg-stone-200/70 text-stone-700 dark:bg-stone-800 dark:text-stone-300">{{ s.scope === 'global' ? 'Global' : 'Personnel' }}</span>
                     @if (s.status === 'pending_review') { <span class="badge bg-amber-100 text-amber-800" [title]="t('Un administrateur doit valider ce skill avant que Pi puisse l’utiliser')">{{ t('En attente de validation') }}</span> }
-                    <span>{{ s.fileCount }} fichier(s)</span>
+                    <span>{{ t('{n} fichier(s)', { n: s.fileCount }) }}</span>
                     @if (s.findings.length) { <span class="inline-flex items-center gap-0.5 text-amber-700" [title]="s.findings.join('\n')"><cap-icon name="alert" [size]="12" /> {{ s.findings.length }}</span> }
                   </div>
                 </div>

@@ -45,7 +45,7 @@ interface Answer {
         @for (q of questions(); track $index; let qi = $index; let last = $last) {
           <fieldset class="px-5 py-4" [class.border-b]="!last" [class.border-stone-100]="!last" [class.dark:border-stone-800]="!last" [disabled]="!canAnswer()">
             <legend class="float-left mb-3 w-full font-medium text-stone-900 dark:text-stone-100">{{ qi + 1 }}. {{ q.question }}
-              @if (q.multi_select) { <span class="ml-1 text-xs font-normal text-stone-500">(plusieurs choix possibles)</span> }
+              @if (q.multi_select) { <span class="ml-1 text-xs font-normal text-stone-500">{{ t('(plusieurs choix possibles)') }}</span> }
             </legend>
             <div class="clear-both space-y-1">
               @for (o of q.options; track $index; let oi = $index) {

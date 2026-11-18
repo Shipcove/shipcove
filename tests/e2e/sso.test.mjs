@@ -126,7 +126,7 @@ test('administration : secrets dans Vault (jamais renvoyés), tests de configura
 });
 
 test('OIDC (Keycloak) : PKCE + state + nonce, création du compte, pas de redirection ouverte, flux non rejouable', async () => {
-  const context = await ctx.browser.newContext();
+  const context = await ctx.browser.newContext({ locale: 'fr-FR' });
   const page = await context.newPage();
   let callbackUrl = null;
   page.on('request', (r) => {
@@ -148,7 +148,7 @@ test('OIDC (Keycloak) : PKCE + state + nonce, création du compte, pas de redire
   await page.screenshot({ path: new URL('sso-oidc-home.png', OUT).pathname });
   // Rejeu du retour (code + state déjà consommés) dans une autre session : refusé.
   assert.ok(callbackUrl);
-  const replay = await ctx.browser.newContext();
+  const replay = await ctx.browser.newContext({ locale: 'fr-FR' });
   const rp = await replay.newPage();
   await rp.goto(callbackUrl);
   await rp.waitForURL(/\/auth\/login\?sso_error=sso_expired/);
@@ -156,7 +156,7 @@ test('OIDC (Keycloak) : PKCE + state + nonce, création du compte, pas de redire
   assert.equal((await sessionOf(rp)).authenticated, false);
   await replay.close();
   // Deuxième connexion : même compte (identité rattachée), pas de doublon.
-  const again = await ctx.browser.newContext();
+  const again = await ctx.browser.newContext({ locale: 'fr-FR' });
   const ap = await again.newPage();
   await ap.goto(`${PUBLIC}/auth/login`);
   await ap.click(`a:has-text("Continuer avec ${NAMES.oidc}")`);
@@ -171,7 +171,7 @@ test('OIDC : politique « require_idp » → refus sans MFA attestée par le fou
   const p = ctx.oidc;
   await ctx.admin.put(`/admin/auth-providers/${p.id}`, { type: 'oidc', name: p.name, enabled: true, autoProvision: true, config: { ...p.config, mfa: 'require_idp' } });
   try {
-    const context = await ctx.browser.newContext();
+    const context = await ctx.browser.newContext({ locale: 'fr-FR' });
     const page = await context.newPage();
     await page.goto(`${PUBLIC}/api/v1/auth/sso/${p.id}/start`);
     await keycloakLogin(page, 'alice', 'Alice-Sso-Password-1');
@@ -185,7 +185,7 @@ test('OIDC : politique « require_idp » → refus sans MFA attestée par le fou
 });
 
 test('SAML 2.0 (Keycloak) : assertion signée validée, InResponseTo lié au flux, compte créé', async () => {
-  const context = await ctx.browser.newContext();
+  const context = await ctx.browser.newContext({ locale: 'fr-FR' });
   const page = await context.newPage();
   await page.goto(`${PUBLIC}/auth/login`);
   await page.click(`a:has-text("Continuer avec ${NAMES.saml}")`);
@@ -216,7 +216,7 @@ test('LDAP : connexion annuaire, filtre échappé, mauvais mot de passe et bind 
   // Mot de passe vide (bind anonyme) : rejeté dès la validation.
   assert.equal((await api.post('/auth/ldap/login', { providerId: ctx.ldap.id, username: 'bob', password: '' })).status, 400);
 
-  const context = await ctx.browser.newContext();
+  const context = await ctx.browser.newContext({ locale: 'fr-FR' });
   const page = await context.newPage();
   await page.goto(`${PUBLIC}/auth/login`);
   await page.click(`button:has-text("Annuaire : ${NAMES.ldap}")`);
@@ -236,7 +236,7 @@ test('pas de fusion par email : refus, puis rattachement explicite depuis les pa
   const created = await ctx.admin.post('/admin/users', { email: 'erin.local@example.test', username: 'erin-local', displayName: 'Erin Locale', platformRole: 'user', password });
   assert.equal(created.status, 201, JSON.stringify(created.body));
 
-  const c1 = await ctx.browser.newContext();
+  const c1 = await ctx.browser.newContext({ locale: 'fr-FR' });
   const p1 = await c1.newPage();
   await p1.goto(`${PUBLIC}/api/v1/auth/sso/${ctx.oidc.id}/start`);
   await keycloakLogin(p1, 'erin', 'Erin-Sso-Password-1');
@@ -246,7 +246,7 @@ test('pas de fusion par email : refus, puis rattachement explicite depuis les pa
   await c1.close();
 
   // Connexion locale puis rattachement explicite de l’identité Keycloak.
-  const c2 = await ctx.browser.newContext();
+  const c2 = await ctx.browser.newContext({ locale: 'fr-FR' });
   const p2 = await c2.newPage();
   await p2.goto(`${PUBLIC}/auth/login`);
   await p2.fill('#login', 'erin-local');
@@ -262,7 +262,7 @@ test('pas de fusion par email : refus, puis rattachement explicite depuis les pa
   await c2.close();
 
   // Désormais, la connexion OIDC ouvre le compte local d'Erin.
-  const c3 = await ctx.browser.newContext();
+  const c3 = await ctx.browser.newContext({ locale: 'fr-FR' });
   const p3 = await c3.newPage();
   await p3.goto(`${PUBLIC}/api/v1/auth/sso/${ctx.oidc.id}/start`);
   await keycloakLogin(p3, 'erin', 'Erin-Sso-Password-1');

@@ -29,7 +29,7 @@ const PROVIDERS: Array<{ id: GitProviderKind; label: string; fixedHost?: string;
             <span class="badge bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300">{{ label(f.provider) }}</span>
             <span class="text-xs text-stone-500">{{ f.host }}</span>
             <span class="badge" [class]="f.enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-100 text-stone-500'">{{ f.enabled ? t('activée') : t('désactivée') }}</span>
-            <span class="text-xs text-stone-500">{{ f.connections }} connexion(s)</span>
+            <span class="text-xs text-stone-500">{{ t('{n} connexion(s)', { n: f.connections }) }}</span>
             <span class="ml-auto flex gap-1">
               <button class="btn-ghost !py-0.5 text-xs" (click)="test(f)">{{ t('Tester') }}</button>
               <button class="btn-ghost !py-0.5 text-xs" (click)="toggle(f)">{{ f.enabled ? t('Désactiver') : t('Activer') }}</button>

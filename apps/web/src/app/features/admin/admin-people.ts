@@ -4,7 +4,7 @@ import type { AdminUserDto, InvitationDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
 import { ToastService } from '../../core/toast.service';
 import { AgoPipe } from '../../shared/pipes';
-import { t, tr } from '../../core/i18n';
+import { t } from '../../core/i18n';
 
 @Component({
   selector: 'cap-admin-users',

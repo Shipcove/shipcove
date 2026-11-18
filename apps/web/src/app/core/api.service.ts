@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular/common/http';
-import { t } from './i18n';
+import { t, tr } from './i18n';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import type { ApiErrorBody, ErrorCode } from '@cap/contracts';
@@ -49,7 +49,7 @@ export class Api {
     } catch (err) {
       if (err instanceof HttpErrorResponse) {
         const body = err.error as ApiErrorBody | null;
-        if (body?.error) throw new ApiError(err.status, body.error.code, body.error.message, body.error.details, body.error.correlationId);
+        if (body?.error) throw new ApiError(err.status, body.error.code, tr(body.error.message), body.error.details, body.error.correlationId);
         if (err.status === 0) throw new ApiError(0, 'network_error', t('Serveur injoignable'));
         throw new ApiError(err.status, 'internal_error', err.message);
       }

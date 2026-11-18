@@ -28,7 +28,7 @@ const SECRET_FIELD: Record<string, { key: string; label: string; multiline?: boo
   imports: [FormsModule, SettingsSection],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <h1 class="text-xl font-semibold">IAM & connexion</h1>
+    <h1 class="text-xl font-semibold">{{ t('IAM & connexion') }}</h1>
     <div class="mt-4"><cap-settings-section section="auth" [title]="t('Connexion locale, inscriptions, MFA et sessions')" /></div>
     <h2 class="mt-6 mb-2 text-sm font-semibold text-stone-500 uppercase">{{ t('Fournisseurs d’identité') }}</h2>
     <div class="space-y-3">
@@ -36,7 +36,7 @@ const SECRET_FIELD: Record<string, { key: string; label: string; multiline?: boo
         <div class="card p-4 text-sm">
           <div class="flex items-center gap-2"><span class="font-medium">{{ p.name }}</span><span class="badge bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300">{{ p.type }}</span>
             <span class="badge" [class]="p.enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-100 text-stone-500'">{{ p.enabled ? t('activé') : t('désactivé') }}</span>
-            @if (p.secretConfigured) { <span class="text-xs text-stone-500">secret dans Vault</span> }
+            @if (p.secretConfigured) { <span class="text-xs text-stone-500">{{ t('secret dans Vault') }}</span> }
             <span class="ml-auto flex gap-1">
               <button class="btn-ghost !py-0.5 text-xs" (click)="test(p)">{{ t('Tester') }}</button>
               <button class="btn-ghost !py-0.5 text-xs" (click)="toggle(p)">{{ p.enabled ? t('Désactiver') : t('Activer') }}</button>
@@ -44,7 +44,7 @@ const SECRET_FIELD: Record<string, { key: string; label: string; multiline?: boo
               <button class="btn-ghost !py-0.5 text-xs text-red-600" (click)="remove(p)">{{ t('Supprimer') }}</button>
             </span>
           </div>
-          @if (p.lastTestResult) { <div class="mt-1 text-xs text-stone-500">Dernier test : {{ p.lastTestResult }}</div> }
+          @if (p.lastTestResult) { <div class="mt-1 text-xs text-stone-500">{{ t('Dernier test : {result}', { result: tr(p.lastTestResult) }) }}</div> }
           @if (p.type !== 'ldap') {
             <div class="mt-1 text-xs text-stone-500">{{ p.type === 'saml' ? t('URL ACS à déclarer chez le fournisseur :') : t('URL de redirection à déclarer chez le fournisseur :') }} <code class="select-all">{{ p.callbackUrl }}</code></div>
           }
@@ -73,6 +73,7 @@ const SECRET_FIELD: Record<string, { key: string; label: string; multiline?: boo
 })
 export class AdminIam implements OnInit {
   protected readonly t = t;
+  protected readonly tr = tr;
   private readonly api = inject(Api);
   private readonly toast = inject(ToastService);
   protected readonly providers = signal<AuthProviderAdminDto[]>([]);

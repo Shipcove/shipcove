@@ -127,7 +127,7 @@ ${t('Les fichiers markdown annexes (dossier `references/` par exemple) sont lus 
 
       <!-- Onglets sur mobile -->
       <div class="flex border-b border-stone-200 md:hidden dark:border-stone-800" role="tablist">
-        <button role="tab" class="flex-1 py-2 text-sm" [class]="mobileTab() === 'tree' ? 'border-b-2 border-accent-600 font-medium' : 'text-stone-500'" (click)="mobileTab.set('tree')">Fichiers ({{ files().length }})</button>
+        <button role="tab" class="flex-1 py-2 text-sm" [class]="mobileTab() === 'tree' ? 'border-b-2 border-accent-600 font-medium' : 'text-stone-500'" (click)="mobileTab.set('tree')">{{ t('Fichiers ({n})', { n: files().length }) }}</button>
         <button role="tab" class="flex-1 py-2 text-sm" [class]="mobileTab() === 'file' ? 'border-b-2 border-accent-600 font-medium' : 'text-stone-500'" (click)="mobileTab.set('file')">{{ selectedName() }}</button>
       </div>
 
@@ -181,7 +181,7 @@ ${t('Les fichiers markdown annexes (dossier `references/` par exemple) sont lus 
             }
           </ul>
           <div class="border-t border-stone-200 px-3 py-1.5 text-[11px] text-stone-400 dark:border-stone-800">
-            {{ files().length }} fichier(s) · {{ totalSize() | bytes }} / {{ maxTotal | bytes }}
+            {{ t('{n} fichier(s)', { n: files().length }) }} · {{ totalSize() | bytes }} / {{ maxTotal | bytes }}
           </div>
         </aside>
 

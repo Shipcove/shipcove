@@ -161,7 +161,7 @@ test('forges Git administrées : jeton personnel refusé par défaut, configurat
 test('rattachement OAuth dans le navigateur (PKCE + state), retour non rejouable', async () => {
   const browser = await chromium.launch({ executablePath, args: ['--no-sandbox', '--host-resolver-rules=MAP gitlab.test 127.0.0.1'] });
   try {
-    const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+    const page = await browser.newPage({ locale: 'fr-FR', viewport: { width: 1400, height: 1000 } });
     await page.goto(`${PUBLIC}/auth/login`);
     await page.fill('#login', ctx.devLogin.username);
     await page.fill('#password', ctx.devLogin.password);

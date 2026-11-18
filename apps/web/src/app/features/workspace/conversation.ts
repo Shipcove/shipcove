@@ -8,7 +8,7 @@ import { ToolCard, toolLabel, toolSummary } from './tool-card';
 import { ScreenshotStrip } from './screenshot-strip';
 import { buildTimeline, summarizeSteps } from './timeline';
 import { WorkspaceStore } from './workspace.store';
-import { t, tk } from '../../core/i18n';
+import { t, tk, tr } from '../../core/i18n';
 
 @Component({
   selector: 'cap-conversation',
@@ -61,10 +61,10 @@ import { t, tk } from '../../core/i18n';
               </div>
             </div>
           } @else if (row.kind === 'message' && row.m.meta?.['kind'] === 'compaction') { @let m = row.m; @let failed = m.meta?.['status'] === 'failed';
-            <div class="my-4" role="note" [attr.aria-label]="m.text">
+            <div class="my-4" role="note" [attr.aria-label]="tr(m.text)">
               <div class="flex items-center gap-3 text-xs" [class]="failed ? 'text-red-600' : 'text-stone-500'">
                 <span class="h-px flex-1" [class]="failed ? 'bg-red-200 dark:bg-red-900' : 'bg-stone-300 dark:bg-stone-700'"></span>
-                <span class="flex items-center gap-1.5"><cap-icon [name]="failed ? 'alert' : 'minimize'" [size]="13" />{{ m.text }}
+                <span class="flex items-center gap-1.5"><cap-icon [name]="failed ? 'alert' : 'minimize'" [size]="13" />{{ tr(m.text) }}
                   @if (!failed && m.meta?.['tokensBefore']) { <span class="text-stone-400">· {{ t('{tokens} tokens avant', { tokens: ($any(m.meta?.['tokensBefore']) | tokens) }) }}</span> }</span>
                 <span class="h-px flex-1" [class]="failed ? 'bg-red-200 dark:bg-red-900' : 'bg-stone-300 dark:bg-stone-700'"></span>
               </div>
@@ -80,7 +80,7 @@ import { t, tk } from '../../core/i18n';
               @if (m.meta?.['kind'] === 'rewind') { <cap-icon name="undo" [size]="14" class="mt-0.5" /> }
               @if (m.meta?.['kind'] === 'branch_switched') { <cap-icon name="git" [size]="14" class="mt-0.5" /> }
               @if (m.meta?.['kind'] === 'setup') { <cap-icon [name]="m.meta?.['status'] === 'failed' ? 'alert' : 'terminal'" [size]="14" class="mt-0.5" [class.text-red-600]="m.meta?.['status'] === 'failed'" /> }
-              <span class="min-w-0 flex-1">{{ m.text }}
+              <span class="min-w-0 flex-1">{{ tr(m.text) }}
                 @if (m.meta?.['kind'] === 'setup' && m.meta?.['output']) {
                   <details class="mt-1" [open]="m.meta?.['status'] === 'failed'"><summary class="cursor-pointer text-xs select-none">{{ t('Sortie du script de préparation') }}</summary>
                     <pre class="mt-1 max-h-72 overflow-auto rounded bg-stone-100 p-2 text-xs whitespace-pre-wrap dark:bg-stone-900">{{ m.meta?.['output'] }}</pre></details>
@@ -182,6 +182,7 @@ import { t, tk } from '../../core/i18n';
 })
 export class Conversation {
   protected readonly t = t;
+  protected readonly tr = tr;
   protected readonly linkify = linkify;
   protected readonly toolLabel = toolLabel;
   protected readonly toolSummary = toolSummary;

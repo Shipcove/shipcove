@@ -30,7 +30,7 @@ import { t } from '../../core/i18n';
                 <button class="rounded p-0.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700 disabled:opacity-30 dark:hover:bg-stone-800" (click)="move(i, 1)" [disabled]="last" [attr.aria-label]="t('Descendre {name}', { name: c.name })"><cap-icon name="chevronDown" [size]="12" /></button>
               </span>
               <div class="min-w-0 flex-1">
-                <div class="font-medium">{{ c.name }} <span class="text-xs font-normal text-stone-400">· {{ c.skillCount }} skill(s)</span></div>
+                <div class="font-medium">{{ c.name }} <span class="text-xs font-normal text-stone-400">· {{ t('{n} skill(s)', { n: c.skillCount }) }}</span></div>
                 @if (c.description) { <div class="truncate text-xs text-stone-500">{{ c.description }}</div> }
               </div>
               <button class="btn-ghost !py-1 text-xs" (click)="edit(c)">{{ t('Modifier') }}</button>
