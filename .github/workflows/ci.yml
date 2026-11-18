@@ -1,20 +1,19 @@
-# Intégration continue : construction et publication des images Docker sur le registre GitHub
-# (ghcr.io/shipcove/shipcove-*). Les tests seront ajoutés plus tard.
-#  - pull request : construction des images (sans publication) ;
-#  - push sur develop / main : images étiquetées par branche et par commit (sha-…) ;
-#  - tag vX.Y.Z : images X.Y.Z, X.Y et latest.
-name: CI
+# Images Docker publiées sur le registre GitHub (ghcr.io/shipcove/shipcove-*), UNIQUEMENT à la
+# création d'un tag de version : `git tag v1.2.3 && git push origin v1.2.3`.
+#  - tag vX.Y.Z : images X.Y.Z, X.Y et latest ;
+#  - tag de pré-version vX.Y.Z-rc.N : image X.Y.Z-rc.N seulement.
+# Aucune image n'est construite pour les pushes de branche ni pour les pull requests. Relance
+# manuelle possible (workflow_dispatch) en choisissant un tag, jamais une branche.
+name: Images
 
 on:
   push:
-    branches: [develop, main]
     tags: ['v*.*.*']
-  pull_request:
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -25,6 +24,8 @@ env:
 jobs:
   images:
     name: Image ${{ matrix.image }}
+    # Relance manuelle : seulement depuis un tag de version.
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -45,7 +46,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
       - name: Connexion à ghcr.io
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -56,23 +56,21 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/shipcove-${{ matrix.image }}
+          # `latest` est ajouté automatiquement pour un tag de version (hors pré-version).
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix=sha-
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
           labels: |
             org.opencontainers.image.title=shipcove-${{ matrix.image }}
             org.opencontainers.image.vendor=Shipcove
-      - name: Construction${{ github.event_name != 'pull_request' && ' et publication' || '' }}
+      - name: Construction et publication
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
           target: ${{ matrix.target }}
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.image }}

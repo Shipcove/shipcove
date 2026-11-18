@@ -123,9 +123,16 @@ cahier des charges dans [`SPEC.md`](SPEC.md).
 
 Les images sont publiées sur `ghcr.io/shipcove` (`shipcove-web`, `shipcove-api`, `shipcove-worker`,
 `shipcove-gateway`, `shipcove-preview`, `shipcove-docker-guard`, `shipcove-sandbox`).
-Elles sont construites par la CI GitHub Actions (`.github/workflows/ci.yml`) :
-branche `develop` → étiquettes `develop` et `sha-<commit>` ; tag `vX.Y.Z` → `X.Y.Z` et
-`X.Y`. Les pull requests construisent les images sans les publier.
+Elles sont construites et publiées par GitHub Actions (`.github/workflows/ci.yml`)
+**uniquement à la création d'un tag de version** : tag `vX.Y.Z` → étiquettes `X.Y.Z`, `X.Y` et
+`latest` (un tag de pré-version `vX.Y.Z-rc.N` ne publie que `X.Y.Z-rc.N`). Les pushes de branche
+et les pull requests ne construisent aucune image.
+
+```bash
+# Publier une version
+git tag v0.3.0
+git push origin v0.3.0
+```
 
 ```bash
 # 1. Récupération de la pile Compose
