@@ -25,15 +25,17 @@ import { WorkspaceStore } from './workspace.store';
             <span class="text-xs text-stone-500">Branche indisponible : démarrez la conversation (ou rattachez un dépôt).</span>
           } @else {
             <label class="sr-only" for="git-branch">Branche de travail</label>
-            <select id="git-branch" class="input !w-auto max-w-full min-w-0 flex-1 !py-1 font-mono text-xs" [value]="b.current ?? ''" (change)="checkout($event)"
+            <select id="git-branch" class="input !w-auto max-w-full min-w-0 flex-1 !py-1 font-mono text-xs" (change)="checkout($event)"
               [disabled]="switching() || !!store.activeRun()" [title]="store.activeRun() ? 'Disponible quand Pi a terminé sa réponse' : 'Changer de branche de travail'">
-              @if (!b.current) { <option value="" disabled>HEAD détaché</option> }
+              <!-- Sélection portée par chaque option : un [value] sur le select serait appliqué avant
+                   que l'option de la nouvelle branche n'existe (branche distante devenue locale). -->
+              @if (!b.current) { <option value="" disabled selected>HEAD détaché</option> }
               <optgroup label="Branches locales">
-                @for (br of b.local; track br.name) { <option [value]="br.name">{{ br.name }}</option> }
+                @for (br of b.local; track br.name) { <option [value]="br.name" [selected]="br.name === b.current">{{ br.name }}</option> }
               </optgroup>
               @if (b.remote.length) {
                 <optgroup label="Branches distantes (origin)">
-                  @for (br of b.remote; track br.name) { <option [value]="br.name">{{ br.name }}</option> }
+                  @for (br of b.remote; track br.name) { <option [value]="br.name" [selected]="br.name === b.current">{{ br.name }}</option> }
                 </optgroup>
               }
             </select>
@@ -64,26 +66,43 @@ export class GitPanel {
   private readonly sandboxStatus = computed(() => this.store.workspace()?.status ?? null);
   /** Fin d'un run : Pi a pu changer de branche. */
   private readonly runKey = computed(() => this.store.activeRun()?.id ?? null);
+  /** Branche diffusée par la plateforme (`workspace.branch`) après un changement par Pi ou par vous. */
+  private readonly liveBranch = computed(() => this.store.workspace()?.branch ?? null);
 
   constructor() {
+    // Nouvelle branche : le diff par rapport à HEAD change même si aucun fichier n'a bougé.
+    effect(() => {
+      if (this.liveBranch()) untracked(() => this.refresh.update((v) => v + 1));
+    });
     effect(() => {
       // Un `git switch` de Pi modifie des fichiers (checkpoint → filesVersion) ; on relit la branche.
       this.store.filesVersion();
       this.sandboxStatus();
       this.runKey();
+      this.liveBranch();
       if (this.workspaceId() && this.store.isOwner()) untracked(() => void this.load());
     });
   }
 
   private loading: Promise<void> | null = null;
+  private reloadAgain = false;
 
+  /** Un chargement à la fois ; une demande reçue pendant ce temps en relance un après (jamais perdue). */
   async load(): Promise<void> {
-    if (this.loading) return this.loading;
+    if (this.loading) {
+      this.reloadAgain = true;
+      return this.loading;
+    }
     this.loading = (async () => {
       try {
-        this.branches.set(await this.api.get<GitBranchesDto>(`/workspaces/${this.workspaceId()}/git/branches`));
-      } catch {
-        this.branches.set({ available: false, current: null, local: [], remote: [] });
+        do {
+          this.reloadAgain = false;
+          try {
+            this.branches.set(await this.api.get<GitBranchesDto>(`/workspaces/${this.workspaceId()}/git/branches`));
+          } catch {
+            this.branches.set({ available: false, current: null, local: [], remote: [] });
+          }
+        } while (this.reloadAgain);
       } finally {
         this.loading = null;
       }

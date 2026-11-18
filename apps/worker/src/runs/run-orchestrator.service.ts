@@ -335,6 +335,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       // Tous les événements reçus sont appliqués avant la clôture du run.
       await ctx.queue;
       await this.flush(ctx);
+      await this.sandboxes.syncBranch(sandbox).catch(() => null);
       // Session Pi et contexte pour la reprise après destruction de la sandbox.
       const sessionFile = await runtime.sessionFile().catch(() => null);
       const stats = await runtime.sessionStats().catch(() => null);
@@ -667,6 +668,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           if (!['read', 'grep', 'find', 'ls', 'share_files'].includes(e.toolName) && !ctx.toolFiles.has(e.toolCallId)) {
             await this.checkpointForTool(ctx, e.toolCallId).catch(() => undefined);
           }
+          // `git switch` / `git checkout` de Pi : branche de travail à jour dans l'interface.
+          if (e.toolName === 'bash') await this.sandboxes.syncBranch(ctx.sandbox).catch(() => null);
           // Dépôt cloné à la racine : rattaché tout de suite (un clone en sous-dossier attend la fin du run).
           if (ctx.cloneCalls?.delete(e.toolCallId) && !e.isError) await this.repoAttach.tryAttach(ctx.sandbox, { runId: ctx.runId, allowMove: false });
           const files = ctx.toolFiles.get(e.toolCallId) ?? [];

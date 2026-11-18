@@ -68,6 +68,8 @@ export interface AgentEventDataMap {
   'workspace.renamed': { name: string; titleSource: 'auto' | 'user' };
   /** Dépôt rattaché en cours de conversation (cloné par Pi dans une conversation sans dépôt). */
   'workspace.repository': { repository: RepositoryDto; branch: string };
+  /** Branche de travail du dépôt de la sandbox (changée par Pi ou par l'utilisateur). */
+  'workspace.branch': { branch: string };
   'compaction.started': { reason: string };
   'compaction.completed': { error?: string | null; tokensBefore?: number | null };
   'model.changed': { modelId: string; modelName: string };
@@ -111,6 +113,7 @@ export const AGENT_EVENT_TYPES = [
   'workspace.status',
   'workspace.renamed',
   'workspace.repository',
+  'workspace.branch',
   'compaction.started',
   'compaction.completed',
   'model.changed',
