@@ -11,13 +11,14 @@ import { Composer } from './composer';
 import { Conversation } from './conversation';
 import { FilesPane } from './files-pane';
 import { GitPanel } from './git-panel';
+import { PlanPane } from './plan-pane';
 import { PreviewsPanel } from './previews-panel';
 import { ShareDialog } from './share-dialog';
 import { WorkspaceStore } from './workspace.store';
 
 type Tab = 'git' | 'previews';
 /** Volet de droite : un seul à la fois (panneau latéral ou explorateur de fichiers). */
-type RightPane = 'panel' | 'files' | null;
+type RightPane = 'panel' | 'files' | 'plan' | null;
 
 /**
  * Écran workspace (SPEC §16.1 + PO-1) : conversation centrale et un volet droit exclusif —
@@ -25,7 +26,7 @@ type RightPane = 'panel' | 'files' | null;
  */
 @Component({
   selector: 'cap-workspace-page',
-  imports: [FormsModule, Icon, Conversation, Composer, FilesPane, GitPanel, PreviewsPanel, ShareDialog],
+  imports: [FormsModule, Icon, Conversation, Composer, FilesPane, GitPanel, PreviewsPanel, ShareDialog, PlanPane],
   providers: [WorkspaceStore],
   host: { class: 'block h-full', '(document:keydown.escape)': 'closeOverlay()' },
   styles: `
@@ -81,19 +82,24 @@ type RightPane = 'panel' | 'files' | null;
                 <button class="btn-secondary !px-2 !py-1 text-xs" (click)="start()" aria-label="Démarrer"><cap-icon name="play" [size]="12" /><span class="hidden sm:inline"> Démarrer</span></button>
               }
               <button class="btn-ghost !p-1.5" (click)="sharing.set(true)" aria-label="Partager" title="Partager"><cap-icon name="share" /></button>
+            }
+            <!-- Volets de droite : explorateur, panneau (Git, previews), plan ; un seul ouvert à la fois. -->
+            <button class="btn-ghost !p-1.5" [class.bg-stone-200]="pane() === 'files'" [class.dark:bg-stone-700]="pane() === 'files'" (click)="toggle('files')"
+              [attr.aria-pressed]="pane() === 'files'" aria-label="Explorateur de fichiers" title="Explorateur de fichiers"><cap-icon name="file" /></button>
+            <button class="btn-ghost !p-1.5" [class.bg-stone-200]="pane() === 'panel'" [class.dark:bg-stone-700]="pane() === 'panel'" (click)="toggle('panel')"
+              [attr.aria-pressed]="pane() === 'panel'" aria-label="Panneau latéral" title="Git et previews"><cap-icon name="panelRight" /></button>
+            <button class="btn-ghost relative !p-1.5" [class.bg-stone-200]="pane() === 'plan'" [class.dark:bg-stone-700]="pane() === 'plan'" (click)="toggle('plan')"
+              [attr.aria-pressed]="pane() === 'plan'" aria-label="Plan de Pi" title="Plan de Pi"><cap-icon name="checklist" />
+              @if (planActive()) { <span class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-accent-500" aria-hidden="true"></span> }
+            </button>
+            @if (ws.access === 'owner') {
               <button class="btn-ghost hidden !p-1.5 text-stone-500 hover:text-red-600 sm:inline-flex" (click)="remove()" aria-label="Supprimer la conversation" title="Supprimer la conversation"><cap-icon name="trash" /></button>
             }
-            <div class="flex items-center gap-0.5 rounded-md border border-stone-200 p-0.5 dark:border-stone-700" role="group" aria-label="Volet de droite">
-              <button class="btn-ghost !p-1.5" [class.bg-stone-200]="pane() === 'files'" [class.dark:bg-stone-700]="pane() === 'files'" (click)="toggle('files')"
-                [attr.aria-pressed]="pane() === 'files'" aria-label="Explorateur de fichiers" title="Explorateur de fichiers"><cap-icon name="file" /></button>
-              <button class="btn-ghost !p-1.5" [class.bg-stone-200]="pane() === 'panel'" [class.dark:bg-stone-700]="pane() === 'panel'" (click)="toggle('panel')"
-                [attr.aria-pressed]="pane() === 'panel'" aria-label="Panneau latéral" title="Modifications, Git, approbations, previews"><cap-icon name="panelRight" /></button>
-            </div>
           </div>
         </header>
         @if (store.statusDetail() && ws.status !== 'running') { <div class="border-b border-stone-100 px-4 py-1 text-xs text-stone-500 dark:border-stone-800">{{ store.statusDetail() }}</div> }
         <div class="relative flex min-h-0 flex-1">
-          <section class="flex min-w-0 flex-1 flex-col" [class.hidden]="pane() === 'files' && filesExpanded() && layout.wide()">
+          <section class="flex min-w-0 flex-1 flex-col" [class.hidden]="((pane() === 'files' && filesExpanded()) || (pane() === 'plan' && planExpanded())) && layout.wide()">
             <div class="min-h-0 flex-1"><cap-conversation (openFile)="openFile($event)" /></div>
             @if (ws.access === 'owner') { <cap-composer /> }
           </section>
@@ -103,6 +109,12 @@ type RightPane = 'panel' | 'files' | null;
               [class]="layout.wide() ? (filesExpanded() ? 'w-full shrink-0 border-l border-stone-200 dark:border-stone-800' : 'w-[50%] max-w-[1000px] min-w-[420px] shrink-0 border-l border-stone-200 dark:border-stone-800') : 'cap-pane fixed inset-0 z-40 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] md:absolute md:inset-y-0 md:right-0 md:left-auto md:w-[min(100%,720px)] md:border-l md:border-stone-200 md:shadow-2xl md:dark:border-stone-800'">
               <cap-files-pane [(openFiles)]="openFiles" [(active)]="filePath" [expanded]="filesExpanded()" [compact]="!layout.desktop()" [expandable]="layout.wide()"
                 (toggleExpand)="filesExpanded.set(!filesExpanded())" (closed)="pane.set(null)" />
+            </aside>
+          }
+          @if (pane() === 'plan') {
+            <aside class="bg-white dark:bg-stone-900" aria-label="Plan de Pi"
+              [class]="layout.wide() ? (planExpanded() ? 'w-full shrink-0 border-l border-stone-200 dark:border-stone-800' : 'w-[30%] max-w-[520px] min-w-[320px] shrink-0 border-l border-stone-200 dark:border-stone-800') : 'cap-pane fixed inset-0 z-40 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] md:absolute md:inset-y-0 md:right-0 md:left-auto md:w-[min(100%,440px)] md:border-l md:border-stone-200 md:shadow-2xl md:dark:border-stone-800'">
+              <cap-plan-pane [expanded]="planExpanded()" [expandable]="layout.wide()" (toggleExpand)="planExpanded.set(!planExpanded())" (closed)="pane.set(null)" />
             </aside>
           }
           @if (pane() === 'panel') {
@@ -147,6 +159,9 @@ export class WorkspacePage implements OnDestroy {
   /** Volet ouvert d'office seulement s'il tient à côté de la conversation. */
   protected readonly pane = signal<RightPane>(this.layout.wide() ? 'panel' : null);
   protected readonly filesExpanded = signal(false);
+  protected readonly planExpanded = signal(false);
+  /** Une tâche du plan est en cours : pastille sur le bouton du plan. */
+  protected readonly planActive = computed(() => this.store.plan()?.some((i) => i.status === 'in_progress') ?? false);
   protected readonly tab = signal<Tab>('git');
   protected readonly filePath = signal<string | null>(null);
   protected readonly openFiles = signal<string[]>([]);
@@ -224,6 +239,7 @@ export class WorkspacePage implements OnDestroy {
   protected toggle(p: Exclude<RightPane, null>): void {
     this.pane.set(this.pane() === p ? null : p);
     if (this.pane() !== 'files') this.filesExpanded.set(false);
+    if (this.pane() !== 'plan') this.planExpanded.set(false);
   }
 
   protected startRename(): void {

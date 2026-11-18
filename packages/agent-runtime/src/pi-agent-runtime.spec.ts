@@ -86,4 +86,17 @@ describe('PiAgentRuntime', () => {
     expect(events.at(-1)).toMatchObject({ type: 'process_exit', code: 1 });
     await expect(rt.prompt('x')).rejects.toThrow(/fermé/);
   });
+
+  it('signale la fin du processus même si son attente échoue (flux d’exécution coupé)', async () => {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const rt = new PiAgentRuntime({ stdin, stdout, stderr, wait: () => Promise.reject(new Error('flux coupé')), kill: async () => undefined });
+    const events: RuntimeEvent[] = [];
+    rt.onEvent((e) => events.push(e));
+    // Avant le correctif : rejet non géré et aucune fin signalée (le run restait en attente).
+    await expect(rt.initialize()).rejects.toThrow(/processus terminé \(code -1\)/);
+    expect(events).toContainEqual({ type: 'process_exit', code: -1, stderr: '' });
+  });
 });
+

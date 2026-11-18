@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
 import type { ToolCallDto } from '@cap/contracts';
 import { Icon } from '../../shared/icon';
-import { WorkspaceStore } from './workspace.store';
+import { WorkspaceStore, parsePlan } from './workspace.store';
 import { CodeBlock } from '../../shared/code-block';
 import { AskForm } from './ask-form';
 import { SharedFiles } from './shared-files';
@@ -12,15 +12,19 @@ import { ScreenshotStrip } from './screenshot-strip';
 export const APPROVAL_TOOLS = new Set(['platform_git_push', 'platform_create_pull_request', 'platform_merge_pull_request', 'platform_delete_remote_branch']);
 
 export function toolIcon(name: string): string {
-  return ({ bash: 'terminal', read: 'eye', write: 'file', edit: 'edit', browser_screenshot: 'image', share_files: 'download' } as Record<string, string>)[name] ?? (name.startsWith('platform_') ? 'git' : name.startsWith('mcp__') ? 'puzzle' : 'cpu');
+  return ({ bash: 'terminal', read: 'eye', write: 'file', edit: 'edit', browser_screenshot: 'image', share_files: 'download', update_plan: 'checklist' } as Record<string, string>)[name] ?? (name.startsWith('platform_') ? 'git' : name.startsWith('mcp__') ? 'puzzle' : 'cpu');
 }
 
 export function toolLabel(name: string): string {
-  return ({ bash: 'Commande', read: 'Lecture', write: 'Écriture', edit: 'Modification', browser_screenshot: 'Capture d’écran', share_files: 'Fichiers à télécharger', platform_git_push: 'Push (approbation)', platform_create_pull_request: 'Pull request (approbation)', platform_merge_pull_request: 'Fusion (approbation)', platform_delete_remote_branch: 'Suppression de branche (approbation)' } as Record<string, string>)[name] ?? name;
+  return ({ bash: 'Commande', read: 'Lecture', write: 'Écriture', edit: 'Modification', browser_screenshot: 'Capture d’écran', share_files: 'Fichiers à télécharger', update_plan: 'Plan', platform_git_push: 'Push (approbation)', platform_create_pull_request: 'Pull request (approbation)', platform_merge_pull_request: 'Fusion (approbation)', platform_delete_remote_branch: 'Suppression de branche (approbation)' } as Record<string, string>)[name] ?? name;
 }
 
 /** Argument principal d'un appel (commande, chemin, URL…), sur une ligne. */
 export function toolSummary(call: ToolCallDto): string {
+  if (call.toolName === 'update_plan') {
+    const items = parsePlan(call.args) ?? [];
+    return `${items.filter((i) => i.status === 'completed').length}/${items.length} tâches terminées`;
+  }
   const a = (call.args ?? {}) as Record<string, unknown>;
   return String(a['command'] ?? a['path'] ?? a['file_path'] ?? a['url'] ?? a['local_branch'] ?? a['title'] ?? '').split('\n')[0].slice(0, 120);
 }

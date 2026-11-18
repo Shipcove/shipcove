@@ -175,7 +175,7 @@ export class ConversationController {
         // File d'attente durable : le message sera traité par un nouveau run à la fin du run courant.
         const queued = await this.db.transaction(async (tx) => {
           const [m] = await tx.insert(messages).values({ conversationId: conv.id, role: 'user', authorId: user.id, text: body.text, pendingDelivery: true, meta: answersMeta(body) }).returning();
-          if (body.attachmentIds.length) await tx.update(attachments).set({ messageId: m.id }).where(inArray(attachments.id, body.attachmentIds));
+          await attachTo(tx, m.id, body.attachmentIds);
           await this.events.emit(id, 'queue.updated', { messages: await this.runQueue.list(conv.id, tx) }, null, tx);
           return m;
         });
@@ -200,7 +200,7 @@ export class ConversationController {
       if (!quota.ok) throw new AppError('quota_exceeded', 'Quota atteint', { window: quota.window, resetsAt: quota.resetsAt });
       const result = await this.db.transaction(async (tx) => {
         const [m] = await tx.insert(messages).values({ conversationId: conv.id, role: 'user', authorId: user.id, text: body.text, meta: answersMeta(body) }).returning();
-        if (body.attachmentIds.length) await tx.update(attachments).set({ messageId: m.id }).where(inArray(attachments.id, body.attachmentIds));
+        await attachTo(tx, m.id, body.attachmentIds);
         const [run] = await tx
           .insert(agentRuns)
           .values({
@@ -464,3 +464,17 @@ export class SharesController {
   }
 }
 
+/**
+ * Rattache les pièces jointes au message, atomiquement : seules celles encore libres le sont. Deux
+ * envois simultanés de la même pièce jointe ne peuvent pas la rattacher deux fois (la transaction
+ * du second est annulée).
+ */
+async function attachTo(tx: Pick<Database, 'update'>, messageId: string, ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  const done = await tx
+    .update(attachments)
+    .set({ messageId })
+    .where(and(inArray(attachments.id, ids), isNull(attachments.messageId)))
+    .returning({ id: attachments.id });
+  if (done.length !== ids.length) throw new AppError('attachment_rejected', 'Pièce jointe invalide ou déjà utilisée');
+}

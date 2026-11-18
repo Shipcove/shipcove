@@ -161,7 +161,9 @@ export class JobsService {
           unsubscribe = u;
           if (done) u();
           void check();
-        });
+        })
+        // Sans abonnement, l'attente repose sur le sondage de secours (chaque seconde).
+        .catch(() => undefined);
     });
   }
 

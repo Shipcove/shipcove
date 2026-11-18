@@ -11,7 +11,7 @@ import {
   workspaces,
   type Database,
 } from '@cap/database';
-import { BROWSER_PLUGIN, PI_KEEP_RECENT_TOKENS, PI_PROVIDER, SCREENSHOT_PROMPT, PI_RESERVE_TOKENS, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
+import { BROWSER_PLUGIN, PI_KEEP_RECENT_TOKENS, PI_PROVIDER, PLAN_PLUGIN, SCREENSHOT_PROMPT, PI_RESERVE_TOKENS, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
 import { DB, ENV, EnvironmentService, EventsService, NotificationService, modelAllowedFor, ObjectStorage, PgNotifier, QuotaService, RunQueueService, StreamScrubber, redactString, scrubDeep, scrubSecrets, type NewEvent } from '@cap/server-core';
 import { contextPercent, type ToolFileDto } from '@cap/contracts';
 import { toUserPath } from '@cap/storage';
@@ -128,7 +128,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
 
   async onApplicationBootstrap(): Promise<void> {
     this.jobs.register('run.start', (p) => this.execute((p as { runId: string }).runId), { concurrency: this.env.RUN_CONCURRENCY, leaseMs: RUN_LEASE_MS });
-    await this.notifier.on('cap_run_control', (payload) => void this.onControl(payload));
+    // Une erreur (base indisponible un instant) ne doit pas devenir un rejet non géré : il arrêterait le worker.
+    await this.notifier.on('cap_run_control', (payload) => void this.onControl(payload).catch((e: Error) => this.logger.warn(`contrôle de run : ${e.message}`)));
   }
 
   /* ------------------------------ Contrôle ----------------------------- */
@@ -241,7 +242,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       sessionFile: conv.piSessionPath,
       skillDirs: [],
       plugins,
-      ...(planMode ? { tools: PLAN_MODE_TOOLS } : {}),
+      // Mode Plan : lecture seule, questions et, si le plugin est dans l'image, le plan de tâches.
+      ...(planMode ? { tools: plugins.includes(PLAN_PLUGIN) ? [...PLAN_MODE_TOOLS, 'update_plan'] : PLAN_MODE_TOOLS } : {}),
       appendSystemPrompt:
         [planMode ? PLAN_MODE_PROMPT : null, ws.repositoryId ? null : NO_REPOSITORY_PROMPT, screenshots, coAuthorPrompt(await this.sandboxes.commitTrailer().catch(() => null))]
           .filter(Boolean)
@@ -282,7 +284,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     };
     this.active.set(runId, ctx);
     const flusher = setInterval(() => void this.flush(ctx), FLUSH_MS);
-    const heartbeat = setInterval(() => void this.heartbeat(ctx), RUN_LEASE_MS / 4);
+    // Battement : un échec ponctuel est rattrapé au suivant (le bail couvre plusieurs battements).
+    const heartbeat = setInterval(() => void this.heartbeat(ctx).catch((e: Error) => this.logger.warn(`battement (${runId}) : ${e.message}`)), RUN_LEASE_MS / 4);
 
     let outcome: { error: string | null } = { error: null };
     try {
@@ -344,16 +347,20 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       // Session Pi et contexte pour la reprise après destruction de la sandbox.
       const sessionFile = await runtime.sessionFile().catch(() => null);
       const stats = await runtime.sessionStats().catch(() => null);
-      await this.db
-        .update(conversations)
-        .set({
-          ...(sessionFile ? { piSessionPath: sessionFile } : {}),
-          ...(stats ? { contextTokens: stats.contextTokens, contextWindow: stats.contextWindow } : {}),
-          updatedAt: new Date(),
-        })
-        .where(eq(conversations.id, conv.id));
-      await runtime.close();
-      this.active.delete(runId);
+      try {
+        await this.db
+          .update(conversations)
+          .set({
+            ...(sessionFile ? { piSessionPath: sessionFile } : {}),
+            ...(stats ? { contextTokens: stats.contextTokens, contextWindow: stats.contextWindow } : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(conversations.id, conv.id));
+      } finally {
+        // Pi est toujours arrêté, même si l'enregistrement de la session échoue.
+        await runtime.close();
+        this.active.delete(runId);
+      }
     }
 
     // Conversation sans dépôt où Pi en a cloné un : rattachement (Pi est arrêté, le dépôt peut être remonté à la racine).
