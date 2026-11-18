@@ -82,24 +82,19 @@ type RightPane = 'panel' | 'files' | 'plan' | null;
                 <button class="btn-secondary !px-2 !py-1 text-xs" (click)="start()" aria-label="Démarrer"><cap-icon name="play" [size]="12" /><span class="hidden sm:inline"> Démarrer</span></button>
               }
               <button class="btn-ghost !p-1.5" (click)="sharing.set(true)" aria-label="Partager" title="Partager"><cap-icon name="share" /></button>
-              <button class="btn-ghost relative !p-1.5" [class.bg-stone-200]="pane() === 'plan'" [class.dark:bg-stone-700]="pane() === 'plan'" (click)="toggle('plan')"
-                [attr.aria-pressed]="pane() === 'plan'" aria-label="Plan de Pi" title="Plan de Pi"><cap-icon name="checklist" />
-                @if (planActive()) { <span class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-accent-500" aria-hidden="true"></span> }
-              </button>
+            }
+            <!-- Volets de droite : explorateur, panneau (Git, previews), plan ; un seul ouvert à la fois. -->
+            <button class="btn-ghost !p-1.5" [class.bg-stone-200]="pane() === 'files'" [class.dark:bg-stone-700]="pane() === 'files'" (click)="toggle('files')"
+              [attr.aria-pressed]="pane() === 'files'" aria-label="Explorateur de fichiers" title="Explorateur de fichiers"><cap-icon name="file" /></button>
+            <button class="btn-ghost !p-1.5" [class.bg-stone-200]="pane() === 'panel'" [class.dark:bg-stone-700]="pane() === 'panel'" (click)="toggle('panel')"
+              [attr.aria-pressed]="pane() === 'panel'" aria-label="Panneau latéral" title="Git et previews"><cap-icon name="panelRight" /></button>
+            <button class="btn-ghost relative !p-1.5" [class.bg-stone-200]="pane() === 'plan'" [class.dark:bg-stone-700]="pane() === 'plan'" (click)="toggle('plan')"
+              [attr.aria-pressed]="pane() === 'plan'" aria-label="Plan de Pi" title="Plan de Pi"><cap-icon name="checklist" />
+              @if (planActive()) { <span class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-accent-500" aria-hidden="true"></span> }
+            </button>
+            @if (ws.access === 'owner') {
               <button class="btn-ghost hidden !p-1.5 text-stone-500 hover:text-red-600 sm:inline-flex" (click)="remove()" aria-label="Supprimer la conversation" title="Supprimer la conversation"><cap-icon name="trash" /></button>
             }
-            @if (ws.access !== 'owner') {
-              <button class="btn-ghost relative !p-1.5" [class.bg-stone-200]="pane() === 'plan'" [class.dark:bg-stone-700]="pane() === 'plan'" (click)="toggle('plan')"
-                [attr.aria-pressed]="pane() === 'plan'" aria-label="Plan de Pi" title="Plan de Pi"><cap-icon name="checklist" />
-                @if (planActive()) { <span class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-accent-500" aria-hidden="true"></span> }
-              </button>
-            }
-            <div class="flex items-center gap-0.5 rounded-md border border-stone-200 p-0.5 dark:border-stone-700" role="group" aria-label="Volet de droite">
-              <button class="btn-ghost !p-1.5" [class.bg-stone-200]="pane() === 'files'" [class.dark:bg-stone-700]="pane() === 'files'" (click)="toggle('files')"
-                [attr.aria-pressed]="pane() === 'files'" aria-label="Explorateur de fichiers" title="Explorateur de fichiers"><cap-icon name="file" /></button>
-              <button class="btn-ghost !p-1.5" [class.bg-stone-200]="pane() === 'panel'" [class.dark:bg-stone-700]="pane() === 'panel'" (click)="toggle('panel')"
-                [attr.aria-pressed]="pane() === 'panel'" aria-label="Panneau latéral" title="Modifications, Git, approbations, previews"><cap-icon name="panelRight" /></button>
-            </div>
           </div>
         </header>
         @if (store.statusDetail() && ws.status !== 'running') { <div class="border-b border-stone-100 px-4 py-1 text-xs text-stone-500 dark:border-stone-800">{{ store.statusDetail() }}</div> }
