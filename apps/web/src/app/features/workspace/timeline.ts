@@ -1,4 +1,4 @@
-import type { MessageDto, ToolCallDto } from '@cap/contracts';
+import type { MessageDto, ToolCallDto, ToolImageDto } from '@cap/contracts';
 
 /** Étape intermédiaire de Pi : raisonnement ou appel d'outil. */
 export type Step = { kind: 'thinking'; key: string; text: string } | { kind: 'tool'; key: string; call: ToolCallDto };
@@ -9,6 +9,8 @@ export type TimelineRow =
   | { kind: 'text'; key: string; m: MessageDto }
   /** Étapes consécutives (raisonnement, commandes) sans texte du modèle entre elles. */
   | { kind: 'steps'; key: string; steps: Step[] }
+  /** Captures d'écran prises pendant le groupe d'étapes précédent : toujours visibles, sous lui. */
+  | { kind: 'images'; key: string; images: ToolImageDto[] }
   /** Appel d'outil à garder visible (questions, fichiers, approbations Git) : jamais replié dans un groupe. */
   | { kind: 'interactive'; key: string; call: ToolCallDto }
   | { kind: 'error'; key: string; m: MessageDto };
@@ -29,7 +31,12 @@ export function buildTimeline(messages: MessageDto[]): TimelineRow[] {
   const rows: TimelineRow[] = [];
   let group: Step[] | null = null;
   const close = () => {
-    if (group?.length) rows.push({ kind: 'steps', key: `steps:${group[0].key}`, steps: group });
+    if (group?.length) {
+      rows.push({ kind: 'steps', key: `steps:${group[0].key}`, steps: group });
+      // Captures hors du dépliant : l'utilisateur les voit sans ouvrir le groupe.
+      const images = group.flatMap((s) => (s.kind === 'tool' ? (s.call.images ?? []) : []));
+      if (images.length) rows.push({ kind: 'images', key: `images:${group[0].key}`, images });
+    }
     group = null;
   };
   const push = (s: Step) => (group ??= []).push(s);

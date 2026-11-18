@@ -408,7 +408,12 @@ export class Composer {
       this.pickFiles();
       return;
     }
-    if (e.key === 'Escape') this.menu.set(null);
+    if (e.key === 'Escape') {
+      const hadMenu = this.menu() !== null;
+      this.menu.set(null);
+      // Un Échap qui ferme un menu ne compte pas pour l'arrêt.
+      if (!hadMenu && !e.repeat && !e.defaultPrevented) this.escapeToStop();
+    }
     // Raccourcis numériques dans les menus ouverts (comme dans Claude Code).
     if (/^[1-9]$/.test(e.key) && (this.menu() === 'model' || this.menu() === 'mode')) {
       const i = Number(e.key) - 1;
@@ -567,6 +572,28 @@ export class Composer {
     } finally {
       this.sending.set(false);
     }
+  }
+
+  private lastEscapeAt = 0;
+
+  /**
+   * Double Échap (deux appuis en moins d'une seconde) pendant que Pi travaille : arrêt, comme le
+   * bouton ■. Ignoré quand une fenêtre (visionneuse, dialogue) est ouverte : Échap la ferme.
+   */
+  private escapeToStop(): void {
+    const run = this.store.activeRun();
+    if (!run || run.status === 'interrupting' || !this.store.isOwner() || document.querySelector('[aria-modal="true"]')) {
+      this.lastEscapeAt = 0;
+      return;
+    }
+    const now = Date.now();
+    if (now - this.lastEscapeAt < 1000) {
+      this.lastEscapeAt = 0;
+      void this.interrupt();
+      return;
+    }
+    this.lastEscapeAt = now;
+    this.toast.show('Appuyez de nouveau sur Échap pour arrêter Pi', 'info', 1500);
   }
 
   protected async interrupt() {

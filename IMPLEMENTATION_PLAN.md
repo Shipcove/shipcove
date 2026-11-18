@@ -124,3 +124,6 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
   plus de liste des dépôts des autres utilisateurs) ; script de démarrage unique pour toutes les
   sandboxes (`sandbox.startupScript`, Administration → Sandboxes & previews) à la place du script
   par dépôt ; image par défaut pour toutes les sandboxes (docs/operations/sandbox-startup.md).
+- 2026-11-18 : captures d'écran sans demande (consigne de la plateforme à Pi dès qu'une interface
+  web change, si le plugin browser est présent) ; captures affichées sous le groupe d'étapes replié
+  plutôt que dedans ; double Échap pour arrêter Pi.
