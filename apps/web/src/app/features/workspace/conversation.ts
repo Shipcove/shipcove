@@ -102,7 +102,8 @@ import { WorkspaceStore } from './workspace.store';
               <ng-container *ngTemplateOutlet="stepTpl; context: { $implicit: row.steps[0] }" />
             </div>
           } @else { @let s = summary(row.steps); @let open = openGroups().has(row.key);
-            <div class="my-2 min-w-0 rounded-lg border border-stone-200 dark:border-stone-800" [class.border-red-300]="s.failed" [class.dark:border-red-900]="s.failed">
+            <!-- Une commande en échec n'est signalée que sur sa propre carte (croix), pas sur le groupe. -->
+            <div class="my-2 min-w-0 rounded-lg border border-stone-200 dark:border-stone-800">
               <button class="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm text-stone-600 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-800/70"
                 (click)="toggleGroup(row.key)" [attr.aria-expanded]="open" [attr.aria-label]="(open ? 'Replier ' : 'Déplier ') + stepsLabel(s)">
                 <cap-icon [name]="open ? 'chevronDown' : 'chevronRight'" [size]="14" class="shrink-0 text-stone-400" />
@@ -113,11 +114,10 @@ import { WorkspaceStore } from './workspace.store';
                   </span>
                 }
                 <span class="ml-auto flex shrink-0 items-center gap-2 text-xs">
-                  @if (s.failed) { <span class="flex items-center gap-1 font-medium text-red-600"><cap-icon name="alert" [size]="13" />{{ s.failed }} en erreur</span> }
                   @if (s.running) { <span class="h-2 w-2 animate-pulse rounded-full bg-accent-500" aria-label="En cours"></span> }
                   @else if (s.last.kind === 'tool') {
                     @switch (s.last.call.status) {
-                      @case ('failed') { <cap-icon name="x" [size]="14" class="text-red-600" /> }
+                      @case ('failed') {}
                       @case ('blocked') { <cap-icon name="lock" [size]="14" class="text-amber-600" /> }
                       @default { <cap-icon name="check" [size]="14" class="text-emerald-600" /> }
                     }
