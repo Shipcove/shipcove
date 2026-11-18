@@ -120,3 +120,7 @@ Légende : ☐ à faire · ◐ en cours · ☑ fait et testé · ⚠ partiel (vo
   signalé à Pi) + git diff vs HEAD ; approbations Git dans la conversation, sous l'appel d'outil de
   Pi ; mention « Co-Authored-By: Shipcove » sur chaque commit (hooks globaux de la sandbox relayés
   vers ceux du dépôt, consigne à Pi ; adresse réglable `git.coAuthorEmail`).
+- 2026-11-18 : administration « Dépôts & environnements » retirée (page et API `admin/repositories` :
+  plus de liste des dépôts des autres utilisateurs) ; script de démarrage unique pour toutes les
+  sandboxes (`sandbox.startupScript`, Administration → Sandboxes & previews) à la place du script
+  par dépôt ; image par défaut pour toutes les sandboxes (docs/operations/sandbox-startup.md).

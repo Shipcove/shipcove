@@ -16,7 +16,7 @@ import { AdminGitForgesController, GitForgesService, GitOAuthController } from '
 import { AdminAuthProvidersController, SsoController } from './auth/providers/sso.controller.js';
 import { AccessService } from './access/access.service.js';
 import { AdminInvitationsController, UsersDirectoryController } from './users/users.controller.js';
-import { AdminRepositoriesController, AdminServiceCatalogController } from './repositories/repositories.controller.js';
+import { AdminServiceCatalogController } from './repositories/repositories.controller.js';
 import { HealthController } from './health/health.controller.js';
 import { PlatformConfigController } from './health/platform-config.controller.js';
 import { WorkspacesController } from './workspaces/workspaces.controller.js';
@@ -51,7 +51,6 @@ export class AppModule {
         MeController,
         UsersDirectoryController,
         AdminInvitationsController,
-        AdminRepositoriesController,
         AdminServiceCatalogController,
         WorkspacesController,
         ConversationController,

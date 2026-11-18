@@ -48,10 +48,8 @@ supprimer exige une **approbation humaine**.
 - **Conversations** au centre : l'accueil est une nouvelle conversation, le dépôt Git est
   facultatif (choisi sous la zone de saisie), le titre est généré automatiquement, la barre latérale
   regroupe les conversations par dépôt puis par date.
-- **Environnement par dépôt** (partagé par toutes les conversations sur le dépôt) :
-  - variables et **secrets** (Vault, masqués partout, y compris vers le LLM) ;
-  - **script de préparation** ;
-  - **image de sandbox** au choix.
+- **Script de démarrage des sandboxes** : un script unique défini par l'administrateur (registres
+  npm / pip, miroirs, outils), exécuté dans chaque nouvelle sandbox.
 - **Services d'appui à la demande** : l'agent lance lui-même PostgreSQL, Redis, RabbitMQ… sur le
   `localhost` de sa sandbox, parmi un catalogue approuvé par l'administrateur.
 - **Git** : comptes rattachés par **OAuth**.
@@ -265,7 +263,7 @@ Sans eux, les suites concernées s'ignorent.
   - Docker Compose ;
   - SSO ;
   - forges Git ;
-  - environnement des dépôts ;
+  - démarrage des sandboxes ;
   - services.
 - **Décisions d'architecture** : [`docs/adr`](docs/adr).
 - **Avancement** : [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md).

@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
-import { repositories, workspaces, type Database } from '@cap/database';
+import { workspaces, type Database } from '@cap/database';
 import { execCollect } from '@cap/sandbox';
-import { DB, SettingsService, scrubSecrets, type ResolvedEnvironment } from '@cap/server-core';
+import { DB, SettingsService } from '@cap/server-core';
 import { CheckpointService } from './checkpoint.service.js';
 import { SandboxManager, type ActiveSandbox } from './sandbox-manager.service.js';
 
@@ -11,7 +11,7 @@ export interface SetupResult {
   ran: boolean;
   ok: boolean;
   exitCode: number | null;
-  /** Fin de la sortie (secrets masqués), pour l'utilisateur et pour Pi. */
+  /** Fin de la sortie, pour l'utilisateur et pour Pi. */
   output: string;
   durationMs: number;
 }
@@ -19,11 +19,11 @@ export interface SetupResult {
 const OUTPUT_LIMIT = 20_000;
 
 /**
- * Script de préparation du dépôt (dépendances, outils) : exécuté dans `/workspace` avec les
- * variables du dépôt, une fois par sandbox et à chaque modification du script (il doit donc
- * être idempotent, comme une étape de CI). Ce qu'il produit dans `/workspace` est conservé par
- * le checkpoint qui suit, sauf les dépendances et caches exclus des checkpoints (node_modules…),
- * qu'il réinstalle à chaque nouvelle sandbox ; le reste vit avec la sandbox.
+ * Script de démarrage des sandboxes, unique pour toute la plateforme (Administration → Sandboxes &
+ * previews) : registres de paquets, miroirs, outils… Exécuté dans `/workspace`, une fois par
+ * sandbox (avec ou sans dépôt) et à chaque modification du script ou de l'image : il doit donc être
+ * idempotent. Ce qu'il produit dans `/workspace` est conservé par le checkpoint qui suit ; le reste
+ * (`~/.npmrc`, `~/.config/pip`, outils globaux) vit avec la sandbox et est refait à la suivante.
  */
 @Injectable()
 export class SetupService {
@@ -36,26 +36,23 @@ export class SetupService {
     private readonly settings: SettingsService,
   ) {}
 
-  /** Empreinte de la préparation attendue (script + image), `null` sans script. */
-  async expected(workspaceId: string): Promise<{ hash: string; script: string } | null> {
-    const [row] = await this.db
-      .select({ script: repositories.setupScript, imageId: repositories.sandboxImageId })
-      .from(workspaces)
-      .innerJoin(repositories, eq(repositories.id, workspaces.repositoryId))
-      .where(eq(workspaces.id, workspaceId));
-    if (!row?.script?.trim()) return null;
-    return { script: row.script, hash: createHash('sha256').update(`${row.imageId ?? 'default'}\n${row.script}`).digest('hex') };
+  /** Empreinte de la préparation attendue (script + image de la sandbox), `null` sans script. */
+  async expected(sb: ActiveSandbox): Promise<{ hash: string; script: string } | null> {
+    const { startupScript } = await this.settings.section('sandbox');
+    if (!startupScript.trim()) return null;
+    const image = (await this.sandboxes.imageFor(sb.workspaceId))?.id ?? 'default';
+    return { script: startupScript, hash: createHash('sha256').update(`${image}\n${startupScript}`).digest('hex') };
   }
 
   async needed(sb: ActiveSandbox): Promise<boolean> {
-    const exp = await this.expected(sb.workspaceId);
+    const exp = await this.expected(sb);
     if (!exp) return false;
     const [ws] = await this.db.select().from(workspaces).where(eq(workspaces.id, sb.workspaceId));
     return !(ws.setupHash === exp.hash && ws.setupInstanceId === sb.instanceId && ws.setupStatus === 'succeeded');
   }
 
-  async run(sb: ActiveSandbox, env: ResolvedEnvironment): Promise<SetupResult> {
-    const exp = await this.expected(sb.workspaceId);
+  async run(sb: ActiveSandbox): Promise<SetupResult> {
+    const exp = await this.expected(sb);
     if (!exp) return { ran: false, ok: true, exitCode: null, output: '', durationMs: 0 };
     const { setupTimeoutMinutes } = await this.settings.section('sandbox');
     await this.db.update(workspaces).set({ setupStatus: 'running' }).where(eq(workspaces.id, sb.workspaceId));
@@ -65,7 +62,7 @@ export class SetupService {
     let raw = '';
     try {
       const r = await execCollect(this.sandboxes.provider, sb.handle, ['bash', '-e', '-o', 'pipefail', '/run/cap/setup.sh'], {
-        env: { ...env.vars, ...this.sandboxes.forgeEnv(sb), HOME: '/home/agent', CI: '1' },
+        env: { ...this.sandboxes.forgeEnv(sb), HOME: '/home/agent', CI: '1' },
         workdir: '/workspace',
         timeoutMs: setupTimeoutMinutes * 60_000,
         maxBytes: 2_000_000,
@@ -73,15 +70,14 @@ export class SetupService {
       exitCode = r.exitCode;
       raw = `${r.stdout.toString('utf8')}${r.stderr.toString('utf8')}`;
     } catch (err) {
-      raw = `Préparation interrompue : ${(err as Error).message}`;
+      raw = `Démarrage interrompu : ${(err as Error).message}`;
     }
     const ok = exitCode === 0;
-    const scrubbed = scrubSecrets(raw, env.secretValues);
-    const output = scrubbed.length > OUTPUT_LIMIT ? `[…]\n${scrubbed.slice(-OUTPUT_LIMIT)}` : scrubbed;
-    // Résultat conservé (dépendances installées dans /workspace).
+    const output = raw.length > OUTPUT_LIMIT ? `[…]\n${raw.slice(-OUTPUT_LIMIT)}` : raw;
+    // Résultat conservé (fichiers produits dans /workspace).
     await this.checkpoints
       .run({ workspaceId: sb.workspaceId, fencingToken: sb.fencingToken, provider: this.sandboxes.provider, handle: sb.handle, reason: 'setup', triggerKey: `setup:${sb.instanceId}:${exp.hash}:${started}` })
-      .catch((e: Error) => this.logger.warn(`Checkpoint après préparation : ${e.message}`));
+      .catch((e: Error) => this.logger.warn(`Checkpoint après le script de démarrage : ${e.message}`));
     await this.db
       .update(workspaces)
       .set({ setupHash: exp.hash, setupInstanceId: sb.instanceId, setupStatus: ok ? 'succeeded' : 'failed', setupAt: new Date() })

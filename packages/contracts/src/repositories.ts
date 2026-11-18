@@ -28,68 +28,6 @@ export function toRepositoryDto(r: { id: string; provider: GitProviderKind; host
   return { id: r.id, provider: r.provider, host: r.host, fullName: r.fullName, cloneUrl: r.cloneUrl, defaultBranch: r.defaultBranch, webUrl: r.webUrl };
 }
 
-/** Dépôt vu par l'administration (réglages d'environnement). */
-export interface AdminRepositoryDto extends RepositoryDto {
-  conversationCount: number;
-  lastUsedAt: string | null;
-  setupConfigured: boolean;
-  variableCount: number;
-}
-
-/* ---------- Environnement d'un dépôt : variables, secrets, image, préparation ---------- */
-
-/**
- * Noms réservés : ils piloteraient le réseau, le chargement de code ou l'identité de la sandbox
- * (proxy de sortie, CA, préchargement de bibliothèques, configuration Git/Pi de la plateforme).
- */
-const RESERVED_ENV = /^(PATH|HOME|USER|LOGNAME|SHELL|PWD|HOSTNAME|TERM|BASH_ENV|ENV|PROMPT_COMMAND|IFS|(HTTPS?|ALL|NO|FTP)_PROXY|NODE_EXTRA_CA_CERTS|SSL_CERT_(FILE|DIR)|REQUESTS_CA_BUNDLE|CURL_CA_BUNDLE|GIT_(ASKPASS|SSH|SSH_COMMAND|CONFIG.*|PROXY_COMMAND|EXEC_PATH|DIR|WORK_TREE|SSL_.*|TERMINAL_PROMPT)|GITHUB_TOKEN|GITHUB_ENTERPRISE_TOKEN|GITLAB_TOKEN|(LD|DYLD|CAP|PI|GH|GLAB)_.*)$/i;
-
-export const EnvVarNameSchema = z
-  .string()
-  .min(1)
-  .max(128)
-  .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'Lettres, chiffres et « _ », sans commencer par un chiffre')
-  .refine((n) => !RESERVED_ENV.test(n), 'Nom réservé par la plateforme (réseau, chargement de code ou configuration interne)');
-
-export const UpsertEnvVarSchema = z.object({
-  name: EnvVarNameSchema,
-  /** Valeur ; pour un secret existant, absente = valeur conservée. */
-  value: z.string().max(32_768).optional(),
-  secret: z.boolean().default(false),
-});
-export type UpsertEnvVar = z.infer<typeof UpsertEnvVarSchema>;
-
-export interface EnvVarDto {
-  id: string;
-  name: string;
-  secret: boolean;
-  /** `null` pour un secret (jamais renvoyé). */
-  value: string | null;
-  updatedAt: string;
-}
-
-export interface SandboxImageOptionDto {
-  id: string;
-  name: string;
-  version: string;
-  isDefault: boolean;
-}
-
-/** Réglages partagés par toutes les conversations sur le dépôt (administrateur). */
-export interface RepositoryEnvironmentDto {
-  repository: RepositoryDto;
-  sandboxImageId: string | null;
-  setupScript: string | null;
-  images: SandboxImageOptionDto[];
-  variables: EnvVarDto[];
-}
-
-export const UpdateRepositoryEnvironmentSchema = z.object({
-  sandboxImageId: z.uuid().nullable(),
-  setupScript: z.string().max(20_000).nullable(),
-});
-export type UpdateRepositoryEnvironment = z.infer<typeof UpdateRepositoryEnvironmentSchema>;
-
 /* ---------- Services d'appui (bases de données, files…) ---------- */
 
 export const ServiceNameSchema = z.string().regex(/^[a-z][a-z0-9-]{0,31}$/, 'Minuscules, chiffres et tirets (32 caractères max.)');

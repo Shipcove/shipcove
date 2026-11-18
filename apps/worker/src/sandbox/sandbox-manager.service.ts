@@ -135,23 +135,14 @@ export class SandboxManager {
     return this.start(ws);
   }
 
-  /** Image du dépôt de la conversation si elle est autorisée (active), sinon l'image par défaut. */
-  async imageFor(workspaceId: string): Promise<typeof sandboxImages.$inferSelect | null> {
-    const [p] = await this.db
-      .select({ imageId: repositories.sandboxImageId })
-      .from(workspaces)
-      .innerJoin(repositories, eq(repositories.id, workspaces.repositoryId))
-      .where(eq(workspaces.id, workspaceId));
-    if (p?.imageId) {
-      const [img] = await this.db.select().from(sandboxImages).where(and(eq(sandboxImages.id, p.imageId), eq(sandboxImages.status, 'active')));
-      if (img) return img;
-    }
+  /** Image des sandboxes : l'image active par défaut (Administration → Sandboxes & previews). */
+  async imageFor(_workspaceId: string): Promise<typeof sandboxImages.$inferSelect | null> {
     const [def] = await this.db.select().from(sandboxImages).where(and(eq(sandboxImages.isDefault, true), eq(sandboxImages.status, 'active')));
     return def ?? null;
   }
 
   /**
-   * Image du dépôt modifiée : la sandbox active (autre image) est arrêtée proprement (checkpoint)
+   * Image par défaut changée : la sandbox active (autre image) est arrêtée proprement (checkpoint)
    * pour être recréée avec la bonne image au démarrage suivant.
    */
   async ensureImage(workspaceId: string): Promise<boolean> {
