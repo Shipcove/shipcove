@@ -58,7 +58,7 @@ export class MaintenanceService implements OnApplicationBootstrap, OnApplication
 
   onApplicationBootstrap(): void {
     for (const t of this.tasks()) {
-      const tick = () => void this.runTask(t);
+      const tick = () => void this.runTask(t).catch((e: Error) => this.logger.error(`${t.name} : ${e.message}`));
       this.timers.push(setInterval(tick, t.everyMs));
       setTimeout(tick, 2000 + Math.random() * 3000);
     }
@@ -72,8 +72,10 @@ export class MaintenanceService implements OnApplicationBootstrap, OnApplication
     if (this.running.has(t.name)) return;
     this.running.add(t.name);
     const lockId = Number.parseInt(sha256Hex(`cap-task:${t.name}`).slice(0, 12), 16);
-    const client = t.exclusive ? await this.db.$client.connect() : null;
+    // Connexion DANS le try : un échec (base indisponible) doit libérer la tâche pour le tour suivant.
+    let client: { query<R>(text: string, values?: unknown[]): Promise<{ rows: R[] }>; release(): void } | null = null;
     try {
+      client = t.exclusive ? await this.db.$client.connect() : null;
       if (client) {
         const r = await client.query<{ ok: boolean }>('select pg_try_advisory_lock($1) as ok', [lockId]);
         if (!r.rows[0].ok) return;

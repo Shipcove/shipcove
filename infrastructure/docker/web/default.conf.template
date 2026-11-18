@@ -1,10 +1,13 @@
 # Nginx de l'application : fichiers statiques Angular + proxy de l'API (plusieurs instances possibles).
+# Modèle : ${CAP_DNS_RESOLVER} et ${CAP_API_UPSTREAM} sont substitués au démarrage par l'image nginx
+# (envsubst des seules variables définies ; les variables nginx comme $host ne sont pas touchées).
+# Défauts (Docker Compose) dans Dockerfile.web ; le chart Helm les remplace (DNS du cluster).
 # Répliques API résolues à chaque requête (DNS interne de Docker, cache 5 s) : une instance
 # redémarrée ou recréée change d'adresse IP. Un bloc `upstream` figerait les adresses lues au
 # démarrage ; avec `server … resolve`, la bascule vers une autre réplique ne se faisait pas
 # (vérifié par tests/e2e/resilience.test.mjs). Le `proxy_pass` à variable répartit et bascule
 # entre toutes les adresses résolues (au prix des connexions persistantes vers l'amont).
-resolver 127.0.0.11 valid=5s ipv6=off;
+resolver ${CAP_DNS_RESOLVER} valid=5s ipv6=off;
 
 map $http_upgrade $connection_upgrade {
     default upgrade;
@@ -27,7 +30,7 @@ server {
 
     # Flux SSE : pas de mise en tampon, connexions longues.
     location ~ ^/api/v1/workspaces/[^/]+/events$ {
-        set $cap_api_backend http://api:3000;
+        set $cap_api_backend ${CAP_API_UPSTREAM};
         proxy_pass $cap_api_backend;
         proxy_http_version 1.1;
         proxy_set_header Connection '';
@@ -54,7 +57,7 @@ server {
     }
 
     location /api/ {
-        set $cap_api_backend http://api:3000;
+        set $cap_api_backend ${CAP_API_UPSTREAM};
         proxy_pass $cap_api_backend;
         proxy_http_version 1.1;
         proxy_set_header Host $host;

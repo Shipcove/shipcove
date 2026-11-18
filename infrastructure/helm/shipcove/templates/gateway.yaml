@@ -1,0 +1,71 @@
+{{- $name := printf "%s-gateway" (include "shipcove.fullname" .) -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+automountServiceAccountToken: {{ eq .Values.vault.authMethod "kubernetes" }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "shipcove.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: {{ .Values.gateway.replicas }}
+  selector:
+    matchLabels: {{- include "shipcove.selector" (dict "ctx" . "component" "gateway") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "shipcove.selector" (dict "ctx" . "component" "gateway") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $name }}
+      {{- include "shipcove.podDefaults" . | nindent 6 }}
+      containers:
+        - name: gateway
+          image: {{ include "shipcove.image" (dict "ctx" . "name" "gateway") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8081 }
+            - { name: egress, containerPort: 3128 }
+          env:
+            {{- include "shipcove.commonEnv" (dict "ctx" . "component" "gateway" "db" "gateway") | nindent 12 }}
+            - name: PORT
+              value: "8081"
+            - name: EGRESS_PORT
+              value: "3128"
+            - name: GATEWAY_INTERNAL_URL
+              value: {{ printf "http://%s:8081" (include "shipcove.gatewayHost" .) | quote }}
+            {{- with .Values.gateway.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- include "shipcove.probes" (dict "path" "/health/live" "port" "http") | nindent 10 }}
+          securityContext: {{ toYaml .Values.securityContext | nindent 12 }}
+          resources: {{ toYaml .Values.gateway.resources | nindent 12 }}
+          volumeMounts: {{- include "shipcove.commonMounts" (dict "ctx" .) | nindent 12 }}
+      volumes: {{- include "shipcove.commonVolumes" (dict "ctx" . "component" "gateway") | nindent 8 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "shipcove.selector" (dict "ctx" . "component" "gateway") | nindent 4 }}
+  ports:
+    - { name: http, port: 8081, targetPort: http }
+    - { name: egress, port: 3128, targetPort: egress }
+{{- if gt (int .Values.gateway.replicas) 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {{- include "shipcove.selector" (dict "ctx" . "component" "gateway") | nindent 6 }}
+{{- end }}

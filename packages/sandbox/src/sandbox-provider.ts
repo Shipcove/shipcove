@@ -81,6 +81,8 @@ export interface ServiceSpec {
   /** Référence de repli si `image` (miroir) ne peut pas être téléchargée. */
   fallbackImage?: string;
   env: Record<string, string>;
+  /** Ports TCP du service, joignables sur localhost dans la sandbox (relayés sous Kubernetes). */
+  ports?: number[];
   memoryMb: number;
   cpu: number;
   pidsLimit: number;

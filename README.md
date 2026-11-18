@@ -156,6 +156,14 @@ docker pull ghcr.io/shipcove/shipcove-sandbox:0.1.0
 docker compose --profile dev up -d
 ```
 
+### Kubernetes
+
+Un chart Helm (`infrastructure/helm/shipcove`) déploie l'application et le namespace isolé des
+sandboxes (un Pod par sandbox et par service d'appui, NetworkPolicies, droits limités du worker).
+PostgreSQL, Vault, S3 et LiteLLM restent externes ; un Job facultatif configure Vault (politiques,
+authentification Kubernetes). Guide : [`docs/operations/kubernetes.md`](docs/operations/kubernetes.md).
+Recette locale complète sur kind : `infrastructure/kubernetes/dev/up.sh`.
+
 **Depuis les sources** : avec Node.js 26 et pnpm 12.18, `pnpm install && pnpm images:build`
 construit les images localement (laisser `CAP_REGISTRY` vide et `CAP_SANDBOX_IMAGE=shipcove-sandbox:0.1.0`).
 
@@ -264,6 +272,7 @@ Sans eux, les suites concernées s'ignorent.
   (`DOCS_BASE=/docs/ pnpm docs:build` pour un sous-dossier).
 - **Guides d'exploitation** : [`docs/operations`](docs/operations)
   - Docker Compose ;
+  - Kubernetes (chart Helm) ;
   - SSO ;
   - forges Git ;
   - démarrage des sandboxes ;
@@ -274,14 +283,16 @@ Sans eux, les suites concernées s'ignorent.
 ## État du projet et limites
 
 Le périmètre fonctionnel du cahier des charges est implémenté et testé de bout en bout sur Docker
-Compose. Restent à faire **avant une mise en production** :
+Compose ; le déploiement Kubernetes (chart Helm) est validé sur un cluster kind, services d'appui et
+isolation réseau compris (`tests/e2e/kubernetes.test.mjs`). Restent à faire **avant une mise en
+production** :
 
 - **Chiffrement du trafic interne** pour un déploiement multi-hôte (TLS de PostgreSQL et de Vault).
   Le point d'entrée TLS public est fourni (profil `tls`).
 - **Sauvegarde et restauration** outillées : PostgreSQL, Vault, S3.
 - **Observabilité** : métriques, OpenTelemetry, alertes.
-- **Chart Helm** et provider Kubernetes validés sur un cluster (les services d'appui y sont encore
-  indisponibles).
+- **Kubernetes** : validation sur un cluster de production (Calico ou Cilium, plusieurs nœuds,
+  RuntimeClass gVisor / Kata) ; PodDisruptionBudget et répartition des sandboxes.
 - **Images de sandbox** : registre interne, vérification de conformité, caches de dépendances.
 - **CI**, tests de charge, audit de sécurité externe (une revue interne a été faite, voir le journal
   d'`IMPLEMENTATION_PLAN.md`).

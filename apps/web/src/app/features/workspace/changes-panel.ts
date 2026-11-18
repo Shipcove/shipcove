@@ -20,7 +20,7 @@ import { WorkspaceStore } from './workspace.store';
     <div class="flex h-full flex-col">
       <div class="flex items-center gap-2 border-b border-stone-200 px-3 py-2 dark:border-stone-800">
         @if (!fixedScope()) {
-          <select class="input !w-auto !py-1 text-xs" [ngModel]="scope()" (ngModelChange)="scope.set($event)" name="scope" aria-label="Portée des modifications">
+          <select class="input !w-auto !py-1 text-xs" [ngModel]="scope()" (ngModelChange)="chosenScope.set($event)" name="scope" aria-label="Portée des modifications">
             <option value="conversation">Toute la conversation</option>
             <option value="last_run">Dernier run</option>
             <option value="git_head">Git (vs HEAD)</option>
@@ -38,8 +38,9 @@ import { WorkspaceStore } from './workspace.store';
           <span class="truncate font-mono">{{ file.path }}</span>
           @if (!file.statsSkipped) { <span class="text-emerald-600">+{{ file.additions }}</span><span class="text-red-600">−{{ file.deletions }}</span> }
           <span class="ml-auto flex gap-1">
-            <button class="btn-ghost hidden !px-2 !py-0.5 text-xs whitespace-nowrap sm:inline-flex" [class.bg-stone-200]="!sideBySide()" (click)="sideBySide.set(false)">Unifié</button>
-            <button class="btn-ghost hidden !px-2 !py-0.5 text-xs whitespace-nowrap sm:inline-flex" [class.bg-stone-200]="sideBySide()" (click)="sideBySide.set(true)">Côte à côte</button>
+            <!-- Bouton actif lisible dans les deux thèmes (fond clair en clair, foncé en sombre). -->
+            <button class="btn-ghost hidden !px-2 !py-0.5 text-xs whitespace-nowrap sm:inline-flex" [class.bg-stone-200]="!sideBySide()" [class.dark:bg-stone-700]="!sideBySide()" [attr.aria-pressed]="!sideBySide()" (click)="sideBySide.set(false)">Unifié</button>
+            <button class="btn-ghost hidden !px-2 !py-0.5 text-xs whitespace-nowrap sm:inline-flex" [class.bg-stone-200]="sideBySide()" [class.dark:bg-stone-700]="sideBySide()" [attr.aria-pressed]="sideBySide()" (click)="sideBySide.set(true)">Côte à côte</button>
             @if (file.status !== 'deleted') { <button class="btn-ghost !px-2 !py-0.5 text-xs whitespace-nowrap" (click)="openFile.emit(file.path)">Voir le fichier</button> }
           </span>
         </div>
@@ -91,7 +92,9 @@ export class ChangesPanel {
   readonly fixedScope = input<ChangeScope | null>(null);
   /** Rechargement demandé par le parent (changement de branche…). */
   readonly refresh = input(0);
-  protected readonly scope = signal<ChangeScope>('conversation');
+  private readonly chosenScope = signal<ChangeScope>('conversation');
+  /** Portée effective : celle imposée par le parent (onglet Git), sinon celle choisie. */
+  protected readonly scope = computed(() => this.fixedScope() ?? this.chosenScope());
   protected readonly query = signal('');
   protected readonly data = signal<ChangesResponse | null>(null);
   protected readonly loading = signal(false);
@@ -109,10 +112,6 @@ export class ChangesPanel {
   private readonly workspaceId = computed(() => this.store.workspace()?.id ?? null);
 
   constructor() {
-    effect(() => {
-      const fixed = this.fixedScope();
-      if (fixed) untracked(() => this.scope.set(fixed));
-    });
     effect(() => {
       this.scope();
       this.refresh();

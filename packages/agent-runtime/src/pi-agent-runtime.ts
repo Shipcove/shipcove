@@ -50,7 +50,8 @@ export class PiAgentRuntime implements AgentRuntime {
     this.io.stderr.on('data', (c: Buffer) => {
       this.stderrTail = (this.stderrTail + c.toString('utf8')).slice(-8000);
     });
-    void this.io.wait().then((code) => {
+    // Fin du processus, y compris si l'attente échoue (flux d'exécution coupé) : sinon le run attendrait.
+    void this.io.wait().catch(() => -1).then((code) => {
       this.closed = true;
       for (const [, p] of this.pending) {
         clearTimeout(p.timer);

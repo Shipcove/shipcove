@@ -100,7 +100,7 @@ export class LlmProxyController {
     const upstreamBody = {
       ...body,
       model: model.litellmModel,
-      ...(stream ? { stream_options: { ...((body.stream_options as object) ?? {}), include_usage: true } } : {}),
+      ...(stream ? { stream_options: { ...(body.stream_options as object | undefined), include_usage: true } } : {}),
       user: principal.userId,
       metadata: { cap_request_id: reservation.requestId, cap_workspace_id: principal.workspaceId, cap_run_id: principal.runId },
     };

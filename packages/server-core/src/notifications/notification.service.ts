@@ -85,7 +85,7 @@ export class NotificationService {
           userId: input.userId,
           to: u.email,
           template: `notification.${input.type}`,
-          vars: { name: u.name, title: input.title, body: input.body, link: input.link ?? '', ...(input.emailVars ?? {}) },
+          vars: { name: u.name, title: input.title, body: input.body, link: input.link ?? '', ...input.emailVars },
         },
         { dedupeKey: key },
         exec,

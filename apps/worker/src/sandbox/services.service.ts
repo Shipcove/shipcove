@@ -64,7 +64,7 @@ export class ServicesService {
     if (!existing && running.length >= maxServicesPerWorkspace) {
       throw new Error(`Limite de ${maxServicesPerWorkspace} services atteinte : arrêtez-en un (action « stop ») avant d’en lancer un autre`);
     }
-    const merged = { ...c.defaultEnv, ...(req.env ?? {}) };
+    const merged = { ...c.defaultEnv, ...req.env };
     const missing: string[] = [];
     const resolved: Record<string, string> = {};
     for (const [k, v] of Object.entries(merged)) {
@@ -82,7 +82,7 @@ export class ServicesService {
     // Même configuration déjà lancée : rien à faire (idempotent).
     if (existing?.running && existing.specHash === specHash) return this.describeOne(sb, name, c);
     if (existing) await provider.removeService(sb.handle, name);
-    await provider.startServices(sb.handle, [{ name, key: c.key, image: pull.image, pullAuth: pull.auth, fallbackImage: pull.fallback, env: resolved, memoryMb, cpu: Math.max(0.25, Math.min(2, cpu / 2)), pidsLimit: 512, specHash }]);
+    await provider.startServices(sb.handle, [{ name, key: c.key, image: pull.image, pullAuth: pull.auth, fallbackImage: pull.fallback, env: resolved, ports: c.port ? [c.port] : [], memoryMb, cpu: Math.max(0.25, Math.min(2, cpu / 2)), pidsLimit: 512, specHash }]);
     const deadline = Date.now() + HEALTH_TIMEOUT_MS;
     while (Date.now() < deadline) {
       if (await this.healthy(sb, name, c.healthCommand)) {

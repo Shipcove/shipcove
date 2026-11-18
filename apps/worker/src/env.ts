@@ -15,6 +15,24 @@ export const WorkerEnvSchema = BaseEnvSchema.extend({
   SANDBOX_RUNTIME: z.string().optional(),
   K8S_NAMESPACE: z.string().default('cap-sandboxes'),
   K8S_RUNTIME_CLASS: z.string().optional(),
+  /** Secrets de registre des Pods de sandbox (noms séparés par des virgules). */
+  K8S_IMAGE_PULL_SECRETS: z
+    .string()
+    .optional()
+    .transform((v) => (v ? v.split(',').map((x) => x.trim()).filter(Boolean) : undefined)),
+  /** Sélecteur de nœuds des sandboxes, en JSON (ex. {"shipcove.io/sandbox":"true"}). */
+  K8S_NODE_SELECTOR: z
+    .string()
+    .optional()
+    .transform((v, ctx) => {
+      if (!v) return undefined;
+      try {
+        return z.record(z.string(), z.string()).parse(JSON.parse(v));
+      } catch {
+        ctx.addIssue({ code: 'custom', message: 'K8S_NODE_SELECTOR : objet JSON de chaînes attendu' });
+        return z.NEVER;
+      }
+    }),
   /** URL de la gateway vue depuis les sandboxes. */
   GATEWAY_INTERNAL_URL: z.string().default('http://gateway:8081'),
   EGRESS_PROXY_URL: z.string().default('http://gateway:3128'),

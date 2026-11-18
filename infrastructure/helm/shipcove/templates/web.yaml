@@ -1,0 +1,68 @@
+{{- $name := printf "%s-web" (include "shipcove.fullname" .) -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "shipcove.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  selector:
+    matchLabels: {{- include "shipcove.selector" (dict "ctx" . "component" "web") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "shipcove.selector" (dict "ctx" . "component" "web") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      {{- include "shipcove.podDefaults" . | nindent 6 }}
+      containers:
+        - name: web
+          image: {{ include "shipcove.image" (dict "ctx" . "name" "web") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8080 }
+          env:
+            # Modèle nginx (image) : DNS du cluster et Service de l'API.
+            - name: CAP_DNS_RESOLVER
+              value: {{ .Values.web.dnsResolver | quote }}
+            - name: CAP_API_UPSTREAM
+              value: {{ printf "http://%s-api.%s.svc.cluster.local:3000" (include "shipcove.fullname" .) .Release.Namespace | quote }}
+          readinessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 15
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+            runAsUser: 101
+            runAsGroup: 101
+          resources: {{ toYaml .Values.web.resources | nindent 12 }}
+          volumeMounts:
+            - { name: conf, mountPath: /etc/nginx/conf.d }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        # Configuration générée au démarrage depuis le modèle de l'image.
+        - name: conf
+          emptyDir: { sizeLimit: 1Mi }
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.nodePorts.web }}
+  type: NodePort
+  {{- end }}
+  selector: {{- include "shipcove.selector" (dict "ctx" . "component" "web") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      {{- with .Values.nodePorts.web }}
+      nodePort: {{ . }}
+      {{- end }}

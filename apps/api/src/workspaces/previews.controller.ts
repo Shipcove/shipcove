@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { and, count, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, count, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { OpenPreviewSchema, previewPortAllowed, type PreviewPortDto } from '@cap/contracts';
 import type { SecretProvider } from '@cap/secrets';
@@ -36,7 +36,12 @@ export class PreviewsController {
   @Get()
   async list(@Param('id', uuid) id: string, @CurrentUser() user: AuthUser): Promise<PreviewPortDto[]> {
     await this.access.requireWorkspaceOwner(user, id);
-    const rows = await this.db.select().from(previewPorts).where(and(eq(previewPorts.workspaceId, id), isNull(previewPorts.closedAt)));
+    // Ordre stable (par port) : plusieurs previews peuvent être ouvertes dans la même milliseconde.
+    const rows = await this.db
+      .select()
+      .from(previewPorts)
+      .where(and(eq(previewPorts.workspaceId, id), isNull(previewPorts.closedAt)))
+      .orderBy(asc(previewPorts.port));
     return rows.map((r) => ({ id: r.id, port: r.port, label: r.label, url: this.baseUrl(id, r.port), createdAt: r.createdAt.toISOString() }));
   }
 

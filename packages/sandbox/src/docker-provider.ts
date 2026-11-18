@@ -83,7 +83,7 @@ export class DockerSandboxProvider implements SandboxProvider {
           'cap.instance': spec.instanceId,
           'cap.workspace': spec.workspaceId,
           'cap.owner': spec.ownerId,
-          ...(spec.labels ?? {}),
+          ...spec.labels,
         },
         Cmd: ['/opt/cap/bin/sandbox-init'],
         StopSignal: 'SIGTERM',

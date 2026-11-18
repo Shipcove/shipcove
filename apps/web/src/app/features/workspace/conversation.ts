@@ -150,6 +150,7 @@ import { WorkspaceStore } from './workspace.store';
           <div class="my-3 flex items-center gap-2 text-sm text-stone-500">
             <span class="h-2 w-2 animate-pulse rounded-full bg-accent-500"></span>
             {{ store.activeRun()?.status === 'queued' ? 'Démarrage de la sandbox et de Pi…' : store.activeRun()?.status === 'interrupting' ? 'Arrêt en cours…' : 'Pi travaille…' }}
+            @if (runElapsed(); as d) { <span class="tabular-nums text-stone-400" [title]="'Durée du run'">· {{ d }}</span> }
           </div>
         }
       </div>
@@ -246,8 +247,24 @@ export class Conversation {
   /** En bas (à 20 px près) : sinon, bouton de retour en bas. */
   protected readonly atBottom = signal(true);
   private lastScrollTop = 0;
+  private readonly runActive = computed(() => !!this.store.activeRun());
+  /** Horloge du chronomètre du run, avancée chaque seconde tant qu'un run est actif. */
+  private readonly now = signal(Date.now());
+  /** Durée du run en cours depuis son démarrage (`null` sans heure de début). */
+  protected readonly runElapsed = computed(() => {
+    const started = this.store.activeRun()?.startedAt;
+    if (!started) return null;
+    return formatElapsed(Math.max(0, this.now() - Date.parse(started)));
+  });
 
   constructor() {
+    effect((onCleanup) => {
+      // Chronomètre : une mise à jour par seconde, seulement pendant un run.
+      if (!this.runActive()) return;
+      this.now.set(Date.now());
+      const timer = setInterval(() => this.now.set(Date.now()), 1000);
+      onCleanup(() => clearInterval(timer));
+    });
     effect(() => {
       // Focus sur la visionneuse à l'ouverture (Échap pour fermer).
       const el = this.viewerRef();
@@ -352,4 +369,15 @@ export class Conversation {
     if (e.deltaY < 0) this.follow = false;
   }
 
+}
+
+/** Durée lisible : « 12 s », « 3 min 05 s », « 1 h 02 min ». */
+export function formatElapsed(ms: number): string {
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = total % 60;
+  if (h) return `${h} h ${String(m).padStart(2, '0')} min`;
+  if (m) return `${m} min ${String(sec).padStart(2, '0')} s`;
+  return `${sec} s`;
 }

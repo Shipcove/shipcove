@@ -16,6 +16,8 @@ export interface ChangeEntry {
 
 /** `fn` appliquée à chaque élément, au plus `limit` à la fois ; ordre des résultats conservé. */
 export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  // Tableau pré-dimensionné : les résultats sont rangés à leur index, dans un ordre quelconque.
+  // oxlint-disable-next-line unicorn/no-new-array
   const out = new Array<R>(items.length);
   let next = 0;
   const worker = async () => {

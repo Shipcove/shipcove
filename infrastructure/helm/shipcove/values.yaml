@@ -1,0 +1,186 @@
+# Valeurs du chart Shipcove. Les dépendances (PostgreSQL, Vault, stockage S3, LiteLLM) sont
+# externes : le chart ne les installe pas (voir docs/operations/kubernetes.md, et
+# infrastructure/kubernetes/dev/ pour un environnement de recette complet sur kind).
+
+image:
+  # Préfixe des images (ex. ghcr.io/shipcove/) : shipcove-api, shipcove-worker…
+  registry: ghcr.io/shipcove/
+  # Par défaut : appVersion du chart.
+  tag: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# Origine publique de l'application (interface + API), sans barre finale.
+publicUrl: https://shipcove.example.com
+# Domaine des previews (origine distincte, sous-domaines « <port>-<workspace>.<domaine> »).
+preview:
+  domain: preview.example.com
+  scheme: https
+  # Port public des previews (laisser vide derrière un Ingress sur 443/80).
+  publicPort: ""
+
+nodeEnv: production
+logLevel: log
+
+# Compte administrateur initial (créé au premier démarrage s'il n'existe aucun administrateur) :
+# Secret existant avec les clés `email` et `password`. Laisser vide pour ne rien créer.
+bootstrapAdmin:
+  existingSecret: ""
+
+database:
+  # Secret existant avec les URL de connexion PostgreSQL (une par composant, droits distincts
+  # possibles) : clés `api`, `worker`, `gateway` (la preview utilise `gateway`).
+  existingSecret: shipcove-database
+  poolMax: 10
+
+vault:
+  address: https://vault.example.com
+  kvMount: cap
+  namespace: ""
+  # kubernetes (recommandé : jeton de ServiceAccount de chaque composant) ou approle.
+  authMethod: kubernetes
+  kubernetes:
+    # Rôles Vault par composant (voir vaultSetup pour leur création).
+    roles:
+      api: cap-api
+      worker: cap-worker
+      gateway: cap-gateway
+      preview: cap-preview
+  approle:
+    # Secret existant avec les clés `<composant>-role-id` et `<composant>-secret-id`.
+    existingSecret: ""
+
+s3:
+  endpoint: https://s3.example.com
+  region: us-east-1
+  bucket: cap-workspaces
+  attachmentsBucket: cap-attachments
+  forcePathStyle: true
+
+litellm:
+  url: http://litellm:4000
+
+# Configuration de Vault par un Job (hook Helm) : montage KV v2, politiques de chaque composant,
+# méthode d'authentification Kubernetes et rôles, secrets d'infrastructure manquants.
+vaultSetup:
+  enabled: false
+  # Secret existant avec la clé `token` : jeton d'administration de Vault (utilisé par le Job
+  # seulement, jamais par les composants).
+  tokenSecret: ""
+  image: node:26-bookworm-slim
+  kubernetesAuth:
+    # Configurer la méthode `kubernetes` (chemin auth/kubernetes) avec un ServiceAccount de revue
+    # des jetons (ClusterRole system:auth-delegator).
+    configure: true
+    # Adresse de l'API Kubernetes vue depuis Vault (Vault hors du cluster : URL externe).
+    host: https://kubernetes.default.svc
+    tokenTtl: 1h
+  # Secrets d'infrastructure écrits s'ils sont absents de Vault. Secret existant avec les clés :
+  #   s3-access-key-id, s3-secret-access-key, litellm-master-key
+  # (les clés de signature des previews et des sessions sont générées).
+  infraSecret: ""
+
+api:
+  replicas: 2
+  cookieSecure: true
+  # Proxys de confiance (adresses des Ingress / load balancers) pour l'IP des clients.
+  trustProxy: "loopback, linklocal, uniquelocal"
+  resources:
+    requests: { cpu: 200m, memory: 384Mi }
+    limits: { cpu: "2", memory: 1Gi }
+  extraEnv: []
+
+worker:
+  replicas: 1
+  runConcurrency: 8
+  jobConcurrency: 8
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits: { cpu: "2", memory: 2Gi }
+  extraEnv: []
+
+gateway:
+  replicas: 2
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "2", memory: 1Gi }
+  extraEnv: []
+
+previewProxy:
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: "1", memory: 512Mi }
+
+web:
+  replicas: 2
+  resources:
+    requests: { cpu: 20m, memory: 32Mi }
+    limits: { cpu: 500m, memory: 128Mi }
+  # Résolveur DNS du cluster (nginx résout l'API à chaque requête).
+  dnsResolver: kube-dns.kube-system.svc.cluster.local
+
+migrations:
+  # Job de migration de la base avant chaque installation / mise à niveau.
+  enabled: true
+
+sandbox:
+  # Namespace des sandboxes (créé par le chart si `create`), isolé par des NetworkPolicies.
+  namespace: shipcove-sandboxes
+  createNamespace: true
+  # Image par défaut des sandboxes (une image active déclarée en base est prioritaire).
+  image: ""
+  runtimeClassName: ""
+  imagePullSecrets: []
+  nodeSelector: {}
+  # Plafonds du namespace (toutes sandboxes et services confondus) ; vide = aucun.
+  quota: {}
+  #  requests.cpu: "32"
+  #  limits.memory: 128Gi
+  #  pods: "200"
+
+networkPolicies:
+  # Politiques réseau des sandboxes (indispensables : sans elles, une sandbox joint tout le cluster).
+  enabled: true
+  # Sélecteur du DNS du cluster (sortie autorisée en UDP/TCP 53).
+  dns:
+    namespaceSelector: { kubernetes.io/metadata.name: kube-system }
+    podSelector: { k8s-app: kube-dns }
+
+ingress:
+  enabled: true
+  className: ""
+  annotations: {}
+  # Hôte de l'application (déduit de publicUrl si vide).
+  host: ""
+  tls: []
+  #  - secretName: shipcove-tls
+  #    hosts: [shipcove.example.com]
+  preview:
+    enabled: true
+    annotations: {}
+    tls: []
+    #  - secretName: shipcove-preview-tls   # certificat générique *.preview.example.com
+    #    hosts: ["*.preview.example.com"]
+
+# Exposition directe par NodePort (recette, sans Ingress).
+nodePorts:
+  web: ""
+  preview: ""
+
+# Utilisateurs fixés par UID (les images Node.js déclarent l'utilisateur « node », 1000 ; l'interface
+# web tourne sous l'UID 101 de nginx-unprivileged) : runAsNonRoot exige un identifiant numérique.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  seccompProfile: { type: RuntimeDefault }
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: [ALL] }
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

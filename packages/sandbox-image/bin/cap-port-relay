@@ -1,0 +1,59 @@
+#!/usr/bin/env node
+// Relais TCP des services d'appui (sandboxes Kubernetes) : chaque service tourne dans son propre
+// Pod ; ce relais le rend joignable sur localhost:<port> dans la sandbox, comme avec Docker.
+// Configuration écrite par le worker dans /run/cap/relays.json : [{ "port": 5432, "host": "10.1.2.3" }].
+// Relue toutes les secondes : écouteurs ouverts, redirigés ou fermés selon son contenu.
+'use strict';
+const fs = require('node:fs');
+const net = require('node:net');
+
+const CONFIG = process.env.CAP_RELAY_CONFIG || '/run/cap/relays.json';
+const servers = new Map(); // port → { server, host }
+
+function read() {
+  try {
+    const list = JSON.parse(fs.readFileSync(CONFIG, 'utf8'));
+    const out = new Map();
+    for (const r of Array.isArray(list) ? list : []) {
+      if (Number.isInteger(r.port) && r.port > 0 && r.port < 65536 && typeof r.host === 'string' && net.isIP(r.host)) out.set(r.port, r.host);
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+function open(port, host) {
+  const entry = { host, server: null };
+  entry.server = net.createServer((client) => {
+    const upstream = net.connect(port, entry.host);
+    client.pipe(upstream).pipe(client);
+    const close = () => {
+      client.destroy();
+      upstream.destroy();
+    };
+    client.on('error', close);
+    upstream.on('error', close);
+  });
+  entry.server.on('error', () => {
+    servers.delete(port);
+    entry.server.close();
+  });
+  entry.server.listen(port, '127.0.0.1');
+  servers.set(port, entry);
+}
+
+function reconcile() {
+  const wanted = read();
+  if (!wanted) return;
+  for (const [port, entry] of servers) {
+    if (!wanted.has(port)) {
+      entry.server.close();
+      servers.delete(port);
+    } else entry.host = wanted.get(port); // nouvelles connexions vers la nouvelle adresse
+  }
+  for (const [port, host] of wanted) if (!servers.has(port)) open(port, host);
+}
+
+reconcile();
+setInterval(reconcile, 1000);

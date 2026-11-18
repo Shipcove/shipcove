@@ -1,0 +1,57 @@
+{{- if .Values.ingress.enabled }}
+# Application : l'interface web relaie elle-même l'API (/api), flux SSE compris.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "shipcove.fullname" . }}
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations: {{ toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls: {{ toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ include "shipcove.appHost" . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "shipcove.fullname" . }}-web
+                port: { name: http }
+{{- if .Values.ingress.preview.enabled }}
+---
+# Previews : origine distincte, un sous-domaine par port ouvert (<port>-<workspace>.<domaine>).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "shipcove.fullname" . }}-preview
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+  {{- with .Values.ingress.preview.annotations }}
+  annotations: {{ toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.preview.tls }}
+  tls: {{ toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ printf "*.%s" .Values.preview.domain | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "shipcove.fullname" . }}-preview
+                port: { name: http }
+{{- end }}
+{{- end }}

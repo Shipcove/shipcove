@@ -11,7 +11,7 @@ infrastructure/docker/data/
 *.log
 .DS_Store
 tmp/
-tests/e2e/.e2e-state.json
+tests/e2e/.e2e-state*.json
 tests/e2e/artifacts/
 infrastructure/docker/vault/seal.env
 infrastructure/docker/vault/seal.hcl

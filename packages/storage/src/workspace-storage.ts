@@ -141,6 +141,8 @@ export class WorkspaceStorage {
     for (const e of entries) {
       if (e.t === 'f' && e.h && !known.has(e.h) && !needed.has(e.h)) needed.set(e.h, e);
     }
+    // Copie : la Map est modifiée pendant le parcours.
+    // oxlint-disable-next-line unicorn/no-useless-spread
     for (const [h] of [...needed]) {
       if (await this.blobs.head(this.objectKey(workspaceId, h))) needed.delete(h);
     }

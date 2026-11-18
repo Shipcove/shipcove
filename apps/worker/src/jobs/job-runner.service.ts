@@ -74,7 +74,10 @@ export class JobRunner implements OnApplicationBootstrap, OnApplicationShutdown 
 
   private async execute(job: ClaimedJob, cfg: QueueConfig): Promise<void> {
     this.active.set(job.queue, (this.active.get(job.queue) ?? 0) + 1);
-    const heartbeat = setInterval(() => void this.jobs.extend(job.id, this.env.INSTANCE_ID, cfg.leaseMs), Math.max(5000, cfg.leaseMs / 3));
+    const heartbeat = setInterval(
+      () => void this.jobs.extend(job.id, this.env.INSTANCE_ID, cfg.leaseMs).catch((e: Error) => this.logger.warn(`bail ${job.queue}#${job.id} : ${e.message}`)),
+      Math.max(5000, cfg.leaseMs / 3),
+    );
     try {
       const result = await cfg.handler(job.payload, job);
       await this.jobs.complete(job.id, this.env.INSTANCE_ID, result);

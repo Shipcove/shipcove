@@ -1,0 +1,150 @@
+{{- if .Values.vaultSetup.enabled }}
+{{- $full := include "shipcove.fullname" . -}}
+{{- $reviewer := printf "%s-vault-reviewer" $full -}}
+{{- $hook := "pre-install,pre-upgrade" -}}
+{{- if not .Values.vaultSetup.tokenSecret }}{{ fail "vaultSetup.tokenSecret est requis (Secret avec la clé `token`)" }}{{ end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $full }}-vault-setup
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: {{ $hook }}
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+data:
+  vault-setup.mjs: |
+    {{- .Files.Get "files/vault-setup.mjs" | nindent 4 }}
+  policies.json: |
+    {{- .Files.Get "files/vault-policies.json" | nindent 4 }}
+{{- if .Values.vaultSetup.kubernetesAuth.configure }}
+---
+# Revue des jetons de ServiceAccount par Vault (TokenReview) : compte dédié et jeton durable.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $reviewer }}
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: {{ $hook }}
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $reviewer }}
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+  annotations:
+    kubernetes.io/service-account.name: {{ $reviewer }}
+    helm.sh/hook: {{ $hook }}
+    helm.sh/hook-weight: "-9"
+    helm.sh/hook-delete-policy: before-hook-creation
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ printf "%s-%s" .Release.Namespace $reviewer | trunc 63 | trimSuffix "-" }}
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: {{ $hook }}
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: {{ $reviewer }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $full }}-vault-setup
+  labels:
+    {{- include "shipcove.labels" . | nindent 4 }}
+    app.kubernetes.io/component: vault-setup
+  annotations:
+    helm.sh/hook: {{ $hook }}
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels: {{- include "shipcove.selector" (dict "ctx" . "component" "vault-setup") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      {{- include "shipcove.podDefaults" . | nindent 6 }}
+      containers:
+        - name: vault-setup
+          image: {{ .Values.vaultSetup.image }}
+          command: ["node", "/setup/vault-setup.mjs"]
+          env:
+            - name: VAULT_ADDR
+              value: {{ .Values.vault.address | quote }}
+            - name: VAULT_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ .Values.vaultSetup.tokenSecret }}, key: token } }
+            - name: VAULT_KV_MOUNT
+              value: {{ .Values.vault.kvMount | quote }}
+            {{- with .Values.vault.namespace }}
+            - name: VAULT_NAMESPACE
+              value: {{ . | quote }}
+            {{- end }}
+            - name: POLICIES_FILE
+              value: /setup/policies.json
+            - name: K8S_AUTH_CONFIGURE
+              value: {{ .Values.vaultSetup.kubernetesAuth.configure | quote }}
+            - name: K8S_HOST
+              value: {{ .Values.vaultSetup.kubernetesAuth.host | quote }}
+            - name: TOKEN_TTL
+              value: {{ .Values.vaultSetup.kubernetesAuth.tokenTtl | quote }}
+            - name: RELEASE_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: REVIEWER_TOKEN_FILE
+              value: /reviewer/token
+            - name: REVIEWER_CA_FILE
+              value: /reviewer/ca.crt
+            - name: ROLES
+              value: {{ dict
+                  "api" (dict "role" .Values.vault.kubernetes.roles.api "serviceAccount" (printf "%s-api" $full))
+                  "worker" (dict "role" .Values.vault.kubernetes.roles.worker "serviceAccount" (printf "%s-worker" $full))
+                  "gateway" (dict "role" .Values.vault.kubernetes.roles.gateway "serviceAccount" (printf "%s-gateway" $full))
+                  "preview" (dict "role" .Values.vault.kubernetes.roles.preview "serviceAccount" (printf "%s-preview" $full))
+                | toJson | quote }}
+            {{- if .Values.vaultSetup.infraSecret }}
+            - name: INFRA_DIR
+              value: /infra
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          volumeMounts:
+            - { name: setup, mountPath: /setup, readOnly: true }
+            {{- if .Values.vaultSetup.kubernetesAuth.configure }}
+            - { name: reviewer, mountPath: /reviewer, readOnly: true }
+            {{- end }}
+            {{- if .Values.vaultSetup.infraSecret }}
+            - { name: infra, mountPath: /infra, readOnly: true }
+            {{- end }}
+      volumes:
+        - name: setup
+          configMap: { name: {{ $full }}-vault-setup }
+        {{- if .Values.vaultSetup.kubernetesAuth.configure }}
+        - name: reviewer
+          secret: { secretName: {{ $reviewer }} }
+        {{- end }}
+        {{- if .Values.vaultSetup.infraSecret }}
+        - name: infra
+          secret: { secretName: {{ .Values.vaultSetup.infraSecret }} }
+        {{- end }}
+{{- end }}

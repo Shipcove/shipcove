@@ -39,7 +39,7 @@ import type { RunContext } from '../runs/run-orchestrator.service.js';
 
 const run = promisify(execFile);
 const APPROVAL_TTL_MS = 24 * 3600_000;
-const BRANCH_RE = /^(?!.*\.\.)(?!\/)(?!.*\/$)[A-Za-z0-9._\/-]{1,200}$/;
+const BRANCH_RE = /^(?!.*\.\.)(?!\/)(?!.*\/$)[A-Za-z0-9._/-]{1,200}$/;
 
 interface PreparedTarget {
   workspace: typeof workspaces.$inferSelect;
