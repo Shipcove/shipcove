@@ -26,6 +26,7 @@ supprimer exige une **approbation humaine**.
 - [Sécurité](#sécurité)
 - [Documentation](#documentation)
 - [État du projet et limites](#état-du-projet-et-limites)
+- [Licence](#licence)
 
 ## Fonctionnalités
 
@@ -122,9 +123,16 @@ cahier des charges dans [`SPEC.md`](SPEC.md).
 
 Les images sont publiées sur `ghcr.io/shipcove` (`shipcove-web`, `shipcove-api`, `shipcove-worker`,
 `shipcove-gateway`, `shipcove-preview`, `shipcove-docker-guard`, `shipcove-sandbox`).
-Elles sont construites par la CI GitHub Actions (`.github/workflows/ci.yml`) :
-branche `develop` → étiquettes `develop` et `sha-<commit>` ; tag `vX.Y.Z` → `X.Y.Z` et
-`X.Y`. Les pull requests construisent les images sans les publier.
+Elles sont construites et publiées par GitHub Actions (`.github/workflows/ci.yml`)
+**uniquement à la création d'un tag de version** : tag `vX.Y.Z` → étiquettes `X.Y.Z`, `X.Y` et
+`latest` (un tag de pré-version `vX.Y.Z-rc.N` ne publie que `X.Y.Z-rc.N`). Les pushes de branche
+et les pull requests ne construisent aucune image.
+
+```bash
+# Publier une version
+git tag v0.3.0
+git push origin v0.3.0
+```
 
 ```bash
 # 1. Récupération de la pile Compose
@@ -276,3 +284,17 @@ Compose. Restent à faire **avant une mise en production** :
 - **Images de sandbox** : registre interne, vérification de conformité, caches de dépendances.
 - **CI**, tests de charge, audit de sécurité externe (une revue interne a été faite, voir le journal
   d'`IMPLEMENTATION_PLAN.md`).
+
+## Licence
+
+Shipcove est un logiciel libre, publié sous licence **GNU Affero General Public License v3**
+([`LICENSE`](LICENSE)), avec les conditions additionnelles de sa section 7 décrites dans
+[`NOTICE`](NOTICE) :
+
+- **Attribution** : toute version modifiée doit afficher dans son interface la mention
+  « Basé sur Shipcove — https://github.com/Shipcove/shipcove ».
+- **Code source** : quiconque propose une version modifiée à des utilisateurs par le réseau doit
+  leur donner accès à son code source (section 13 de l'AGPL).
+- **Marque** : la licence n'accorde aucun droit sur le nom « Shipcove » ni sur le logo ; une
+  version modifiée distribuée ou hébergée pour d'autres doit porter un autre nom. Voir la
+  [politique de marque](TRADEMARKS.md).

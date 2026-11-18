@@ -1,0 +1,40 @@
+Shipcove
+Copyright (C) 2026 Les contributeurs de Shipcove
+
+Ce programme est un logiciel libre : vous pouvez le redistribuer et/ou le modifier selon les
+termes de la GNU Affero General Public License, version 3 (« AGPL v3 »), telle que publiée par la
+Free Software Foundation. Le texte complet de la licence figure dans le fichier LICENSE.
+
+Ce programme est distribué dans l'espoir qu'il sera utile, mais SANS AUCUNE GARANTIE, sans même la
+garantie implicite de QUALITÉ MARCHANDE ou d'ADÉQUATION À UN USAGE PARTICULIER. Voir la licence
+pour plus de détails.
+
+
+CONDITIONS ADDITIONNELLES (section 7 de l'AGPL v3)
+--------------------------------------------------
+
+Les conditions suivantes complètent l'AGPL v3, comme le permet sa section 7. Elles s'appliquent à
+toute copie et à toute version modifiée de ce programme, et à toute œuvre qui en est dérivée.
+
+1. Attribution (section 7, alinéa b).
+   Toute œuvre couverte qui offre une interface utilisateur interactive, y compris lorsqu'elle est
+   utilisée à distance par un réseau (section 13), doit afficher, parmi les « Appropriate Legal
+   Notices » de cette interface (par exemple en pied de page, dans une page « À propos » ou
+   « Mentions légales » accessible depuis chaque écran), la mention suivante, de façon lisible :
+
+       Basé sur Shipcove — https://github.com/Shipcove/shipcove
+
+   Cette mention ne doit être ni supprimée, ni masquée, ni modifiée, sauf pour ajouter la mention
+   des auteurs de la version modifiée. Elle doit être conservée dans les notices juridiques
+   (fichiers LICENSE et NOTICE) de toute distribution du code source ou d'une forme exécutable.
+
+2. Marques (section 7, alinéa e).
+   L'AGPL v3 n'accorde aucun droit d'utiliser le nom « Shipcove », ses logos ni aucune autre marque
+   ou signe distinctif du projet, au-delà de la mention d'attribution exigée ci-dessus. Une version
+   modifiée distribuée ou mise à disposition d'utilisateurs doit porter un nom différent. Les usages
+   permis et interdits sont décrits dans le fichier TRADEMARKS.md.
+
+3. Indication des modifications (section 7, alinéa c).
+   Une version modifiée doit être clairement identifiée comme telle, de façon raisonnable, et ne
+   pas laisser croire qu'elle est la version d'origine ni qu'elle est approuvée par le projet
+   Shipcove.
