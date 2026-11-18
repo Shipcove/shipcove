@@ -152,7 +152,7 @@ export class ChangesPanel {
       const sel = this.selected();
       if (sel) {
         const still = this.data()!.files.find((f) => f.path === sel.path);
-        if (still) await this.select(still);
+        if (still) await this.select(still, true);
         else this.selected.set(null);
       }
     } catch (err) {
@@ -162,13 +162,22 @@ export class ChangesPanel {
     }
   }
 
-  protected async select(f: FileChangeDto): Promise<void> {
+  /**
+   * Ouvre le diff d'un fichier. Rafraîchissement du fichier déjà ouvert (Pi l'écrit) : le diff
+   * affiché reste en place jusqu'à l'arrivée du nouveau, et n'est remplacé que s'il a changé.
+   */
+  protected async select(f: FileChangeDto, refresh = false): Promise<void> {
     this.selected.set(f);
-    this.diff.set(null);
+    if (!refresh) this.diff.set(null);
     try {
-      this.diff.set(await this.api.get<FileDiffDto>(`/workspaces/${this.store.workspace()!.id}/changes/diff`, { path: f.path, scope: this.scope() }));
+      const next = await this.api.get<FileDiffDto>(`/workspaces/${this.store.workspace()!.id}/changes/diff`, { path: f.path, scope: this.scope() });
+      // Autre fichier ouvert entre-temps : réponse ignorée.
+      if (this.selected()?.path !== f.path) return;
+      const cur = this.diff();
+      if (cur && cur.path === next.path && cur.binary === next.binary && cur.original === next.original && cur.modified === next.modified) return;
+      this.diff.set(next);
     } catch (err) {
-      this.toast.error(err);
+      if (!refresh) this.toast.error(err);
     }
   }
 

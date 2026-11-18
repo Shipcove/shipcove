@@ -68,7 +68,7 @@ export function toolSummary(call: ToolCallDto): string {
             <cap-code-block [code]="argsText()" language="json" label="paramètres" />
           }
           @if (call().output) {
-            <cap-code-block [code]="call().output" [label]="call().isError ? 'erreur' : 'sortie'" [tone]="call().isError ? 'error' : 'default'" maxHeight="24rem" />
+            <cap-code-block [code]="call().output" label="sortie" maxHeight="24rem" />
           }
           @if (call().filesTouched.length) {
             <div class="flex flex-wrap gap-1">
