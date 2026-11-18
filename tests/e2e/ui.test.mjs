@@ -343,7 +343,8 @@ test('responsive : téléphone et tablette — tiroir de navigation, volets en p
       await panel.waitFor();
       await page.waitForTimeout(300); // fin de l'animation d'entrée
       await inViewport(panel, 'volet');
-      await page.waitForSelector('cap-changes-panel button:has-text("notes.md")');
+      // Volet : onglet Git (le panneau Modifications a été retiré du volet, cf. 428a475).
+      await panel.locator('button[role="tab"]:has-text("Git")').waitFor();
       await page.screenshot({ path: new URL(`rwd-${label}-volet.png`, OUT).pathname });
       await panel.locator('button[aria-label="Fermer le panneau"]').tap();
       await panel.waitFor({ state: 'detached' });

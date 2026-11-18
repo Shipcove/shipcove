@@ -360,7 +360,8 @@ test('previews : 3 ports par défaut, le 4e refusé ; jeton requis sur l’origi
   assert.equal(status, 401, 'pas d’accès sans jeton');
   // Le lien signé ouvre une session de preview sur le sous-domaine uniquement.
   const list = await ctx.dev.get(`/workspaces/${ctx.ws.id}/previews`);
-  const link = await ctx.dev.post(`/workspaces/${ctx.ws.id}/previews/${list.body[0].id}/link`);
+  const pv3001 = list.body.find((p) => p.port === 3001);
+  const link = await ctx.dev.post(`/workspaces/${ctx.ws.id}/previews/${pv3001.id}/link`);
   const u = new URL(link.body.url);
   const res = await new Promise((resolve, reject) => {
     http.get({ host: '127.0.0.1', port: 8090, path: u.pathname + u.search, headers: { Host: u.host } }, (r) => resolve(r)).on('error', reject);
