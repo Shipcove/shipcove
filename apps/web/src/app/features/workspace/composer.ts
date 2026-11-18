@@ -501,6 +501,9 @@ export class Composer {
 
   private autosize(): void {
     const el = this.textareaRef().nativeElement;
+    // `ngModel` n'écrit la nouvelle valeur dans le champ qu'après la détection de changements : sans
+    // cela, la hauteur serait mesurée sur l'ancien texte (champ resté grand après l'envoi).
+    if (el.value !== this.text) el.value = this.text;
     el.style.height = 'auto';
     // Une ligne (36 px) au minimum, 240 px au maximum puis défilement.
     el.style.height = `${Math.max(36, Math.min(el.scrollHeight, 240))}px`;
