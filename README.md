@@ -277,6 +277,12 @@ Sans eux, les suites concernées s'ignorent.
   choisie d'après le navigateur). `pnpm docs:dev` pour le développer ; `pnpm docs:build` produit un
   site statique dans `apps/docs-site/dist`, à publier tel quel sur n'importe quel hébergement
   (`DOCS_BASE=/docs/ pnpm docs:build` pour un sous-dossier).
+- **Démonstration en ligne** : `pnpm docs:build:demo` construit le site de documentation avec une
+  démo de l'application, publiée dans `demo/` et accessible par le bouton « Essayer la démo ».
+  Elle fonctionne sans serveur : l'API est simulée dans le navigateur (conversations d'exemple,
+  réponses de Pi simulées, administration en lecture seule) et rien n'est enregistré. La démo
+  seule : `pnpm --filter web build:demo` (dans `apps/web/dist/demo`, publiable dans n'importe
+  quel dossier). Son code (`apps/web/src/app/demo`) n'entre pas dans la version normale.
 - **Guides d'exploitation** : [`docs/operations`](docs/operations)
   - Docker Compose ;
   - Kubernetes (chart Helm) ;

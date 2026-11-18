@@ -37,7 +37,7 @@ interface MonacoApi {
   Range: new (a: number, b: number, c: number, d: number) => unknown;
 }
 
-/** Chargement unique de Monaco (copié dans /monaco/vs à la construction). */
+/** Chargement unique de Monaco (copié dans monaco/vs à la construction). */
 @Injectable({ providedIn: 'root' })
 export class MonacoLoader {
   private promise: Promise<MonacoApi> | null = null;
@@ -45,10 +45,12 @@ export class MonacoLoader {
     if (!this.promise) {
       this.promise = new Promise((resolve, reject) => {
         const w = window as unknown as { require: { config(o: unknown): void } & ((deps: string[], cb: () => void, err: (e: unknown) => void) => void); monaco: MonacoApi };
+        // Relatif à <base href> : fonctionne aussi quand l'application est publiée dans un sous-dossier.
+        const vs = new URL('monaco/vs', document.baseURI).href;
         const script = document.createElement('script');
-        script.src = '/monaco/vs/loader.js';
+        script.src = `${vs}/loader.js`;
         script.onload = () => {
-          w.require.config({ paths: { vs: '/monaco/vs' } });
+          w.require.config({ paths: { vs } });
           w.require(['vs/editor/editor.main'], () => resolve(w.monaco), reject);
         };
         script.onerror = reject;

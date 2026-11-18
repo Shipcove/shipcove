@@ -1066,4 +1066,8 @@ export const en: Record<string, string> = {
   "{n} skill(s)": "{n} skill(s)",
   "(plusieurs choix possibles)": "(multiple choices allowed)",
   "expire {when}": "expires {when}",
+
+  // Démonstration
+  "Démonstration : données fictives, les réponses de Pi sont simulées et rien n’est enregistré.": "Demo: sample data, Pi's replies are simulated and nothing is saved.",
+  "Recommencer": "Start over",
 };

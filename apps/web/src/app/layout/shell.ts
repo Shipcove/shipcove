@@ -12,6 +12,7 @@ import { ConfirmService, deleteConversationDialog, leaveShareDialog } from '../c
 import { Icon } from '../shared/icon';
 import { SourceFooter } from '../shared/source-footer';
 import { LayoutService } from '../core/layout.service';
+import { DEMO } from '../core/mode';
 import { t, tk } from '../core/i18n';
 
 interface NavItem {
@@ -130,6 +131,12 @@ const COLLAPSED_KEY = 'cap.sidebar.collapsedRepos';
             <a routerLink="/" [queryParams]="{ new: 1 }" class="btn-ghost !p-2" [attr.aria-label]="t('Nouvelle conversation')" [title]="t('Nouvelle conversation')"><cap-icon name="plus" [size]="18" /></a>
           </header>
         }
+        @if (demo) {
+          <div class="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-center text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200" role="note">
+            {{ t('Démonstration : données fictives, les réponses de Pi sont simulées et rien n’est enregistré.') }}
+            <button type="button" class="ml-1 underline" (click)="restartDemo()">{{ t('Recommencer') }}</button>
+          </div>
+        }
         <div class="min-h-0 flex-1 overflow-hidden"><router-outlet /></div>
       </main>
     </div>
@@ -159,6 +166,8 @@ const COLLAPSED_KEY = 'cap.sidebar.collapsedRepos';
 })
 export class Shell implements OnInit, OnDestroy {
   protected readonly t = t;
+  /** Démonstration sans serveur (`ng build --configuration demo`). */
+  protected readonly demo = DEMO;
   protected readonly auth = inject(AuthStore);
   protected readonly theme = inject(ThemeService);
   protected readonly conversations = inject(ConversationsService);
@@ -264,6 +273,11 @@ export class Shell implements OnInit, OnDestroy {
     } catch {
       /* rafraîchissement silencieux */
     }
+  }
+
+  /** Démonstration : l'état vit en mémoire, recharger l'accueil repart des données d'exemple. */
+  protected restartDemo(): void {
+    location.assign(location.pathname);
   }
 }
 

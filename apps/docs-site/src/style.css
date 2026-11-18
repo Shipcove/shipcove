@@ -153,6 +153,9 @@
 
 /* Sélecteur de langue (en-tête). */
 @layer components {
+  .demo-link {
+    @apply rounded-md bg-orange-600 px-2.5 py-1 text-sm font-medium text-white hover:bg-orange-700;
+  }
   .lang-switch {
     @apply flex items-center gap-0.5 rounded-md border border-stone-200 p-0.5 text-xs font-medium dark:border-stone-700;
   }

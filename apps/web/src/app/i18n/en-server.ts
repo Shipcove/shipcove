@@ -182,6 +182,8 @@ export const enServer: Record<string, string> = {
   "Votre mot de passe a été modifié. Les autres sessions ont été fermées.": "Your password was changed. Other sessions were signed out.",
   "Double authentification désactivée": "Two-factor authentication disabled",
   "Le TOTP a été retiré de votre compte.": "TOTP was removed from your account.",
+  "Démonstration : l’administration est en lecture seule.": "Demo: administration is read-only.",
+  "Démonstration : cette action n’est pas disponible.": "Demo: this action is not available.",
 };
 
 export const enPatterns: Array<[RegExp, string]> = [

@@ -8,6 +8,7 @@ import { ToolCard, toolLabel, toolSummary } from './tool-card';
 import { ScreenshotStrip } from './screenshot-strip';
 import { buildTimeline, summarizeSteps } from './timeline';
 import { WorkspaceStore } from './workspace.store';
+import { fileUrl } from '../../core/mode';
 import { t, tk, tr } from '../../core/i18n';
 
 @Component({
@@ -213,7 +214,7 @@ export class Conversation {
   private readonly viewerRef = viewChild<ElementRef<HTMLElement>>('viewer');
 
   protected attachmentUrl(a: AttachmentDto): string {
-    return `/api/v1/workspaces/${this.store.workspace()!.id}/attachments/${a.id}`;
+    return fileUrl(this.store.workspace()?.id, 'attachments', a.id);
   }
 
   protected attachmentIcon(a: AttachmentDto): string {

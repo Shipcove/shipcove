@@ -2,7 +2,7 @@
   "name": "shipcove",
   "version": "0.1.0",
   "private": true,
-  "description": "Plateforme auto-hébergeable de coding agents (Pi + LiteLLM) pour équipes et entreprises",
+  "description": "Plateforme auto-h\u00e9bergeable de coding agents (Pi + LiteLLM) pour \u00e9quipes et entreprises",
   "license": "AGPL-3.0-only",
   "type": "module",
   "packageManager": "pnpm@12.18.0",
@@ -23,6 +23,7 @@
     "images:build": "./tools/build-images.sh",
     "docs:dev": "pnpm --filter @cap/docs-site dev",
     "docs:build": "pnpm --filter @cap/docs-site build",
+    "docs:build:demo": "pnpm --filter web build:demo && pnpm docs:build",
     "test:infra:up": "./tools/test-infra/up.sh",
     "test:infra:down": "./tools/test-infra/down.sh"
   },
