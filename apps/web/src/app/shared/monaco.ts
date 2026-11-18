@@ -16,12 +16,16 @@ interface MonacoEditor {
   onDidChangeModelContent(cb: () => void): void;
   updateOptions(o: Record<string, unknown>): void;
   layout(): void;
+  saveViewState(): unknown;
+  restoreViewState(s: unknown): void;
 }
 interface MonacoDiffEditor {
   dispose(): void;
   setModel(m: { original: MonacoModel; modified: MonacoModel }): void;
   updateOptions(o: Record<string, unknown>): void;
   layout(): void;
+  saveViewState(): unknown;
+  restoreViewState(s: unknown): void;
 }
 interface MonacoApi {
   editor: {
@@ -141,6 +145,8 @@ export class DiffEditor implements OnDestroy {
   private single: MonacoEditor | null = null;
   private models: MonacoModel[] = [];
   private ro: ResizeObserver | null = null;
+  /** Dernier rendu : un contenu identique n'est pas redessiné (pas de scintillement). */
+  private last: { original: string; modified: string; path: string; sideBySide: boolean } | null = null;
 
   constructor() {
     effect(() => {
@@ -153,6 +159,11 @@ export class DiffEditor implements OnDestroy {
   }
 
   private async render(original: string, modified: string, path: string, sideBySide: boolean) {
+    const prev = this.last;
+    if (prev && prev.original === original && prev.modified === modified && prev.path === path && prev.sideBySide === sideBySide) return;
+    this.last = { original, modified, path, sideBySide };
+    // Même fichier mis à jour (Pi l'écrit) : position de défilement et régions dépliées conservées.
+    const samePath = prev?.path === path;
     const monaco = await this.loader.load();
     monaco.editor.setTheme(this.theme.isDark() ? 'vs-dark' : 'vs');
     const kind = original === '' && modified !== '' ? 'added' : modified === '' && original !== '' ? 'deleted' : 'diff';
@@ -176,9 +187,11 @@ export class DiffEditor implements OnDestroy {
           renderOverviewRuler: false,
         });
       }
+      const view = samePath ? this.editor.saveViewState() : null;
       const next = [monaco.editor.createModel(original, lang), monaco.editor.createModel(modified, lang)];
       this.editor.setModel({ original: next[0], modified: next[1] });
       this.editor.updateOptions({ renderSideBySide: sideBySide });
+      if (view) this.editor.restoreViewState(view);
       this.models = next;
     } else {
       this.editor?.dispose();
@@ -187,8 +200,10 @@ export class DiffEditor implements OnDestroy {
         this.single = monaco.editor.create(el, { readOnly: true, minimap: { enabled: false }, fontSize: 12, scrollBeyondLastLine: false, lineDecorationsWidth: 14 });
       }
       const text = kind === 'added' ? modified : original;
+      const view = samePath ? this.single.saveViewState() : null;
       const model = monaco.editor.createModel(text, lang);
       (this.single as unknown as { setModel(m: MonacoModel): void }).setModel(model);
+      if (view) this.single.restoreViewState(view);
       // La dernière ligne vide qui suit un saut de ligne final n'est pas une ligne du fichier.
       const lines = text.endsWith('\n') ? text.split('\n').length - 1 : text.split('\n').length;
       this.single.createDecorationsCollection([
