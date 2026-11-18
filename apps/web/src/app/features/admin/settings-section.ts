@@ -43,7 +43,8 @@ const LABELS: Record<string, string> = {
   allowedRemoteHosts: 'Hôtes MCP distants autorisés (portée personnelle)',
   insecureHttpHosts: 'Forges auto-hébergées joignables en HTTP (hôte[:port] ; vide = HTTPS obligatoire)',
   maxServicesPerWorkspace: 'Services lancés par l’agent : nombre max. par sandbox',
-  setupTimeoutMinutes: 'Durée max. du script de préparation (min)',
+  setupTimeoutMinutes: 'Durée max. du script de démarrage (min)',
+  startupScript: 'Script bash exécuté au démarrage de chaque sandbox',
   allowPersonalTokens: 'Autoriser les jetons d’accès personnels (sinon : OAuth uniquement)',
   coAuthorEmail: 'Adresse du co-auteur « Shipcove » ajouté à chaque commit (vide : aucune mention)',
   emailEnabled: 'Envoi d’emails',
@@ -73,6 +74,8 @@ const ENUMS: Record<string, string[]> = {
             <input type="checkbox" [id]="section() + k" [name]="k" [ngModel]="v" (ngModelChange)="set(k, $event)" class="h-4 w-4 justify-self-start" />
           } @else if (typeof v === 'number') {
             <input class="input" type="number" [id]="section() + k" [name]="k" [ngModel]="v" (ngModelChange)="set(k, +$event)" />
+          } @else if (multiline.has(k)) {
+            <textarea class="input font-mono text-xs md:col-span-2" rows="12" spellcheck="false" [id]="section() + k" [name]="k" [ngModel]="v" (ngModelChange)="set(k, $event)"></textarea>
           } @else if (isArray(v)) {
             <textarea class="input font-mono text-xs" rows="4" [id]="section() + k" [name]="k" [ngModel]="asLines(v)" (ngModelChange)="set(k, toLines($event))"></textarea>
           } @else {
@@ -87,6 +90,12 @@ const ENUMS: Record<string, string[]> = {
 export class SettingsSection implements OnInit {
   readonly section = input.required<Section>();
   readonly title = input('');
+  /** Clés affichées (toutes par défaut) ; permet de répartir une section sur plusieurs cartes. */
+  readonly only = input<string[] | null>(null);
+  /** Clés masquées (affichées dans une autre carte). */
+  readonly exclude = input<string[]>([]);
+  /** Texte libre sur plusieurs lignes (scripts). */
+  protected readonly multiline = new Set(['startupScript']);
   private readonly api = inject(Api);
   private readonly toast = inject(ToastService);
   protected readonly values = signal<Record<string, unknown>>({});
@@ -97,8 +106,10 @@ export class SettingsSection implements OnInit {
   async ngOnInit() {
     const all = await this.api.get<PlatformSettings>('/admin/settings');
     const v = all[this.section()] as unknown as Record<string, unknown>;
-    this.values.set({ ...v });
-    this.keys.set(Object.keys(v));
+    const only = this.only();
+    const keys = Object.keys(v).filter((k) => (!only || only.includes(k)) && !this.exclude().includes(k));
+    this.values.set(Object.fromEntries(keys.map((k) => [k, v[k]])));
+    this.keys.set(keys);
   }
   protected label(k: string) {
     return LABELS[k] ?? k;

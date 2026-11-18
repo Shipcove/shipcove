@@ -19,13 +19,20 @@ type Row = Record<string, never>;
   template: `
     <h1 class="text-xl font-semibold">Sandboxes & previews</h1>
     <div class="mt-4 grid gap-4 lg:grid-cols-2">
-      <cap-settings-section section="sandbox" title="Ressources, inactivité, réseau sortant" />
+      <cap-settings-section section="sandbox" title="Ressources, inactivité, réseau sortant" [exclude]="startupKeys" />
       <div class="space-y-4">
         <cap-settings-section section="previews" title="Previews (proxy de ports)" />
         <cap-settings-section section="editor" title="Éditeur" />
         <cap-settings-section section="attachments" title="Pièces jointes" />
       </div>
     </div>
+    <h2 class="mt-6 mb-1 text-sm font-semibold text-stone-500 uppercase">Script de démarrage</h2>
+    <p class="mb-2 max-w-3xl text-sm text-stone-500">
+      Exécuté en bash (<code>set -e</code>) dans <code>/workspace</code>, au démarrage de <strong>chaque sandbox</strong> (avec ou sans dépôt), avant le premier message traité par Pi.
+      Rejoué à chaque nouvelle sandbox et quand il change : il doit être idempotent. Sa sortie s’affiche dans la conversation ; en cas d’échec, Pi est prévenu et le travail continue.
+      Les hôtes contactés (registre privé…) doivent figurer dans le réseau sortant autorisé ci-dessus.
+    </p>
+    <cap-settings-section section="sandbox" title="Registres, miroirs, outils" [only]="startupKeys" />
     <cap-admin-services />
     <h2 class="mt-6 mb-2 text-sm font-semibold text-stone-500 uppercase">Instances</h2>
     <div class="card overflow-x-auto"><table class="table">
@@ -57,6 +64,8 @@ export class AdminSandboxes implements OnInit {
   protected readonly instances = signal<Array<Record<string, Row>>>([]);
   protected readonly images = signal<Row[]>([]);
   protected img = { name: 'shipcove-sandbox', version: '', reference: '', digest: '', piVersion: '0.73.1' };
+  /** Réglages du script de démarrage, présentés dans leur propre carte. */
+  protected readonly startupKeys = ['startupScript', 'setupTimeoutMinutes'];
   async ngOnInit() {
     this.instances.set(await this.api.get('/admin/sandboxes'));
     this.images.set(await this.api.get('/admin/sandbox-images'));

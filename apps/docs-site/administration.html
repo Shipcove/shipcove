@@ -23,8 +23,6 @@
       <p>Utilisateurs, dépôts, conversations et sandboxes actives, appels LLM et crédits consommés sur 24 h, erreurs, santé des dépendances.</p>
       <h3>Utilisateurs et invitations</h3>
       <p>Création, suspension, suppression (anonymisation), réinitialisation de la MFA, révocation des sessions. Les invitations envoient un lien d’inscription valable 7 jours, même si l’inscription libre est désactivée.</p>
-      <h3>Dépôts &amp; environnements</h3>
-      <p>Un dépôt apparaît dès qu’une conversation l’utilise. Son <a href="/environnement.html">environnement</a> — image de sandbox, script de préparation, variables et secrets — est <strong>partagé par toutes les conversations sur ce dépôt</strong>, quel que soit l’utilisateur, et s’applique au run suivant.</p>
       <h3>IAM &amp; connexion</h3>
       <p>Connexion locale, inscriptions, vérification d’email, politique MFA, durée des sessions, verrouillage après échecs, fournisseurs d’identité. Voir <a href="/identite.html">Identité et SSO</a>.</p>
       <h3>Forges Git</h3>
@@ -38,8 +36,9 @@
       <h3>Sandboxes &amp; previews</h3>
       <ul>
         <li>Ressources par sandbox (CPU, mémoire, disque, processus), délai d’inactivité, durée maximale d’un run, nombre de sandboxes actives par utilisateur et au total ;</li>
-        <li>domaines autorisés en sortie (registres de paquets…), exclusions des checkpoints (les dépendances et caches régénérables — <code>node_modules</code>, <code>.venv</code>, <code>__pycache__</code>… — sont exclus par défaut et réinstallés par le script de préparation ; motifs supplémentaires possibles), durée maximale du script de préparation ;</li>
-        <li><strong>images de sandbox</strong> : ajout (référence + digest), activation comme image par défaut ou seulement proposée aux dépôts, dépréciation ;</li>
+        <li>domaines autorisés en sortie (registres de paquets…), exclusions des checkpoints (les dépendances et caches régénérables — <code>node_modules</code>, <code>.venv</code>, <code>__pycache__</code>… — sont exclus par défaut et réinstallés à chaque nouvelle sandbox ; motifs supplémentaires possibles) ;</li>
+        <li><strong>script de démarrage</strong> : un script bash unique exécuté dans chaque nouvelle sandbox (registres npm / pip, miroirs, outils communs) et sa durée maximale — voir <a href="/environnement.html">Environnement et services</a> ;</li>
+        <li><strong>images de sandbox</strong> : ajout (référence + digest), activation comme image par défaut, dépréciation ;</li>
         <li><strong>services lancés par l’agent</strong> : voir <a href="/environnement.html#services-lances-par-l-agent">Environnement et services</a> ;</li>
         <li>previews : nombre de ports simultanés par conversation ;</li>
         <li>instances en cours, avec arrêt forcé.</li>

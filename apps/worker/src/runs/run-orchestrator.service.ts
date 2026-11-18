@@ -202,10 +202,10 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     let setupNote: string | null = null;
     // Catalogue des services d'appui que Pi peut lancer lui-même (rien ne démarre sans sa demande).
     await this.services.writeCatalog(sandbox).catch((e: Error) => this.logger.warn(`Catalogue des services : ${e.message}`));
-    // Script de préparation du dépôt : nouvelle sandbox ou script modifié.
+    // Script de démarrage des sandboxes (réglage global) : nouvelle sandbox ou script modifié.
     if (await this.setup.needed(sandbox)) {
-      await this.systemMessage(ws.id, conv.id, runId, 'Préparation de l’environnement du dépôt…', { kind: 'setup', status: 'running' });
-      const r = await this.setup.run(sandbox, await this.environment.forWorkspace(ws.id, { fresh: true }));
+      await this.systemMessage(ws.id, conv.id, runId, 'Préparation de l’environnement…', { kind: 'setup', status: 'running' });
+      const r = await this.setup.run(sandbox);
       const seconds = Math.round(r.durationMs / 1000);
       await this.systemMessage(
         ws.id,
@@ -214,7 +214,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
         r.ok ? `Environnement préparé (${seconds} s)` : `La préparation de l’environnement a échoué (code ${r.exitCode ?? 'inconnu'}, ${seconds} s)`,
         { kind: 'setup', status: r.ok ? 'succeeded' : 'failed', exitCode: r.exitCode, durationMs: r.durationMs, output: r.output },
       );
-      if (!r.ok) setupNote = `[Note de la plateforme : le script de préparation du dépôt a échoué (code ${r.exitCode ?? 'inconnu'}). Fin de sa sortie :\n${r.output.slice(-3000)}\nTiens-en compte : des dépendances peuvent manquer.]`;
+      if (!r.ok) setupNote = `[Note de la plateforme : le script de démarrage de la sandbox a échoué (code ${r.exitCode ?? 'inconnu'}). Fin de sa sortie :\n${r.output.slice(-3000)}\nTiens-en compte : des outils ou une configuration peuvent manquer.]`;
     }
     const startGen = await this.checkpoints.storage.currentGeneration(ws.id);
     await this.db.update(agentRuns).set({ startGeneration: startGen }).where(eq(agentRuns.id, runId));

@@ -231,7 +231,6 @@ test('conversation sur un dépôt GitLab : dépôt vérifié avec la connexion, 
   const w2 = await ctx.dev.post('/workspaces', { repository: { gitConnectionId: ctx.connId, fullName: 'capdev/cap-demo' } });
   assert.equal(w2.body.repository.id, w.body.repository.id);
   await ctx.dev.del(`/workspaces/${w2.body.id}`);
-  assert.ok((await ctx.admin.get('/admin/repositories')).body.some((r) => r.id === w.body.repository.id && r.fullName === 'capdev/cap-demo'));
   const events = await run(ctx.dev, ctx.ws.id, `Inspecte. ${tool('bash', { command: 'cat README.md; git log --oneline -1; git remote -v; cat ~/.gitconfig; env' })}`);
   assert.equal(events.at(-1).type, 'run.completed', JSON.stringify(events.at(-1)));
   const out = events.filter((e) => e.type === 'tool.completed').map((e) => e.data.output).join('\n');
