@@ -76,6 +76,7 @@ import { WorkspaceStore } from './workspace.store';
           } @else if (row.kind === 'message') { @let m = row.m;
             <div class="my-3 flex items-start gap-2 rounded-lg border border-dashed border-stone-300 px-3 py-2 text-sm text-stone-600 [overflow-wrap:anywhere] dark:border-stone-700 dark:text-stone-400" [attr.aria-label]="m.meta?.['kind'] === 'rewind' ? 'Retour en arrière' : m.meta?.['kind'] === 'setup' ? 'Préparation de l’environnement' : null">
               @if (m.meta?.['kind'] === 'rewind') { <cap-icon name="undo" [size]="14" class="mt-0.5" /> }
+              @if (m.meta?.['kind'] === 'branch_switched') { <cap-icon name="git" [size]="14" class="mt-0.5" /> }
               @if (m.meta?.['kind'] === 'setup') { <cap-icon [name]="m.meta?.['status'] === 'failed' ? 'alert' : 'terminal'" [size]="14" class="mt-0.5" [class.text-red-600]="m.meta?.['status'] === 'failed'" /> }
               <span class="min-w-0 flex-1">{{ m.text }}
                 @if (m.meta?.['kind'] === 'setup' && m.meta?.['output']) {

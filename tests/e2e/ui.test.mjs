@@ -76,7 +76,7 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     await page.waitForSelector('cap-composer :text("note.txt")');
     await page.screenshot({ path: new URL('home-composer.png', OUT).pathname });
     // Message à Pi (fournisseur factice piloté par directives).
-    await page.fill('textarea[aria-label="Message"]', 'Crée un fichier. [[tool:bash {"command":"mkdir -p app && printf \'console.log(1)\\n\' > app/main.js"}]]');
+    await page.fill('textarea[aria-label="Message"]', 'Crée un fichier. [[tool:bash {"command":"git init -q && git commit -q --allow-empty -m init && mkdir -p app && printf \'console.log(1)\\n\' > app/main.js"}]]');
     await page.keyboard.press('Enter');
     await page.waitForURL(/\/workspaces\/[0-9a-f-]+$/);
     await page.waitForSelector('text=Terminé : 1 action(s) exécutée(s).', { timeout: 240_000 });
@@ -194,7 +194,10 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
     await page.click('button[aria-haspopup="menu"]:has-text("Plan")');
     await page.click('[role="menuitemradio"]:has-text("Autonome")');
 
-    // Panneau Modifications : le fichier apparaît, le diff s'ouvre dans Monaco.
+    // Onglet Git : branche de travail, puis git diff (fichier non suivi) ouvert dans Monaco.
+    assert.equal(await page.locator('[role="tab"]:has-text("Modifications"), [role="tab"]:has-text("Approbations")').count(), 0, 'onglets retirés');
+    await page.waitForSelector('cap-git-panel select#git-branch', { timeout: 30_000 });
+    assert.equal(await page.locator('cap-git-panel select#git-branch').inputValue(), 'main');
     await page.waitForSelector('cap-changes-panel button:has-text("main.js")', { timeout: 30_000 });
     await page.click('cap-changes-panel button:has-text("main.js")');
     // Fichier ajouté : affiché en entier en vert, sans ligne « supprimée » vide.

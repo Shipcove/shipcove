@@ -935,6 +935,43 @@ test('captures d’écran : plugin browser de Pi (Chromium de la sandbox), scrip
   assert.ok(!JSON.stringify(files.body ?? {}).includes('screenshots'), 'captures exclues des fichiers persistés');
 });
 
+test('onglet Git : branches, changement de branche (refusé pendant un run, signalé à Pi), co-auteur Shipcove sur chaque commit', async () => {
+  const owner = await newUser();
+  const ws = await workspace(owner, 'Branches');
+  const run = async (text) => {
+    const conv = await owner.get(`/workspaces/${ws.id}/conversation`);
+    const sent = await owner.post(`/workspaces/${ws.id}/messages`, { text }, { 'Idempotency-Key': `f-${uid()}` });
+    assert.equal(sent.status, 201, JSON.stringify(sent.body));
+    const events = await owner.events(ws.id, conv.body.lastEventId, (e) => ['run.completed', 'run.failed'].includes(e.type) && e.runId === sent.body.runId, 300_000);
+    assert.equal(events.at(-1).type, 'run.completed', JSON.stringify(events.at(-1)));
+    return events.filter((e) => e.type === 'tool.completed');
+  };
+  const setup = 'git init -q && echo a > a.txt && git add . && git commit -q -m "feat: a" && git switch -q -c feature && echo b > b.txt && git add . && git commit -q -m "feat: b" && git log -2 --format=%B';
+  const [done] = await run(`Prépare. [[tool:bash ${JSON.stringify({ command: setup })}]]`);
+  assert.equal((done.data.output.match(/Co-Authored-By: Shipcove <noreply@shipcove\.dev>/g) ?? []).length, 2, done.data.output);
+
+  // Branche suivie après un `git switch` de Pi.
+  const branches = await owner.get(`/workspaces/${ws.id}/git/branches`);
+  assert.equal(branches.status, 200);
+  assert.equal(branches.body.current, 'feature');
+  assert.deepEqual(branches.body.local.map((b) => b.name).sort(), ['feature', 'main']);
+
+  // Changement par l'utilisateur : nom invalide refusé, puis note dans le fil.
+  assert.equal((await owner.post(`/workspaces/${ws.id}/git/checkout`, { branch: '--orphan' })).status, 400);
+  assert.equal((await owner.post(`/workspaces/${ws.id}/git/checkout`, { branch: 'main' })).status, 200);
+  assert.equal((await owner.get(`/workspaces/${ws.id}/git/branches`)).body.current, 'main');
+  const conv = await owner.get(`/workspaces/${ws.id}/conversation`);
+  assert.ok(conv.body.messages.some((m) => m.role === 'system' && m.meta?.kind === 'branch_switched' && m.text === 'Branche de travail : feature → main'));
+  // Réservé au propriétaire.
+  const peer = await newUser();
+  assert.equal((await peer.post(`/workspaces/${ws.id}/git/checkout`, { branch: 'feature' })).status, 404);
+
+  // Le tour suivant de Pi part bien de main (b.txt absent).
+  const [ls] = await run(`Vérifie. [[tool:bash ${JSON.stringify({ command: 'git branch --show-current && ls' })}]]`);
+  assert.match(ls.data.output, /^main\n/);
+  assert.ok(!ls.data.output.includes('b.txt'));
+});
+
 test('fichiers à télécharger : share_files copie les livrables de Pi, servis en téléchargement, lisibles en partage, confinés à /workspace et /tmp', async () => {
   const owner = await newUser();
   const ws = await workspace(owner, 'Livrables');

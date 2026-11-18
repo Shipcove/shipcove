@@ -5,8 +5,10 @@ import { z } from 'zod';
 import {
   ApprovalDecisionSchema,
   CreatePatConnectionSchema,
+  GitCheckoutSchema,
   GitOperationRequestSchema,
   type ApprovalDto,
+  type GitBranchesDto,
   type GitConnectionDto,
   type GitOperationRequest,
   type GitStatusDto,
@@ -52,6 +54,23 @@ export class WorkspaceGitController {
       conflicted: r.conflicted ?? [],
       source: r.available ? 'sandbox' : 'unavailable',
     };
+  }
+
+  @Get('branches')
+  async branches(@Param('id', uuid) id: string, @CurrentUser() user: AuthUser): Promise<GitBranchesDto> {
+    await this.access.requireWorkspaceOwner(user, id);
+    return this.rpc.call<GitBranchesDto>({ op: 'git.branches', workspaceId: id }, 30_000);
+  }
+
+  /** Changement de branche de travail (refusé pendant un run de Pi). */
+  @Post('checkout')
+  @HttpCode(200)
+  async checkout(@Param('id', uuid) id: string, @Body({ schema: GitCheckoutSchema }) body: z.infer<typeof GitCheckoutSchema>, @CurrentUser() user: AuthUser) {
+    await this.access.requireWorkspaceOwner(user, id);
+    const r = await this.rpc.call<{ ok: boolean; busy?: boolean; branch?: string; output: string }>({ op: 'git.checkout', workspaceId: id, branch: body.branch, userId: user.id }, 180_000);
+    if (r.busy) throw new AppError('conflict', r.output);
+    if (!r.ok) throw new AppError('validation_failed', r.output.trim() || 'Changement de branche impossible');
+    return { branch: r.branch };
   }
 
   /**
@@ -103,6 +122,7 @@ export function toApprovalDto(a: typeof gitApprovalRequests.$inferSelect, repo: 
     action: a.action,
     status: a.status,
     requestedBy: a.requestedBy,
+    toolCallId: a.toolCallExternalId || null,
     repository: repo,
     target: a.target,
     commitSha: a.commitSha,

@@ -9,12 +9,12 @@ export type TimelineRow =
   | { kind: 'text'; key: string; m: MessageDto }
   /** Étapes consécutives (raisonnement, commandes) sans texte du modèle entre elles. */
   | { kind: 'steps'; key: string; steps: Step[] }
-  /** Appel d'outil à garder visible (formulaire `ask_user`, fichiers `share_files`) : jamais replié dans un groupe. */
+  /** Appel d'outil à garder visible (questions, fichiers, approbations Git) : jamais replié dans un groupe. */
   | { kind: 'interactive'; key: string; call: ToolCallDto }
   | { kind: 'error'; key: string; m: MessageDto };
 
-/** Outils affichés hors des groupes d'étapes : l'utilisateur doit les voir sans rien déplier. */
-const STANDALONE_TOOLS = new Set(['ask_user', 'share_files']);
+/** Outils affichés hors des groupes d'étapes : l'utilisateur doit les voir sans rien déplier (formulaires, fichiers, approbations Git). */
+const STANDALONE_TOOLS = new Set(['ask_user', 'share_files', 'platform_git_push', 'platform_create_pull_request', 'platform_merge_pull_request', 'platform_delete_remote_branch']);
 
 /**
  * Aplati les messages en lignes et regroupe les raisonnements et appels d'outils consécutifs.

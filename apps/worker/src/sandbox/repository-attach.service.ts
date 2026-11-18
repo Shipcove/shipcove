@@ -161,8 +161,9 @@ export class RepositoryAttachService {
   }
 
   /**
-   * Note de la plateforme pour Pi au début du run suivant : un dépôt remonté à la racine change
-   * les chemins qu'il connaît. Marquée comme transmise une fois lue.
+   * Notes de la plateforme pour Pi au début du run suivant : un dépôt remonté à la racine change
+   * les chemins qu'il connaît ; l'utilisateur a changé la branche de travail. Marquées comme
+   * transmises une fois lues.
    */
   async pendingAgentNote(workspaceId: string): Promise<string | null> {
     const [conv] = await this.db.select({ id: conversations.id }).from(conversations).where(eq(conversations.workspaceId, workspaceId));
@@ -170,9 +171,14 @@ export class RepositoryAttachService {
     const rows = await this.db
       .select({ id: messages.id, meta: messages.meta })
       .from(messages)
-      .where(and(eq(messages.conversationId, conv.id), eq(messages.role, 'system'), sql`${messages.meta}->>'kind' = 'repository_attached'`, sql`(${messages.meta}->>'agentNotified')::boolean is false`));
+      .where(and(eq(messages.conversationId, conv.id), eq(messages.role, 'system'), sql`${messages.meta}->>'kind' in ('repository_attached', 'branch_switched')`, sql`(${messages.meta}->>'agentNotified')::boolean is false`))
+      .orderBy(messages.createdAt);
     if (!rows.length) return null;
     const notes = rows.map((r) => {
+      if ((r.meta as { kind?: string }).kind === 'branch_switched') {
+        const b = r.meta as { from: string | null; to: string };
+        return `[Note de la plateforme : l'utilisateur a changé la branche de travail${b.from ? ` (${b.from} → ${b.to})` : ` pour ${b.to}`}. Le dépôt de /workspace est maintenant sur la branche ${b.to}.]`;
+      }
       const m = r.meta as { fullName: string; movedFrom: string };
       return `[Note de la plateforme : le dépôt ${m.fullName} est désormais rattaché à cette conversation. Son contenu a été déplacé de /workspace/${m.movedFrom} vers /workspace : utilise désormais les chemins à partir de /workspace.]`;
     });

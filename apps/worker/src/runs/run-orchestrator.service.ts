@@ -24,6 +24,7 @@ import { SandboxManager, type ActiveSandbox } from '../sandbox/sandbox-manager.s
 import { SetupService } from '../sandbox/setup.service.js';
 import { NO_REPOSITORY_PROMPT, RepositoryAttachService } from '../sandbox/repository-attach.service.js';
 import { ScreenshotsService } from '../sandbox/screenshots.service.js';
+import { coAuthorPrompt } from '../sandbox/git-hooks.js';
 
 /** Outils après lesquels on recherche de nouvelles captures d'écran. */
 const SCREENSHOT_TOOLS = new Set(['bash', 'browser_screenshot']);
@@ -238,7 +239,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       skillDirs: [],
       plugins: await this.sandboxes.availablePlugins(sandbox),
       ...(planMode ? { tools: PLAN_MODE_TOOLS } : {}),
-      appendSystemPrompt: [planMode ? PLAN_MODE_PROMPT : null, ws.repositoryId ? null : NO_REPOSITORY_PROMPT].filter(Boolean).join('\n\n') || undefined,
+      appendSystemPrompt:
+        [planMode ? PLAN_MODE_PROMPT : null, ws.repositoryId ? null : NO_REPOSITORY_PROMPT, coAuthorPrompt(await this.sandboxes.commitTrailer().catch(() => null))].filter(Boolean).join('\n\n') || undefined,
     });
     // Variables et secrets du dépôt : processus de Pi (donc ses commandes) uniquement,
     // jamais écrits sur disque par la plateforme. Les variables de la plateforme l'emportent.

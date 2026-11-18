@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, output, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import type { ChangeScope, ChangesResponse, FileChangeDto, FileDiffDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
@@ -8,6 +8,7 @@ import { DiffEditor } from '../../shared/monaco';
 import { WorkspaceStore } from './workspace.store';
 
 /**
+ * Liste des modifications et diff (onglet Git : portée `git_head`, git diff par rapport à HEAD).
  * Panneau « Modifications » (exigence PO-1) : fichiers modifiés par l'IA, recherche,
  * diff de type git (unifié ou côte à côte) et bascule vers le fichier complet.
  */
@@ -18,11 +19,13 @@ import { WorkspaceStore } from './workspace.store';
   template: `
     <div class="flex h-full flex-col">
       <div class="flex items-center gap-2 border-b border-stone-200 px-3 py-2 dark:border-stone-800">
-        <select class="input !w-auto !py-1 text-xs" [ngModel]="scope()" (ngModelChange)="scope.set($event)" name="scope" aria-label="Portée des modifications">
-          <option value="conversation">Toute la conversation</option>
-          <option value="last_run">Dernier run</option>
-          <option value="git_head">Git (vs HEAD)</option>
-        </select>
+        @if (!fixedScope()) {
+          <select class="input !w-auto !py-1 text-xs" [ngModel]="scope()" (ngModelChange)="scope.set($event)" name="scope" aria-label="Portée des modifications">
+            <option value="conversation">Toute la conversation</option>
+            <option value="last_run">Dernier run</option>
+            <option value="git_head">Git (vs HEAD)</option>
+          </select>
+        }
         <div class="relative flex-1">
           <cap-icon name="search" [size]="13" class="absolute top-1/2 left-2 -translate-y-1/2 text-stone-400" />
           <input class="input !py-1 !pl-7 text-xs" placeholder="Rechercher des fichiers…" [ngModel]="query()" (ngModelChange)="query.set($event)" name="q" aria-label="Rechercher" />
@@ -84,6 +87,10 @@ export class ChangesPanel {
   private readonly toast = inject(ToastService);
   protected readonly store = inject(WorkspaceStore);
   readonly openFile = output<string>();
+  /** Portée imposée (onglet Git : `git_head`), sans sélecteur. */
+  readonly fixedScope = input<ChangeScope | null>(null);
+  /** Rechargement demandé par le parent (changement de branche…). */
+  readonly refresh = input(0);
   protected readonly scope = signal<ChangeScope>('conversation');
   protected readonly query = signal('');
   protected readonly data = signal<ChangesResponse | null>(null);
@@ -103,7 +110,12 @@ export class ChangesPanel {
 
   constructor() {
     effect(() => {
+      const fixed = this.fixedScope();
+      if (fixed) untracked(() => this.scope.set(fixed));
+    });
+    effect(() => {
       this.scope();
+      this.refresh();
       this.store.filesVersion();
       if (this.workspaceId()) untracked(() => void this.reload());
     });

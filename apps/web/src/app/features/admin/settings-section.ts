@@ -45,6 +45,7 @@ const LABELS: Record<string, string> = {
   maxServicesPerWorkspace: 'Services lancés par l’agent : nombre max. par sandbox',
   setupTimeoutMinutes: 'Durée max. du script de préparation (min)',
   allowPersonalTokens: 'Autoriser les jetons d’accès personnels (sinon : OAuth uniquement)',
+  coAuthorEmail: 'Adresse du co-auteur « Shipcove » ajouté à chaque commit (vide : aucune mention)',
   emailEnabled: 'Envoi d’emails',
   mandatoryEmailTypes: 'Emails imposés (types)',
 };

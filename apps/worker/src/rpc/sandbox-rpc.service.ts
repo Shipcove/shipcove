@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Inject, Injectable, type OnApplicationBootstrap } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
-import { agentRuns, workspaces, type Database } from '@cap/database';
+import { agentRuns, conversations, messages, workspaces, type Database } from '@cap/database';
 import { execCollect } from '@cap/sandbox';
 import { DB, EventsService } from '@cap/server-core';
 import { fromUserPath } from '@cap/storage';
@@ -18,6 +18,8 @@ type RpcPayload =
   | { op: 'git.diff_head'; workspaceId: string; path?: string }
   | { op: 'git.fetch'; workspaceId: string }
   | { op: 'git.pull'; workspaceId: string; branch?: string }
+  | { op: 'git.branches'; workspaceId: string }
+  | { op: 'git.checkout'; workspaceId: string; branch: string; userId: string }
   | { op: 'file.write'; workspaceId: string; path: string; content: string; ifMatch: string | null; userId: string }
   | { op: 'workspace.rewind'; workspaceId: string; generation: number; userId: string };
 
@@ -81,6 +83,10 @@ export class SandboxRpcService implements OnApplicationBootstrap {
         await this.sandboxes.touch(p.workspaceId);
         return { ok: r.exitCode === 0, output: (r.stdout.toString() + r.stderr.toString()).replace(/Bearer \S+/g, 'Bearer [REDACTED]').slice(0, 10_000) };
       }
+      case 'git.branches':
+        return this.gitBranches(p.workspaceId);
+      case 'git.checkout':
+        return this.gitCheckout(p);
       case 'file.write':
         return this.writeFile(p);
       case 'workspace.rewind':
@@ -116,6 +122,77 @@ export class SandboxRpcService implements OnApplicationBootstrap {
       else if (line.startsWith('? ')) out.untracked.push(line.slice(2));
     }
     return out;
+  }
+
+  /** Branches locales et distantes (`origin`) du dépôt de la sandbox, la plus récente d'abord. */
+  private async gitBranches(workspaceId: string) {
+    const sb = await this.sandboxes.getActive(workspaceId);
+    if (!sb) return { available: false, current: null, local: [], remote: [] };
+    const fmt = '%(refname)%00%(committerdate:iso-strict)';
+    const [head, refs] = await Promise.all([
+      execCollect(this.sandboxes.provider, sb.handle, ['git', 'symbolic-ref', '--quiet', '--short', 'HEAD']),
+      execCollect(this.sandboxes.provider, sb.handle, ['git', 'for-each-ref', '--sort=-committerdate', `--format=${fmt}`, 'refs/heads', 'refs/remotes/origin']),
+    ]);
+    if (refs.exitCode !== 0) return { available: false, current: null, local: [], remote: [] };
+    const local: Array<{ name: string; date: string | null }> = [];
+    const remote: Array<{ name: string; date: string | null }> = [];
+    for (const line of refs.stdout.toString('utf8').split('\n').filter(Boolean)) {
+      const [ref, date] = line.split('\0');
+      if (ref.startsWith('refs/heads/')) local.push({ name: ref.slice(11), date: date || null });
+      else if (ref.startsWith('refs/remotes/origin/') && ref !== 'refs/remotes/origin/HEAD') remote.push({ name: ref.slice(20), date: date || null });
+    }
+    const names = new Set(local.map((b) => b.name));
+    return {
+      available: true,
+      // HEAD détaché : pas de branche courante.
+      current: head.exitCode === 0 ? head.stdout.toString('utf8').trim() || null : null,
+      local,
+      // Branches distantes sans équivalent local : `git switch` crée la branche de suivi.
+      remote: remote.filter((b) => !names.has(b.name)),
+    };
+  }
+
+  /**
+   * Changement de branche de travail demandé par l'utilisateur : jamais pendant un run (Pi
+   * travaille sur l'arbre de fichiers), modifications non commitées conservées par `git switch`
+   * (refus de Git en cas de conflit). Checkpoint, note dans le fil et pour Pi au prochain message.
+   */
+  private async gitCheckout(p: Extract<RpcPayload, { op: 'git.checkout' }>) {
+    const [active] = await this.db
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(and(eq(agentRuns.workspaceId, p.workspaceId), inArray(agentRuns.status, ['queued', 'running', 'interrupting'])));
+    if (active) return { ok: false, busy: true, output: 'Pi est en train de travailler : changez de branche une fois sa réponse terminée.' };
+    const sb = await this.sandboxes.ensureRunning(p.workspaceId);
+    const exec = (argv: string[]) => execCollect(this.sandboxes.provider, sb.handle, argv, { env: { GIT_TERMINAL_PROMPT: '0' }, timeoutMs: 120_000 });
+    const valid = !p.branch.startsWith('-') && (await exec(['git', 'check-ref-format', '--branch', p.branch])).exitCode === 0;
+    if (!valid) return { ok: false, output: `Nom de branche invalide : ${p.branch}` };
+    const before = await exec(['git', 'symbolic-ref', '--quiet', '--short', 'HEAD']);
+    const from = before.exitCode === 0 ? before.stdout.toString('utf8').trim() : null;
+    const r = await exec(['git', 'switch', p.branch]);
+    const output = (r.stdout.toString() + r.stderr.toString()).replace(/Bearer \S+/g, 'Bearer [REDACTED]').slice(0, 5_000);
+    if (r.exitCode !== 0) return { ok: false, output };
+    await this.checkpoints.run({
+      workspaceId: p.workspaceId,
+      fencingToken: sb.fencingToken,
+      provider: this.sandboxes.provider,
+      handle: sb.handle,
+      reason: 'git_checkout',
+      triggerKey: `checkout:${p.userId}:${p.branch}:${Date.now()}`,
+    });
+    await this.sandboxes.touch(p.workspaceId);
+    if (from !== p.branch) await this.branchNote(p.workspaceId, from, p.branch);
+    return { ok: true, branch: p.branch, output };
+  }
+
+  /** Changement de branche visible dans le fil, et signalé à Pi à son prochain tour (`agentNotified`). */
+  private async branchNote(workspaceId: string, from: string | null, to: string): Promise<void> {
+    const [conv] = await this.db.select({ id: conversations.id }).from(conversations).where(eq(conversations.workspaceId, workspaceId));
+    if (!conv) return;
+    const text = `Branche de travail : ${from ? `${from} → ` : ''}${to}`;
+    const meta = { kind: 'branch_switched', from, to, agentNotified: false };
+    const [m] = await this.db.insert(messages).values({ conversationId: conv.id, role: 'system', text, meta }).returning({ id: messages.id });
+    await this.events.emit(workspaceId, 'message.created', { messageId: m.id, role: 'system', text, attachmentIds: [], meta });
   }
 
   /** Différences du répertoire de travail par rapport à HEAD (portée « Git »). */

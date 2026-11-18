@@ -5,13 +5,17 @@ import { WorkspaceStore } from './workspace.store';
 import { CodeBlock } from '../../shared/code-block';
 import { AskForm } from './ask-form';
 import { SharedFiles } from './shared-files';
+import { ApprovalCard } from './approval-card';
+
+/** Outils de Pi qui créent une demande d'approbation Git (affichée sous l'appel). */
+export const APPROVAL_TOOLS = new Set(['platform_git_push', 'platform_create_pull_request', 'platform_merge_pull_request', 'platform_delete_remote_branch']);
 
 export function toolIcon(name: string): string {
   return ({ bash: 'terminal', read: 'eye', write: 'file', edit: 'edit', browser_screenshot: 'image', share_files: 'download' } as Record<string, string>)[name] ?? (name.startsWith('platform_') ? 'git' : name.startsWith('mcp__') ? 'puzzle' : 'cpu');
 }
 
 export function toolLabel(name: string): string {
-  return ({ bash: 'Commande', read: 'Lecture', write: 'Écriture', edit: 'Modification', browser_screenshot: 'Capture d’écran', share_files: 'Fichiers à télécharger' } as Record<string, string>)[name] ?? name;
+  return ({ bash: 'Commande', read: 'Lecture', write: 'Écriture', edit: 'Modification', browser_screenshot: 'Capture d’écran', share_files: 'Fichiers à télécharger', platform_git_push: 'Push (approbation)', platform_create_pull_request: 'Pull request (approbation)', platform_merge_pull_request: 'Fusion (approbation)', platform_delete_remote_branch: 'Suppression de branche (approbation)' } as Record<string, string>)[name] ?? name;
 }
 
 /** Argument principal d'un appel (commande, chemin, URL…), sur une ligne. */
@@ -26,7 +30,7 @@ export function toolSummary(call: ToolCallDto): string {
  */
 @Component({
   selector: 'cap-tool-card',
-  imports: [Icon, CodeBlock, AskForm, SharedFiles],
+  imports: [Icon, CodeBlock, AskForm, SharedFiles, ApprovalCard],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (call().toolName === 'ask_user') {
@@ -118,6 +122,7 @@ export function toolSummary(call: ToolCallDto): string {
         </div>
       }
     </div>
+    @if (approval(); as a) { <div class="mb-2"><cap-approval-card [approval]="a" /></div> }
     }
   `,
 })
@@ -137,6 +142,8 @@ export class ToolCard {
   private readonly store = inject(WorkspaceStore);
   private readonly overlay = viewChild<ElementRef<HTMLElement>>('overlay');
   protected readonly images = computed(() => this.call().images ?? []);
+  /** Demande d'approbation créée par cet appel (outils `platform_*` Git). */
+  protected readonly approval = computed(() => (APPROVAL_TOOLS.has(this.call().toolName) ? (this.store.approvals().find((a) => a.toolCallId === this.call().id) ?? null) : null));
 
   constructor() {
     // Focus sur la visionneuse à l'ouverture (clavier : Échap, flèches).
