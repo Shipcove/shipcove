@@ -295,7 +295,7 @@ export class WorkspaceStore {
         this.quotaPaused.set(null);
         this.runs.update((l) => {
           const exists = l.find((r) => r.id === runId);
-          if (exists) return l.map((r) => (r.id === runId ? { ...r, status: e.type === 'run.started' ? 'running' : 'queued' } : r));
+          if (exists) return l.map((r) => (r.id === runId ? { ...r, status: e.type === 'run.started' ? 'running' : 'queued', startedAt: r.startedAt ?? e.ts } : r));
           return [...l, { id: runId, workspaceId: e.workspaceId, status: e.type === 'run.started' ? 'running' : 'queued', modelId: null, modelName: null, agentMode: this.workspace()?.agentMode ?? 'autonomous', startedAt: e.ts, endedAt: null, error: null, pausedReason: null }];
         });
         return;
