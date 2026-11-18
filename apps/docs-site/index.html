@@ -1,56 +1,23 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
   <head>
-    <title>Présentation</title>
-    <meta name="description" content="Plateforme auto-hébergeable de coding agents : Pi travaille dans des sandboxes éphémères isolées, sauvegardées sur S3, avec LiteLLM, Vault et approbation humaine des publications Git." />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shipcove · Documentation</title>
+    <meta name="description" content="Shipcove documentation — documentation de Shipcove." />
+    <link rel="alternate" hreflang="fr" href="%BASE%fr/" vite-ignore />
+    <link rel="alternate" hreflang="en" href="%BASE%en/" vite-ignore />
+    <link rel="alternate" hreflang="x-default" href="%BASE%en/" vite-ignore />
+    <link rel="icon" href="%BASE%favicon.svg" type="image/svg+xml" />
+    <!-- Choix de la langue : préférence enregistrée, sinon langue du navigateur, sinon anglais. -->
+    <script type="module" src="/src/lang-redirect.js"></script>
+    <style>
+      body { font: 16px/1.5 system-ui, sans-serif; display: grid; place-items: center; min-height: 100vh; margin: 0; color: #292524; background: #fff; }
+      @media (prefers-color-scheme: dark) { body { color: #e7e5e4; background: #0c0a09; } }
+      a { color: inherit; margin: 0 .75rem; }
+    </style>
   </head>
   <body>
-    <main>
-      <h1>Shipcove</h1>
-      <p class="tagline"><em>Build in a safe cove. Ship with confidence.</em></p>
-      <p class="lead">Une plateforme <strong>auto-hébergeable</strong> où vos équipes confient des tâches de développement à un agent de code. L’agent <strong>Pi</strong> lit, modifie et teste le code dans une <strong>sandbox éphémère et isolée</strong>, pousse ses branches et ouvre ses pull requests en autonomie ; chaque modification est sauvegardée, et ce qui est irréversible (branche principale, fusion, suppression) est approuvé par un humain.</p>
-
-      <div class="cards">
-        <a class="card-link" href="/quickstart.html"><strong>Démarrage rapide →</strong><span>Lancer la plateforme en quelques minutes à partir des images publiées.</span></a>
-        <a class="card-link" href="/guide.html"><strong>Guide utilisateur →</strong><span>Conversations, dépôts, modifications, Git, previews.</span></a>
-        <a class="card-link" href="/administration.html"><strong>Administration →</strong><span>Modèles, quotas, identité, forges Git, sandboxes et services.</span></a>
-        <a class="card-link" href="/securite.html"><strong>Sécurité →</strong><span>Isolation des sandboxes, secrets, approbations, confidentialité.</span></a>
-      </div>
-
-      <h2>Ce que fait la plateforme</h2>
-      <ul>
-        <li><strong>Un workspace par tâche</strong> : depuis un dépôt GitHub / GitLab (SaaS ou auto-hébergé) ou vierge, avec sa conversation, ses fichiers et sa sandbox.</li>
-        <li><strong>Un agent autonome</strong> : il exécute des commandes, écrit du code, lance les tests, démarre au besoin une base PostgreSQL ou un Redis, et vous montre chaque action.</li>
-        <li><strong>Rien ne se perd</strong> : un checkpoint est publié sur S3 après chaque écriture ; une sandbox détruite est restaurée à l’identique, et vous pouvez revenir à l’état d’avant n’importe quel message.</li>
-        <li><strong>Rien ne part sans vous</strong> : push, pull/merge requests et fusions ne sont exécutés qu’après votre approbation de l’opération exacte.</li>
-        <li><strong>Vos modèles, vos règles</strong> : tous les appels passent par LiteLLM (Anthropic, OpenAI, Azure, Bedrock, Mistral, modèles locaux…), avec quotas personnels.</li>
-        <li><strong>Prête pour l’entreprise</strong> : SSO (OIDC/Keycloak, SAML, LDAP/AD, GitHub, GitLab), MFA, secrets dans Vault, audit, rétention des données.</li>
-      </ul>
-
-      <h2>Comment ça marche</h2>
-      <ol>
-        <li>Vous écrivez une demande dans une conversation, liée ou non à un dépôt Git.</li>
-        <li>La plateforme démarre (ou réutilise) la sandbox de la conversation, restaure ses fichiers et l’état de Pi.</li>
-        <li>Pi travaille : chaque appel d’outil (commande, lecture, écriture) s’affiche en direct ; chaque écriture déclenche un checkpoint.</li>
-        <li>Vous suivez les fichiers modifiés dans l’onglet <em>Git</em> (git diff, branche de travail), testez l’application via une <em>preview</em>, et approuvez dans la conversation la publication Git proposée par Pi.</li>
-        <li>Après une période d’inactivité, la sandbox est détruite ; tout est conservé sur S3 et repart au message suivant.</li>
-      </ol>
-
-      <h2>Briques techniques</h2>
-      <table>
-        <thead><tr><th>Brique</th><th>Rôle</th></tr></thead>
-        <tbody>
-          <tr><td>Angular + Tailwind CSS</td><td>Interface web</td></tr>
-          <tr><td>NestJS</td><td>API, worker (orchestration), passerelle LLM / réseau / Git, passerelle de previews</td></tr>
-          <tr><td>Pi (mode RPC)</td><td>Agent de code exécuté dans chaque sandbox</td></tr>
-          <tr><td>LiteLLM</td><td>Accès unifié aux fournisseurs de modèles</td></tr>
-          <tr><td>PostgreSQL</td><td>Données, files de travaux, notifications entre instances</td></tr>
-          <tr><td>Vault</td><td>Tous les secrets (clés LLM, OAuth, jetons Git, secrets de dépôt…)</td></tr>
-          <tr><td>Stockage S3 (Garage par défaut)</td><td>Checkpoints des conversations et pièces jointes</td></tr>
-          <tr><td>Docker</td><td>Sandboxes isolées et services d’appui</td></tr>
-        </tbody>
-      </table>
-      <p>Les images de la plateforme sont publiées sur le registre GitHub : <code>ghcr.io/shipcove/shipcove-*</code>. Voir le <a href="/quickstart.html">démarrage rapide</a>.</p>
-    </main>
+    <p><a href="%BASE%en/" hreflang="en">English</a> · <a href="%BASE%fr/" hreflang="fr" lang="fr">Français</a></p>
   </body>
 </html>

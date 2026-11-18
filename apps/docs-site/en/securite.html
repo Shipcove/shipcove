@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Security</title>
+    <meta name="description" content="Security model: sandbox isolation, network and egress, secrets, Git without tokens in the sandbox, approvals, accounts, files, privacy, host and infrastructure." />
+  </head>
+  <body>
+    <main>
+      <h1>Security</h1>
+      <p class="lead">Principle: the code run by the agent is not trusted. The sandbox holds no permanent secret; it acts on the forges on the user’s behalf, but anything irreversible or long-lived requires human approval.</p>
+
+      <h2>Sandboxes</h2>
+      <ul>
+        <li>Unprivileged user, <code>cap-drop ALL</code>, <code>no-new-privileges</code>, CPU, memory, process and disk limits.</li>
+        <li>Internal network <strong>without a route</strong> to the Internet or to the backend (PostgreSQL, Vault, S3…).</li>
+        <li>Outbound traffic only through the gateway proxy, with an <strong>allowlist</strong> of domains (package registries…). Traffic to Git forges is intercepted (see below).</li>
+        <li>Support services: same hardening, no extra network access.</li>
+      </ul>
+
+      <h2>Tokens and secrets</h2>
+      <ul>
+        <li>The sandbox receives a time-limited <strong>run token</strong>, usable only with the gateway (LLM, Git reads, platform tools).</li>
+        <li>Model keys, Git tokens, SSO and MCP secrets are in <strong>Vault</strong>; the API never returns them.</li>
+        <li>Secret values injected into the agent are <strong>masked</strong> in outputs, the real-time stream and the database, and removed from requests to the LLM provider.</li>
+        <li>Each service has its own Vault identity and a policy limited to its paths.</li>
+      </ul>
+
+      <h2>Git</h2>
+      <ul>
+        <li><code>git</code>, <code>gh</code> and <code>glab</code> work in the sandbox with the <strong>run token</strong>. The gateway terminates TLS for <strong>the forges only</strong> with an installation-specific authority (private key in Vault), then replaces that token with the user’s OAuth token. The forge token never enters the sandbox.</li>
+        <li><strong>Safeguards</strong> enforced by the gateway, whatever the tool: no push to the default branch or to a protected branch, no merge, no branch or tag deletion, no change to the repository settings or access, and no creation of keys, tokens, runners or CI secrets.</li>
+        <li>These operations go through the broker, <strong>after approval of the exact operation</strong> (pinned commit, branch, target) in the conversation; an approval is single-use and invalidated if the branch has moved.</li>
+        <li>Every write by the agent on a forge, and every refusal, is audited (<code>git.agent_write</code>).</li>
+        <li>A token is only presented to the host of its connection; HTTPS is required unless the administrator makes an explicit exception.</li>
+      </ul>
+
+      <h2>Accounts and browser</h2>
+      <ul>
+        <li>Argon2id passwords, TOTP MFA (required for administrators), lockout and rate limiting.</li>
+        <li>Server-side sessions, <code>HttpOnly</code> / <code>SameSite</code> cookies, double-submit CSRF protection.</li>
+        <li>Strict CSP without inline scripts, security headers, previews on a separate domain with a token.</li>
+        <li>SSO: PKCE, single-use state, signed SAML assertions; accounts are never merged by email.</li>
+      </ul>
+
+      <h2>Files</h2>
+      <p>Attachments and archives are checked (actual type, decompressed size, number of entries, paths), antivirus scanning with ClamAV if <code>CLAMAV_HOST</code> is configured, <strong>blocking when unavailable</strong>, executables refused. Files Pi offers as downloads are always served as attachments, never rendered by the browser.</p>
+
+      <h2>Privacy</h2>
+      <p>A conversation can only be read by its owner and the people they shared it with by name — <strong>platform administrators included</strong>. Administration actions are audited; retention is configurable with legal hold.</p>
+
+      <h2>Host and infrastructure</h2>
+      <ul>
+        <li><strong>Docker guard</strong>: only the <code>docker-guard</code> service accesses the Docker socket. The worker calls it on a dedicated internal network, with a shared secret; the guard only accepts compliant sandboxes and services (unprivileged, no added capability, no host mount, mandatory limits) and only on the platform’s containers. A compromised worker therefore cannot take over the host.</li>
+        <li><strong>gVisor</strong> (optional): <code>CAP_SANDBOX_RUNTIMES=runsc</code> to further isolate the sandboxes from the host kernel.</li>
+        <li><strong>Vault</strong>: in production, unsealing by a key service (<code>auto</code>) or by keys split between operators, encrypted for their PGP keys (<code>manual</code>); the root token is revoked after bootstrap. See <a href="exploitation.html#vault">Operations</a>.</li>
+        <li><strong>TLS</strong>: built-in Caddy entry point (<code>tls</code> profile), automatic certificates; a preview certificate is only issued for an open preview.</li>
+      </ul>
+
+      <h2>Points of attention in production</h2>
+      <div class="callout danger">
+        <ul>
+          <li><strong>Vault mode</strong>: the default mode (<code>file</code>) keeps keys and root token on disk; choose <code>manual</code> or <code>auto</code> <em>before</em> the first installation.</li>
+          <li><strong>Docker guard</strong>: it remains a trusted component (effective root access); dedicate the host to the platform.</li>
+          <li><strong>Internal traffic</strong>: links between Compose services are not encrypted (same host); encrypt them for a multi-host deployment.</li>
+          <li><strong>Startup script</strong>: stored in clear text and run in every sandbox, where the agent can read what it writes (<code>~/.npmrc</code>…); only put read-only credentials in it.</li>
+          <li><strong>Forges</strong>: during a run, the agent acts on <em>all</em> the repositories available to the user (pushing branches, opening PRs, commenting). A prompt injection can push it to do so; it can neither merge, nor touch the default branch, nor take the token away.</li>
+        </ul>
+      </div>
+      <p>To report a vulnerability, open a private security advisory on the GitHub repository rather than a public issue.</p>
+    </main>
+  </body>
+</html>

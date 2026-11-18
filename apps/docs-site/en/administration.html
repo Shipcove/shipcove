@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Admin console</title>
+    <meta name="description" content="Admin console: users, invitations, identity, Git forges, LiteLLM models, quotas, sandboxes, startup script and images, services, skills and MCP, secrets, notifications, audit and retention." />
+  </head>
+  <body>
+    <main>
+      <h1>Admin console</h1>
+      <p class="lead">Reserved for platform administrators (MFA required). Every change is audited; most settings apply immediately to all instances.</p>
+
+      <h2>Roles</h2>
+      <table>
+        <thead><tr><th>Role</th><th>Scope</th></tr></thead>
+        <tbody>
+          <tr><td>Platform administrator</td><td>Admin console, catalogs, models, quotas, retention. <strong>Has no access to the content of private conversations</strong>, nor to the list of repositories users work on.</td></tr>
+          <tr><td>User</td><td>Their conversations (with or without a repository), their Git connections, their personal skills and MCP servers, read-only sharing of their conversations.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Sections</h2>
+      <h3>Overview</h3>
+      <p>Users, repositories, conversations and active sandboxes, LLM calls and credits consumed over 24 h, errors, health of the dependencies.</p>
+      <h3>Users and invitations</h3>
+      <p>Creation, suspension, deletion (anonymization), MFA reset, session revocation. Invitations send a sign-up link valid for 7 days, even when open sign-up is disabled.</p>
+      <h3>IAM &amp; sign-in</h3>
+      <p>Local sign-in, sign-ups, email verification, MFA policy, session duration, lockout after failures, identity providers. See <a href="identite.html">Identity and SSO</a>.</p>
+      <h3>Git forges</h3>
+      <p>GitHub / GitLab OAuth applications that let users connect their accounts. <em>Git settings</em>: personal access tokens (disabled by default), internal forges reachable over HTTP, and the address of the <code>Co-Authored-By: Shipcove</code> trailer added to every commit (empty: no trailer). See <a href="git.html">Git forges</a>.</p>
+      <h3>Models (LiteLLM)</h3>
+      <p><strong>Connection</strong>: LiteLLM URL and admin key, stored in Vault (<code>infra/litellm</code>) and picked up by every service within 30 s; an existing LiteLLM proxy can thus replace the platform’s. Without a setting, the <code>LITELLM_URL</code> deployment value applies.</p>
+      <p><strong>Discovery</strong>: the models declared in LiteLLM are read through its API (<code>/model/info</code>, otherwise <code>/v1/models</code>) when clicking <em>Reload models</em>, when the connection is saved and every 10 minutes. A new model arrives <strong>disabled</strong>, with capabilities and coefficients prefilled from LiteLLM (1 credit = $0.001); a model gone from LiteLLM is flagged <em>missing</em> and no longer offered.</p>
+      <p><strong>Per-model settings</strong>: activation, <em>default</em> model (a single one, necessarily enabled), user <strong>allowlist</strong> (empty = available to everyone; applied to the model list, to conversation creation, to the sandbox and to the LLM gateway), display name, context window, capabilities and <strong>coefficients</strong> (credits per 1,000 input, output and cache tokens). Coefficients are versioned: a change does not affect past billing. The <em>Test</em> button sends a real request. The <strong>title model</strong> (optional) names conversations automatically; these short calls are not counted against quotas.</p>
+      <h3>Quotas &amp; credits</h3>
+      <p><strong>Personal</strong> quotas in credits over 5 h and 7 days: a default limit for everyone, or one specific to a user (each person has a single counter, for all their conversations); exemptions and manual adjustments, ledger history. Every LLM call <strong>reserves</strong> its maximum cost before being forwarded and only bills the actual cost: a cap is never exceeded, even with simultaneous calls. Users only see percentages.</p>
+      <h3>Sandboxes &amp; previews</h3>
+      <ul>
+        <li>Resources per sandbox (CPU, memory, disk, processes), idle timeout, maximum run duration, number of active sandboxes per user and in total;</li>
+        <li>allowed outbound domains (package registries…), checkpoint exclusions (regenerable dependencies and caches — <code>node_modules</code>, <code>.venv</code>, <code>__pycache__</code>… — are excluded by default and reinstalled in every new sandbox; extra patterns possible);</li>
+        <li><strong>startup script</strong>: a single bash script run in every new sandbox (npm / pip registries, mirrors, common tools) and its maximum duration — see <a href="environnement.html">Environment and services</a>;</li>
+        <li><strong>sandbox images</strong>: addition (reference + digest), activation as default image, deprecation;</li>
+        <li><strong>services started by the agent</strong>: see <a href="environnement.html#services-started-by-the-agent">Environment and services</a>;</li>
+        <li>previews: number of simultaneous ports per conversation;</li>
+        <li>running instances, with forced stop.</li>
+      </ul>
+      <h3>Skills &amp; MCP</h3>
+      <p>Skills (instructions for Pi) and MCP servers in two scopes — global (administrator) and personal — with per-tool permissions and allowed remote MCP hosts. A skill is available as soon as it is created; for a global skill, the administrator sets “enabled by default for everyone”, each user keeping control of their own switch. Skills can be deleted (by their author, or by an administrator for a global skill); if review of personal skills is required, they wait for an administrator’s approval. A skill only contains markdown files, possibly in folders; it is imported and exported as a .zip (see the <a href="guide.html">guide</a>). Skill <strong>categories</strong> are created, renamed, ordered and deleted here (their skills then become “uncategorized”); they organize the Skills page of all users. The automatic analysis flags in particular probable secrets, dangerous commands cited and prompt-injection phrasing. MCP server secrets are in Vault. A revocation applies from the next run.</p>
+      <h3>Secrets &amp; storage</h3>
+      <p>Status of Vault and of the infrastructure secrets (never displaying a value), status of S3 storage.</p>
+      <h3>Notifications &amp; SMTP</h3>
+      <p>SMTP server (password in Vault, test email), default notification policies.</p>
+      <h3>Audit &amp; retention</h3>
+      <p>Search and CSV export of the audit log; retention periods per data type (events, tool outputs, attachments, checkpoints, notifications, audit, archived workspaces…), <strong>legal hold</strong> per type, purge history and <em>Run purge now</em> (otherwise automatic every hour). The current checkpoint generation is never purged: a kept conversation can always resume.</p>
+    </main>
+  </body>
+</html>

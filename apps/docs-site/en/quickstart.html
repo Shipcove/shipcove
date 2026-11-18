@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Quick start</title>
+    <meta name="description" content="Install and run Shipcove with Docker Compose from the images published on ghcr.io: prerequisites, configuration, secrets, first login, LiteLLM models." />
+  </head>
+  <body>
+    <main>
+      <h1>Quick start</h1>
+      <p class="lead">Run the platform on a machine with Docker, from the images published on the GitHub registry, in about ten minutes.</p>
+
+      <h2>Prerequisites</h2>
+      <ul>
+        <li>Linux (or macOS with Docker Desktop) with <strong>Docker 24+</strong> and <strong>Docker Compose v2</strong>;</li>
+        <li><code>git</code> and <code>openssl</code>;</li>
+        <li>at least <strong>4 cores, 8 GB of RAM and 30 GB of disk</strong> (more depending on the number of simultaneous sandboxes: 2 CPUs / 4 GB each by default);</li>
+        <li>an API key from a model provider (Anthropic, OpenAI…) — or the mock provider for a first try.</li>
+      </ul>
+
+      <h2>Installation</h2>
+      <ol class="steps">
+        <li>
+          <h3>Get the deployment files</h3>
+          <p>The repository contains the Compose file, the bootstrap scripts and the LiteLLM configuration; the applications themselves are downloaded as images.</p>
+          <pre><code>git clone https://github.com/Shipcove/shipcove.git
+cd shipcove/infrastructure/docker</code></pre>
+        </li>
+        <li>
+          <h3>Configure</h3>
+          <pre><code>cp .env.example .env</code></pre>
+          <p>In <code>.env</code>, set at least:</p>
+          <pre><code># Images published on ghcr.io
+CAP_REGISTRY=ghcr.io/shipcove/
+CAP_VERSION=0.1.0
+CAP_SANDBOX_IMAGE=ghcr.io/shipcove/shipcove-sandbox:0.1.0
+
+# Initial administrator (created on first start if none exists)
+CAP_ADMIN_EMAIL=admin@example.com
+CAP_ADMIN_PASSWORD=a-long-and-unique-password
+
+# Group owning the host Docker socket (value given by: stat -c %g /var/run/docker.sock)
+CAP_DOCKER_GID=989</code></pre>
+          <div class="callout"><p>Replace <code>0.1.0</code> with the latest published version: every <code>vX.Y.Z</code> tag of the repository publishes the <code>X.Y.Z</code> images (see the <em>Packages</em> of the GitHub repository). All the images of an installation must have the same version.</p></div>
+        </li>
+        <li>
+          <h3>Generate the bootstrap secrets</h3>
+          <pre><code>./scripts/init-secrets.sh</code></pre>
+          <p>The script creates <code>.secrets/</code> (PostgreSQL passwords, Garage and LiteLLM keys, Vault AppRole credentials). It is idempotent: run again, it replaces nothing. This directory is never committed; protect it and back it up.</p>
+        </li>
+        <li>
+          <h3>Pull the images and start</h3>
+          <pre><code>docker compose pull
+docker pull ghcr.io/shipcove/shipcove-sandbox:0.1.0
+docker compose up -d</code></pre>
+          <p>On first start, Vault is initialized and unsealed, S3 storage (Garage) is configured and the database migrations are applied. Check the status:</p>
+          <pre><code>docker compose ps
+curl -s http://localhost:8080/api/v1/health/ready</code></pre>
+        </li>
+        <li>
+          <h3>First login</h3>
+          <p>Open <a href="http://localhost:8080">http://localhost:8080</a> and sign in with <code>CAP_ADMIN_EMAIL</code> / <code>CAP_ADMIN_PASSWORD</code>. Administrators must enable two-factor authentication (TOTP) at their first login: scan the QR code with your authenticator app and keep the recovery codes.</p>
+        </li>
+        <li>
+          <h3>Connect LiteLLM and enable a model</h3>
+          <p>Models are declared <strong>in LiteLLM</strong> (its interface at <code>http://localhost:4000/ui</code> with the master key from <code>.secrets/litellm_master_key</code>, its API or its <code>config.yaml</code>); the platform discovers them.</p>
+          <ul>
+            <li><strong>Administration → Models (LiteLLM)</strong>, <em>LiteLLM connection</em> card: keep the bundled LiteLLM, or enter the URL and admin key of an <strong>existing LiteLLM proxy</strong> (<em>Test</em>, then <em>Save</em>);</li>
+            <li><strong>Reload models</strong>: the LiteLLM models appear, <em>disabled</em>, with coefficients prefilled from their known prices (1 credit = $0.001);</li>
+            <li>enable one, make it the <em>default</em>, then <strong>Test</strong> sends a real request. A user <em>allowlist</em> can restrict access to a model (empty = everyone).</li>
+          </ul>
+        </li>
+        <li>
+          <h3>Invite users and start a conversation</h3>
+          <ul>
+            <li><strong>Administration → Invitations</strong>: invite your colleagues by email (requires an SMTP server: <em>Administration → Notifications &amp; SMTP</em>), or create their accounts in <em>Users</em>;</li>
+            <li>on the home page, write your first request to Pi; optionally pick a repository under the input box (after configuring a <a href="git.html">Git forge</a> and connecting your account).</li>
+          </ul>
+        </li>
+      </ol>
+
+      <h2>Try without a model provider</h2>
+      <p>The <code>dev</code> profile adds a mock LLM provider (scriptable, for acceptance testing) and <strong>Mailpit</strong>, which captures emails:</p>
+      <pre><code>docker compose --profile dev up -d</code></pre>
+      <p>Then declare the <code>openai/mock-model</code> model with the <code>api_base</code> parameter set to <code>http://mock-llm:4010/v1</code> and any key. Emails can be seen at <a href="http://localhost:8025">http://localhost:8025</a> (configure the SMTP server <code>mailpit:1025</code> in the administration).</p>
+      <div class="callout warn"><p>The <code>dev</code> profile is not meant for production.</p></div>
+
+      <h2>Upgrade</h2>
+      <pre><code># in .env: CAP_VERSION and CAP_SANDBOX_IMAGE to the new version
+git pull
+docker compose pull
+docker pull ghcr.io/shipcove/shipcove-sandbox:&lt;version&gt;
+docker compose up -d</code></pre>
+      <p>Migrations are applied automatically by the <code>migrate</code> service before the APIs start. Running sandboxes keep their image until their next restart.</p>
+
+      <h2>What next?</h2>
+      <ul>
+        <li><a href="installation.html">Installation and configuration</a>: public URL, TLS, previews, ports, replicas;</li>
+        <li><a href="identite.html">Identity and SSO</a> to connect your directory;</li>
+        <li><a href="git.html">Git forges</a> to work on your repositories;</li>
+        <li><a href="exploitation.html">Operations</a> before going to production.</li>
+      </ul>
+    </main>
+  </body>
+</html>

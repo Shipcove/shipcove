@@ -44,6 +44,13 @@
         <li>lire et créer des tickets, des releases.</li>
       </ul>
 
+      <h2>Suivre le travail : onglet Git</h2>
+      <ul>
+        <li><strong>Branche de travail</strong> : le panneau de la conversation (onglet <em>Git</em>) affiche la branche courante et permet d’en changer, parmi les branches locales et celles de <code>origin</code>. Il suit les changements de branche faits par Pi ; un changement de votre part est noté dans la conversation et signalé à Pi. Impossible pendant que Pi travaille.</li>
+        <li><strong>git diff</strong> : les fichiers modifiés par rapport au dernier commit, avec leurs différences fichier par fichier.</li>
+        <li><strong>Co-auteur</strong> : chaque commit fait dans une sandbox porte la mention <code>Co-Authored-By: Shipcove &lt;adresse&gt;</code> (adresse réglée dans <em>Réglages Git</em>). Elle est ajoutée par des hooks Git de la plateforme, qui exécutent ensuite ceux du dépôt (pre-commit, commitlint…).</li>
+      </ul>
+
       <h2>Ce qui exige une approbation</h2>
       <table>
         <thead><tr><th>Opération</th><th>Comment</th></tr></thead>
@@ -55,7 +62,7 @@
           <tr><td>Clés SSH, clés et jetons de déploiement, jetons, runners, secrets de CI</td><td>Interdit depuis une sandbox</td></tr>
         </tbody>
       </table>
-      <p>Les refus sont explicites : <code>git push</code> affiche <code>! [remote rejected] main -&gt; main (…)</code> ; <code>gh</code> et <code>glab</code> reçoivent un HTTP 403 avec la raison. L’approbation porte sur l’opération exacte (commit figé) et ne sert qu’une fois. Chaque écriture et chaque refus sont audités.</p>
+      <p>Les refus sont explicites : <code>git push</code> affiche <code>! [remote rejected] main -&gt; main (…)</code> ; <code>gh</code> et <code>glab</code> reçoivent un HTTP 403 avec la raison. La demande d’approbation s’affiche <strong>dans la conversation</strong>, sous le message de Pi : commits, diff, puis <em>Approuver</em> ou <em>Refuser</em>. Elle porte sur l’opération exacte (commit figé), ne sert qu’une fois et expire après 24 h. Chaque écriture et chaque refus sont audités.</p>
       <p>L’URL de clonage renvoyée par la forge doit désigner le même hôte que la connexion : un jeton n’est jamais présenté à un autre hôte.</p>
 
       <h2>Forges internes en HTTP</h2>

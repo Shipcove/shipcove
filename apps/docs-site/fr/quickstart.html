@@ -40,7 +40,7 @@ CAP_ADMIN_PASSWORD=un-mot-de-passe-long-et-unique
 
 # Groupe propriétaire du socket Docker de l'hôte (valeur donnée par : stat -c %g /var/run/docker.sock)
 CAP_DOCKER_GID=989</code></pre>
-          <div class="callout"><p>Remplacez <code>0.1.0</code> par la dernière version publiée (voir les <em>Packages</em> du dépôt GitHub). Toutes les images d’une installation doivent porter la même version.</p></div>
+          <div class="callout"><p>Remplacez <code>0.1.0</code> par la dernière version publiée : chaque tag <code>vX.Y.Z</code> du dépôt publie les images <code>X.Y.Z</code> (voir les <em>Packages</em> du dépôt GitHub). Toutes les images d’une installation doivent porter la même version.</p></div>
         </li>
         <li>
           <h3>Générer les secrets d’amorçage</h3>
@@ -73,7 +73,7 @@ curl -s http://localhost:8080/api/v1/health/ready</code></pre>
           <h3>Inviter des utilisateurs et démarrer une conversation</h3>
           <ul>
             <li><strong>Administration → Invitations</strong> : invitez vos collègues par email (nécessite un serveur SMTP : <em>Administration → Notifications &amp; SMTP</em>), ou créez leurs comptes dans <em>Utilisateurs</em> ;</li>
-            <li>sur la page d’accueil, écrivez votre première demande à Pi ; choisissez éventuellement un dépôt sous la zone de saisie (après avoir configuré une <a href="/git.html">forge Git</a> et rattaché votre compte).</li>
+            <li>sur la page d’accueil, écrivez votre première demande à Pi ; choisissez éventuellement un dépôt sous la zone de saisie (après avoir configuré une <a href="git.html">forge Git</a> et rattaché votre compte).</li>
           </ul>
         </li>
       </ol>
@@ -94,10 +94,10 @@ docker compose up -d</code></pre>
 
       <h2>Et ensuite ?</h2>
       <ul>
-        <li><a href="/installation.html">Installation et configuration</a> : URL publique, TLS, previews, ports, répliques ;</li>
-        <li><a href="/identite.html">Identité et SSO</a> pour connecter votre annuaire ;</li>
-        <li><a href="/git.html">Forges Git</a> pour travailler sur vos dépôts ;</li>
-        <li><a href="/exploitation.html">Exploitation</a> avant une mise en production.</li>
+        <li><a href="installation.html">Installation et configuration</a> : URL publique, TLS, previews, ports, répliques ;</li>
+        <li><a href="identite.html">Identité et SSO</a> pour connecter votre annuaire ;</li>
+        <li><a href="git.html">Forges Git</a> pour travailler sur vos dépôts ;</li>
+        <li><a href="exploitation.html">Exploitation</a> avant une mise en production.</li>
       </ul>
     </main>
   </body>

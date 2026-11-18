@@ -1,5 +1,22 @@
 // Améliorations progressives : le site reste lisible sans JavaScript.
 
+const lang = document.documentElement.lang === 'fr' ? 'fr' : 'en';
+const T = {
+  fr: { copy: 'Copier', copied: 'Copié', failed: 'Échec' },
+  en: { copy: 'Copy', copied: 'Copied', failed: 'Failed' },
+}[lang];
+
+// Sélecteur de langue : le choix est retenu pour les prochaines visites (page racine).
+for (const a of document.querySelectorAll('.lang-link[data-lang]')) {
+  a.addEventListener('click', () => {
+    try {
+      localStorage.setItem('shipcove-docs-lang', a.dataset.lang);
+    } catch {
+      /* stockage indisponible */
+    }
+  });
+}
+
 // Menu mobile.
 const toggle = document.querySelector('.nav-toggle');
 const sidebar = document.getElementById('sidebar');
@@ -35,15 +52,15 @@ for (const pre of document.querySelectorAll('.prose-doc pre')) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'copy-btn';
-  btn.textContent = 'Copier';
+  btn.textContent = T.copy;
   btn.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(pre.querySelector('code')?.innerText ?? pre.innerText);
-      btn.textContent = 'Copié';
+      btn.textContent = T.copied;
     } catch {
-      btn.textContent = 'Échec';
+      btn.textContent = T.failed;
     }
-    setTimeout(() => (btn.textContent = 'Copier'), 1500);
+    setTimeout(() => (btn.textContent = T.copy), 1500);
   });
   pre.append(btn);
 }

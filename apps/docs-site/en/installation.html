@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Installation</title>
+    <meta name="description" content="Install the platform with Docker Compose and the published images: prerequisites, variables, Vault in production, built-in TLS or your own reverse proxy, emails, upgrades." />
+  </head>
+  <body>
+    <main>
+      <h1>Installation</h1>
+      <p class="lead">Reference deployment on a Docker host, from the images published on <code>ghcr.io/shipcove</code>. For a first try, follow the <a href="quickstart.html">quick start</a> first.</p>
+
+      <h2>Prerequisites</h2>
+      <ul>
+        <li>Linux x86_64, Docker 24+ with Compose v2, <code>openssl</code>, <code>git</code>;</li>
+        <li>at least 4 cores, 8 GB of RAM and 30 GB of disk, plus the resources of the sandboxes (2 GB and 1 CPU each by default);</li>
+        <li>two DNS names: the application (e.g. <code>code.example.com</code>) and a wildcard domain for previews (e.g. <code>*.preview.example.com</code>).</li>
+      </ul>
+
+      <h2>Images</h2>
+      <table>
+        <thead><tr><th>Image</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td><code>ghcr.io/shipcove/shipcove-web</code></td><td>Angular interface and nginx (HTTP entry point)</td></tr>
+          <tr><td><code>ghcr.io/shipcove/shipcove-api</code></td><td>REST API, authentication, real-time stream (also used for migrations)</td></tr>
+          <tr><td><code>ghcr.io/shipcove/shipcove-worker</code></td><td>Run orchestration, sandboxes, checkpoints, Git broker</td></tr>
+          <tr><td><code>ghcr.io/shipcove/shipcove-gateway</code></td><td>LLM proxy and quotas, filtered egress, Git reads</td></tr>
+          <tr><td><code>ghcr.io/shipcove/shipcove-preview</code></td><td>Access to previews</td></tr>
+          <tr><td><code>ghcr.io/shipcove/shipcove-docker-guard</code></td><td>Docker engine guard (sole holder of the socket)</td></tr>
+          <tr><td><code>ghcr.io/shipcove/shipcove-sandbox</code></td><td>Sandbox image (Pi, Git, Python, Node.js)</td></tr>
+        </tbody>
+      </table>
+      <p>Images are published with every <strong>version tag</strong> of the repository: <code>vX.Y.Z</code> gives the <code>X.Y.Z</code>, <code>X.Y</code> and <code>latest</code> tags (a pre-release <code>vX.Y.Z-rc.N</code> only publishes its own). All the images of an installation have the same version: pin it, do not deploy <code>latest</code> in production.</p>
+
+      <h2>Configuration (<code>.env</code>)</h2>
+      <pre><code>git clone https://github.com/Shipcove/shipcove.git
+cd shipcove/infrastructure/docker
+cp .env.example .env</code></pre>
+      <table>
+        <thead><tr><th>Variable</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>CAP_REGISTRY</code></td><td><code>ghcr.io/shipcove/</code> (with the trailing slash). Empty = locally built images.</td></tr>
+          <tr><td><code>CAP_VERSION</code></td><td>Version of the platform images.</td></tr>
+          <tr><td><code>CAP_SANDBOX_IMAGE</code></td><td>Default sandbox image, e.g. <code>ghcr.io/shipcove/shipcove-sandbox:0.1.0</code>.</td></tr>
+          <tr><td><code>CAP_PUBLIC_URL</code></td><td>Public URL, e.g. <code>https://code.example.com</code> (email links, SSO and OAuth callback URLs).</td></tr>
+          <tr><td><code>CAP_PREVIEW_DOMAIN</code>, <code>CAP_PREVIEW_SCHEME</code>, <code>CAP_PREVIEW_PORT</code></td><td>Preview domain, e.g. <code>preview.example.com</code>, <code>https</code>, <code>443</code>.</td></tr>
+          <tr><td><code>CAP_COOKIE_SECURE</code></td><td><code>true</code> behind HTTPS (required in production).</td></tr>
+          <tr><td><code>CAP_HTTP_BIND</code>, <code>CAP_HTTP_PORT</code>, <code>CAP_PREVIEW_BIND</code></td><td>Listening interfaces and port; <code>127.0.0.1</code> by default, behind the reverse proxy.</td></tr>
+          <tr><td><code>CAP_DOCKER_GID</code></td><td>Group of the Docker socket: <code>stat -c %g /var/run/docker.sock</code>.</td></tr>
+          <tr><td><code>CAP_API_REPLICAS</code></td><td>Number of API instances (2 by default).</td></tr>
+          <tr><td><code>CAP_ADMIN_EMAIL</code>, <code>CAP_ADMIN_PASSWORD</code></td><td>Initial administrator, created only if no administrator exists.</td></tr>
+        </tbody>
+      </table>
+      <div class="callout"><p>The <code>.env</code> file contains no infrastructure secret. <code>./scripts/init-secrets.sh</code> generates the bootstrap secrets in <code>.secrets/</code> (never committed, to be backed up); the rest is created in Vault on first start.</p></div>
+
+      <h2>Vault in production</h2>
+      <p>Choose the unseal mode <strong>before</strong> the first start (<code>CAP_VAULT_UNSEAL_MODE</code>):</p>
+      <ul>
+        <li><code>auto</code>: a key service (AWS KMS, Google Cloud KMS, Azure Key Vault, transit of a corporate Vault) unseals Vault; stanza in <code>vault/seal.hcl</code> (template <code>seal.hcl.example</code>), optional credentials in <code>vault/seal.env</code>;</li>
+        <li><code>manual</code>: keys are split between operators and encrypted for their PGP keys (<code>.secrets/vault-pgp/*.asc</code>); <code>scripts/vault-unseal.sh</code> after each Vault restart;</li>
+        <li><code>file</code> (default): keys on disk, reserved for development and staging.</li>
+      </ul>
+
+      <h2>Starting</h2>
+      <pre><code>./scripts/init-secrets.sh
+docker compose pull
+docker pull ghcr.io/shipcove/shipcove-sandbox:0.1.0
+docker compose up -d
+docker compose ps</code></pre>
+      <p>Compose handles the order: PostgreSQL, Vault (initialized and unsealed), Garage, bootstrap (Vault policies, buckets), migrations, then the application services. The <code>dev</code> profile (<code>--profile dev</code>) adds Mailpit and a mock LLM: do not enable it in production.</p>
+
+      <h2>Built-in TLS (recommended)</h2>
+      <p>The <code>tls</code> profile adds Caddy on ports 80 and 443, with automatic Let’s Encrypt certificates for the application and the previews:</p>
+      <pre><code>CAP_DOMAIN=code.example.com
+CAP_PREVIEW_DOMAIN=preview.example.com   # DNS: *.preview.example.com → the host
+CAP_TLS_EMAIL=admin@example.com
+CAP_PUBLIC_URL=https://code.example.com
+CAP_PREVIEW_SCHEME=https
+CAP_PREVIEW_PORT=443
+CAP_COOKIE_SECURE=true</code></pre>
+      <pre><code>docker compose --profile tls up -d</code></pre>
+      <p>Preview certificates are issued on demand, only for an open preview. If there are many previews (Let’s Encrypt rate limits), provide a wildcard certificate: <code>CAP_TLS_PREVIEW=files</code> and <code>edge/certs/preview.crt</code> / <code>preview.key</code>.</p>
+
+      <h2>Your own reverse proxy</h2>
+      <p>Otherwise, put a TLS reverse proxy (Caddy, Traefik, nginx…) in front of the two ports: the application on <code>CAP_HTTP_PORT</code> (8080) and the previews on <code>CAP_PREVIEW_PORT</code> (8090). It must forward the <code>Host</code> and <code>X-Forwarded-*</code> headers and must not buffer SSE streams.</p>
+      <pre><code>code.example.com {
+  reverse_proxy 127.0.0.1:8080 {
+    flush_interval -1
+  }
+}
+*.preview.example.com {
+  tls { dns &lt;provider&gt; }
+  reverse_proxy 127.0.0.1:8090
+}</code></pre>
+      <div class="callout warn"><p>Previews must stay on a <strong>separate</strong> domain from the application (not a subdomain that would share its cookies): the code a preview runs is not trusted.</p></div>
+
+      <h2>Emails</h2>
+      <p>Configure the SMTP server in <strong>Administration → Notifications &amp; SMTP</strong> (password stored in Vault) and send a test email. Without SMTP, invitations and password resets are not sent.</p>
+
+      <h2>Upgrading</h2>
+      <ol>
+        <li>Read the release notes; back up PostgreSQL, Vault and <code>.secrets/</code> (see <a href="exploitation.html#backups">Operations</a>).</li>
+        <li>Change <code>CAP_VERSION</code> and <code>CAP_SANDBOX_IMAGE</code> in <code>.env</code>.</li>
+        <li><code>docker compose pull &amp;&amp; docker pull &lt;new sandbox image&gt;</code></li>
+        <li><code>docker compose up -d</code>: migrations are applied before the API and the worker restart.</li>
+      </ol>
+      <p>Running runs resume after the worker restarts (database locks, S3 checkpoints). Existing sandboxes keep their image until they are next created.</p>
+
+      <h2>Kubernetes</h2>
+      <p>A Kubernetes provider and a Helm chart are being prepared; the target validated today is Docker Compose.</p>
+    </main>
+  </body>
+</html>

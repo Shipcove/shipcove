@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Overview</title>
+    <meta name="description" content="Self-hostable coding-agent platform: Pi works in isolated, ephemeral sandboxes backed up to S3, with LiteLLM, Vault and human approval of irreversible Git operations." />
+  </head>
+  <body>
+    <main>
+      <h1>Shipcove</h1>
+      <p class="tagline"><em>Build in a safe cove. Ship with confidence.</em></p>
+      <p class="lead">A <strong>self-hostable</strong> platform where your teams hand development tasks to a coding agent. The agent, <strong>Pi</strong>, reads, changes and tests code in an <strong>isolated, ephemeral sandbox</strong>, pushes its branches and opens its pull requests on its own; every change is saved, and anything irreversible (default branch, merge, branch deletion) is approved by a human.</p>
+
+      <div class="cards">
+        <a class="card-link" href="quickstart.html"><strong>Quick start →</strong><span>Run the platform in minutes from the published images.</span></a>
+        <a class="card-link" href="guide.html"><strong>User guide →</strong><span>Conversations, repositories, Git, plan, previews.</span></a>
+        <a class="card-link" href="administration.html"><strong>Administration →</strong><span>Models, quotas, identity, Git forges, sandboxes and services.</span></a>
+        <a class="card-link" href="securite.html"><strong>Security →</strong><span>Sandbox isolation, secrets, approvals, privacy.</span></a>
+      </div>
+
+      <h2>What the platform does</h2>
+      <ul>
+        <li><strong>One workspace per task</strong>: from a GitHub / GitLab repository (SaaS or self-hosted) or empty, with its own conversation, files and sandbox.</li>
+        <li><strong>An autonomous agent</strong>: it runs commands, writes code, runs the tests, starts a PostgreSQL database or a Redis when needed, and shows you every action.</li>
+        <li><strong>It shows its work</strong>: a task <strong>plan</strong> kept up to date for complex requests, <strong>screenshots</strong> taken automatically as soon as a web interface changes, an up-to-date <strong>git diff</strong>, and its deliverables (README, report, export…) offered as <strong>downloads</strong>.</li>
+        <li><strong>Nothing irreversible without you</strong>: Pi pushes its branches and opens its pull requests on its own, but the default branch, merges and branch deletions wait for your approval, right in the conversation.</li>
+        <li><strong>Nothing gets lost</strong>: a checkpoint is published to S3 after every write; a destroyed sandbox is restored exactly, and you can go back to the state before any message.</li>
+        <li><strong>Your models, your rules</strong>: every call goes through LiteLLM (Anthropic, OpenAI, Azure, Bedrock, Mistral, local models…), with personal quotas.</li>
+        <li><strong>Enterprise-ready</strong>: SSO (OIDC/Keycloak, SAML, LDAP/AD, GitHub, GitLab), MFA, secrets in Vault, audit, data retention.</li>
+      </ul>
+
+      <h2>How it works</h2>
+      <ol>
+        <li>You write a request in a conversation, linked to a Git repository or not.</li>
+        <li>The platform starts (or reuses) the conversation’s sandbox and restores its files and Pi’s state.</li>
+        <li>Pi works: for a complex task it first sets out a plan; every tool call (command, read, write) is shown live; every write triggers a checkpoint.</li>
+        <li>You follow the changed files in the <em>Git</em> tab (git diff, working branch), test the application through a <em>preview</em>, and approve in the conversation the Git publication Pi proposes.</li>
+        <li>After a period of inactivity the sandbox is destroyed; everything is kept on S3 and resumes at the next message.</li>
+      </ol>
+
+      <h2>Building blocks</h2>
+      <table>
+        <thead><tr><th>Component</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td>Angular + Tailwind CSS</td><td>Web interface</td></tr>
+          <tr><td>NestJS</td><td>API, worker (orchestration), LLM / network / Git gateway, preview gateway</td></tr>
+          <tr><td>Pi (RPC mode)</td><td>Coding agent running in each sandbox</td></tr>
+          <tr><td>LiteLLM</td><td>Unified access to model providers</td></tr>
+          <tr><td>PostgreSQL</td><td>Data, job queues, notifications between instances</td></tr>
+          <tr><td>Vault</td><td>All secrets (LLM keys, OAuth, Git tokens, SSO and MCP secrets…)</td></tr>
+          <tr><td>S3 storage (Garage by default)</td><td>Conversation checkpoints and attachments</td></tr>
+          <tr><td>Docker</td><td>Isolated sandboxes and support services</td></tr>
+        </tbody>
+      </table>
+      <p>The platform images are published to the GitHub registry with every release: <code>ghcr.io/shipcove/shipcove-*</code>. See the <a href="quickstart.html">quick start</a>.</p>
+
+      <h2>License</h2>
+      <p>Shipcove is free software, released under the <strong>GNU AGPL v3</strong> license. A modified version made available to users must publish its source code, keep the “Based on Shipcove” notice in its interface and use another name: the “Shipcove” name and logo are reserved (see the <a href="https://github.com/Shipcove/shipcove/blob/develop/TRADEMARKS.md">trademark policy</a>).</p>
+    </main>
+  </body>
+</html>

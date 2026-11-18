@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Git forges</title>
+    <meta name="description" content="Configure GitHub and GitLab (SaaS or self-hosted) with OAuth, user account linking, Git tab, co-author trailer, publication after approval." />
+  </head>
+  <body>
+    <main>
+      <h1>Git forges</h1>
+      <p class="lead">Users connect their GitHub / GitLab accounts <strong>with OAuth</strong>, through the forges declared by the administrator. Pi then uses <code>git</code>, <code>gh</code> and <code>glab</code> autonomously; tokens stay in Vault and never enter the sandboxes.</p>
+
+      <h2>Declaring a forge</h2>
+      <p><strong>Administration → Git forges</strong>, one OAuth application per forge:</p>
+      <table>
+        <thead><tr><th>Forge</th><th>Where to create the application</th></tr></thead>
+        <tbody>
+          <tr><td>GitHub.com</td><td>Settings → Developer settings → OAuth Apps → New OAuth App</td></tr>
+          <tr><td>GitHub Enterprise Server</td><td>Same path, on your instance</td></tr>
+          <tr><td>GitLab.com</td><td>Preferences → Applications (<strong>confidential</strong> application)</td></tr>
+          <tr><td>Self-hosted GitLab</td><td>Admin Area → Applications → New application (confidential)</td></tr>
+        </tbody>
+      </table>
+      <ol class="steps">
+        <li><h3>Add</h3><p>Type, display name, host (fixed for SaaS offerings), client ID, client secret (Vault).</p></li>
+        <li><h3>Declare it on the forge</h3><p>The callback URL shown by the console (<code>https://&lt;your-domain&gt;/api/v1/me/git-connections/oauth/&lt;id&gt;/callback</code>) and the scopes: GitHub <code>repo read:user user:email read:org</code>, GitLab <code>api read_user read_repository write_repository</code>.</p></li>
+        <li><h3>Test</h3><p>The console checks that the forge answers and that the client ID and secret are accepted.</p></li>
+        <li><h3>Enable</h3><p>The forge appears in the users’ <strong>Settings → Git connections</strong>.</p></li>
+      </ol>
+      <p>Deleting a forge revokes the connections that depend on it. Personal access tokens are disabled by default (<em>Allow personal access tokens</em> setting).</p>
+
+      <h2>On the user side</h2>
+      <ul>
+        <li><strong>Connect via …</strong>: authorization on the forge (PKCE, single-use state), automatic return.</li>
+        <li>Expiring tokens (GitLab: 2 h) are <strong>renewed automatically</strong>; a connection expired on the forge side shows <em>Reconnect</em>.</li>
+        <li>The repositories available through your connections then appear under the input box of a new conversation.</li>
+      </ul>
+
+      <h2>What Pi does on its own</h2>
+      <p>In the sandbox, <code>git</code>, <code>gh</code> and <code>glab</code> are authenticated with a <strong>run token</strong>. The gateway intercepts the traffic to the forges and replaces it with the user’s OAuth token: Pi acts on their behalf, on all their repositories, without ever seeing the token.</p>
+      <ul>
+        <li>push work branches (including force pushes) and tags;</li>
+        <li>open and update PRs/MRs, comment, answer reviews;</li>
+        <li>read the CI and job logs, re-run a pipeline;</li>
+        <li>read and create issues, releases.</li>
+      </ul>
+
+      <h2>Following the work: Git tab</h2>
+      <ul>
+        <li><strong>Working branch</strong>: the conversation panel (<em>Git</em> tab) shows the current branch and lets you switch it, among the local branches and those of <code>origin</code>. It follows the branch switches made by Pi; a switch of yours is noted in the conversation and reported to Pi. Not possible while Pi is working.</li>
+        <li><strong>git diff</strong>: the files changed since the last commit, with their differences file by file.</li>
+        <li><strong>Co-author</strong>: every commit made in a sandbox carries the <code>Co-Authored-By: Shipcove &lt;address&gt;</code> trailer (address set in <em>Git settings</em>). It is added by platform Git hooks, which then run the repository’s own hooks (pre-commit, commitlint…).</li>
+      </ul>
+
+      <h2>What requires approval</h2>
+      <table>
+        <thead><tr><th>Operation</th><th>How</th></tr></thead>
+        <tbody>
+          <tr><td>Push to the default branch or a protected branch</td><td><code>platform_git_push</code> tool</td></tr>
+          <tr><td>Merging a PR/MR</td><td><code>platform_merge_pull_request</code> tool</td></tr>
+          <tr><td>Deleting a branch</td><td><code>platform_delete_remote_branch</code> tool</td></tr>
+          <tr><td>Settings, access, protections, repository deletion</td><td>Reserved to a human, on the forge</td></tr>
+          <tr><td>SSH keys, deploy keys and tokens, tokens, runners, CI secrets</td><td>Forbidden from a sandbox</td></tr>
+        </tbody>
+      </table>
+      <p>Refusals are explicit: <code>git push</code> shows <code>! [remote rejected] main -&gt; main (…)</code>; <code>gh</code> and <code>glab</code> get an HTTP 403 with the reason. The approval request appears <strong>in the conversation</strong>, under Pi’s message: commits, diff, then <em>Approve</em> or <em>Reject</em>. It covers the exact operation (pinned commit), can be used only once and expires after 24 h. Every write and every refusal is audited.</p>
+      <p>The clone URL returned by the forge must point to the same host as the connection: a token is never presented to another host.</p>
+
+      <h2>Internal forges over HTTP</h2>
+      <p>HTTPS is required. An internal forge over HTTP (staging) is only reachable if the administrator lists <code>host[:port]</code> in <strong>Git forges → Git settings</strong>. Tokens then travel in clear text on that network: reserve this for trusted networks.</p>
+    </main>
+  </body>
+</html>

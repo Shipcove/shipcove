@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Environment and services</title>
+    <meta name="description" content="Sandbox startup script (registries, mirrors, tools), sandbox image, support services started by the agent (PostgreSQL, Redis, RabbitMQ), registry mirror." />
+  </head>
+  <body>
+    <main>
+      <h1>Environment and services</h1>
+      <p class="lead">What the agent needs to install, run and test the code: sandbox startup script, image and support services.</p>
+
+      <h2>Startup script</h2>
+      <p>A <strong>single script</strong>, defined by the administrator in <em>Administration → Sandboxes &amp; previews → Startup script</em>, shared by all sandboxes (with or without a repository). It is the place to configure the company’s registries and mirrors and install common tools:</p>
+      <pre><code>npm config set registry https://npm.example.corp/
+pip config set global.index-url https://pypi.example.corp/simple
+npm install -g pnpm@10</code></pre>
+      <ul>
+        <li>Run with bash in <code>/workspace</code>, without root privileges, <strong>in every new sandbox</strong> before the first message handled by Pi, and again when it changes: it must be idempotent.</li>
+        <li>What it produces in <code>/workspace</code> is kept (checkpoint); the rest (<code>~/.npmrc</code>, pip configuration, global tools in <code>~/.local</code>) lives with the sandbox and is redone in the next one.</li>
+        <li>Its output appears in the conversation; if it fails, the agent is told and the run continues. Maximum duration: 20 minutes by default.</li>
+        <li>The hosts it contacts must be in the <strong>allowed outbound network</strong> (same page).</li>
+        <li><code>uv</code> does not read the pip configuration: for a private index, also write <code>~/.config/uv/uv.toml</code> (<code>[[index]]</code> with <code>default = true</code>).</li>
+      </ul>
+      <div class="callout warn"><p>The script is stored in clear text and runs in the sandbox, where the agent can read the files it writes: only put read-only credentials with minimal scope in it.</p></div>
+
+      <h2>Sandbox image</h2>
+      <p>All sandboxes use the <strong>default</strong> image declared by the administrator. The official image <code>ghcr.io/shipcove/shipcove-sandbox</code> contains Pi (and its plugins: questions, screenshots, plan), Git, Python, uv, Node.js, npm, Playwright and Chromium; a derived image starts from it (<code>FROM ghcr.io/shipcove/shipcove-sandbox:&lt;version&gt;@sha256:…</code>), for example to add a JDK, Go or Rust. Changing the default image recreates the sandboxes at the next run.</p>
+
+      <h2>Services started by the agent</h2>
+      <p>Pi starts <strong>by itself, when it needs them</strong>, databases, caches or message queues chosen from a <strong>catalog managed by the administrator</strong> (<em>Administration → Sandboxes &amp; previews</em>): image, port, health probe, default variables, memory. Nothing starts until the agent asks for it; no setting on the user side.</p>
+      <table>
+        <thead><tr><th>Initial catalog</th><th>Image</th><th>Port</th></tr></thead>
+        <tbody>
+          <tr><td>PostgreSQL 17</td><td><code>postgres:17.11-alpine</code></td><td>5432</td></tr>
+          <tr><td>Redis 8</td><td><code>redis:8.6.8-alpine</code></td><td>6379</td></tr>
+          <tr><td>RabbitMQ 4 (with console)</td><td><code>rabbitmq:4.3.7-management-alpine</code></td><td>5672</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>The agent uses the <code>platform_services</code> tool: <em>start</em>, <em>stop</em>, <em>status</em>, <em>logs</em>, <em>catalog</em>.</li>
+        <li>Each service shares the network of <strong>its</strong> sandbox: reachable on <code>localhost</code> from it only, with no more outbound access than it has. Hardened and limited containers (memory, CPU, processes), at most 4 services per sandbox by default.</li>
+        <li>Services live as long as the sandbox and disappear with it: ephemeral data, the agent redoes migrations and test data after a restart.</li>
+      </ul>
+      <h3>Registry mirror</h3>
+      <p>Without direct access to public registries, <em>Administration → Sandboxes &amp; previews → Registry mirror</em> makes the service images download from your mirror (Harbor, Nexus, Artifactory…): each source registry is mapped to a mirror prefix (<code>docker.io</code> → <code>harbor.corp/dockerhub</code> gives <code>harbor.corp/dockerhub/library/redis:7.4-alpine</code>), with optional credentials stored in Vault and an optional fallback to the source registry. The download is done by the host’s Docker engine: a mirror over HTTP or with an internal certificate must be declared there.</p>
+      <div class="callout"><p>Support services are available with the Docker provider; they will be on Kubernetes (Pod sidecar containers) once the Helm chart is validated.</p></div>
+    </main>
+  </body>
+</html>

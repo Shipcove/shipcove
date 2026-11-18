@@ -2,7 +2,7 @@
 <html lang="fr">
   <head>
     <title>Console d’administration</title>
-    <meta name="description" content="Console d'administration : utilisateurs, invitations, dépôts et environnements, modèles LiteLLM, quotas, sandboxes et images, services, skills et MCP, secrets, notifications, audit et rétention." />
+    <meta name="description" content="Console d'administration : utilisateurs, invitations, identité, forges Git, modèles LiteLLM, quotas, sandboxes, script de démarrage et images, services, skills et MCP, secrets, notifications, audit et rétention." />
   </head>
   <body>
     <main>
@@ -13,7 +13,7 @@
       <table>
         <thead><tr><th>Rôle</th><th>Portée</th></tr></thead>
         <tbody>
-          <tr><td>Administrateur plateforme</td><td>Console d’administration, catalogues, modèles, quotas, rétention. <strong>N’a pas accès au contenu des conversations privées.</strong></td></tr>
+          <tr><td>Administrateur plateforme</td><td>Console d’administration, catalogues, modèles, quotas, rétention. <strong>N’a pas accès au contenu des conversations privées</strong>, ni à la liste des dépôts sur lesquels travaillent les utilisateurs.</td></tr>
           <tr><td>Utilisateur</td><td>Ses conversations (avec ou sans dépôt), ses connexions Git, ses skills et serveurs MCP personnels, le partage en lecture seule de ses conversations.</td></tr>
         </tbody>
       </table>
@@ -24,9 +24,9 @@
       <h3>Utilisateurs et invitations</h3>
       <p>Création, suspension, suppression (anonymisation), réinitialisation de la MFA, révocation des sessions. Les invitations envoient un lien d’inscription valable 7 jours, même si l’inscription libre est désactivée.</p>
       <h3>IAM &amp; connexion</h3>
-      <p>Connexion locale, inscriptions, vérification d’email, politique MFA, durée des sessions, verrouillage après échecs, fournisseurs d’identité. Voir <a href="/identite.html">Identité et SSO</a>.</p>
+      <p>Connexion locale, inscriptions, vérification d’email, politique MFA, durée des sessions, verrouillage après échecs, fournisseurs d’identité. Voir <a href="identite.html">Identité et SSO</a>.</p>
       <h3>Forges Git</h3>
-      <p>Applications OAuth GitHub / GitLab permettant aux utilisateurs de rattacher leurs comptes. Voir <a href="/git.html">Forges Git</a>.</p>
+      <p>Applications OAuth GitHub / GitLab permettant aux utilisateurs de rattacher leurs comptes. <em>Réglages Git</em> : jetons d’accès personnels (désactivés par défaut), forges internes joignables en HTTP, et adresse de la mention <code>Co-Authored-By: Shipcove</code> ajoutée à chaque commit (vide : aucune mention). Voir <a href="git.html">Forges Git</a>.</p>
       <h3>Modèles (LiteLLM)</h3>
       <p><strong>Connexion</strong> : URL et clé d’administration de LiteLLM, stockées dans Vault (<code>infra/litellm</code>) et prises en compte par tous les services en moins de 30 s ; un proxy LiteLLM existant peut ainsi remplacer celui de la plateforme. Sans réglage, la valeur de déploiement <code>LITELLM_URL</code> s’applique.</p>
       <p><strong>Découverte</strong> : les modèles déclarés dans LiteLLM sont lus via son API (<code>/model/info</code>, sinon <code>/v1/models</code>) au clic sur <em>Recharger les modèles</em>, à l’enregistrement de la connexion et toutes les 10 minutes. Un nouveau modèle arrive <strong>désactivé</strong>, avec capacités et coefficients préremplis depuis LiteLLM (1 crédit = 0,001 $) ; un modèle disparu de LiteLLM est signalé <em>absent</em> et n’est plus proposé.</p>
@@ -37,14 +37,14 @@
       <ul>
         <li>Ressources par sandbox (CPU, mémoire, disque, processus), délai d’inactivité, durée maximale d’un run, nombre de sandboxes actives par utilisateur et au total ;</li>
         <li>domaines autorisés en sortie (registres de paquets…), exclusions des checkpoints (les dépendances et caches régénérables — <code>node_modules</code>, <code>.venv</code>, <code>__pycache__</code>… — sont exclus par défaut et réinstallés à chaque nouvelle sandbox ; motifs supplémentaires possibles) ;</li>
-        <li><strong>script de démarrage</strong> : un script bash unique exécuté dans chaque nouvelle sandbox (registres npm / pip, miroirs, outils communs) et sa durée maximale — voir <a href="/environnement.html">Environnement et services</a> ;</li>
+        <li><strong>script de démarrage</strong> : un script bash unique exécuté dans chaque nouvelle sandbox (registres npm / pip, miroirs, outils communs) et sa durée maximale — voir <a href="environnement.html">Environnement et services</a> ;</li>
         <li><strong>images de sandbox</strong> : ajout (référence + digest), activation comme image par défaut, dépréciation ;</li>
-        <li><strong>services lancés par l’agent</strong> : voir <a href="/environnement.html#services-lances-par-l-agent">Environnement et services</a> ;</li>
+        <li><strong>services lancés par l’agent</strong> : voir <a href="environnement.html#services-lances-par-l-agent">Environnement et services</a> ;</li>
         <li>previews : nombre de ports simultanés par conversation ;</li>
         <li>instances en cours, avec arrêt forcé.</li>
       </ul>
       <h3>Skills &amp; MCP</h3>
-      <p>Skills (instructions pour Pi) et serveurs MCP sur deux portées — globale (administrateur) et personnelle — avec permissions par outil et hôtes MCP distants autorisés. Un skill est disponible dès sa création ; pour un skill global, l’administrateur règle « activé par défaut pour tous », chaque utilisateur gardant la main sur son propre interrupteur. Les skills se suppriment (auteur, ou administrateur pour un skill global) ; si la revue des skills personnels est imposée, ils attendent la validation d’un administrateur. Un skill ne contient que des fichiers markdown, éventuellement en dossiers ; il s’importe et s’exporte en .zip (voir le <a href="/guide.html">guide</a>). Les <strong>catégories</strong> de skills se créent, se renomment, s’ordonnent et se suppriment ici (leurs skills passent alors « sans catégorie ») ; elles organisent la page Skills de tous les utilisateurs. L’analyse automatique signale notamment les secrets probables, les commandes dangereuses citées et les formulations d’injection de prompt. Les secrets des serveurs MCP sont dans Vault. Une révocation s’applique dès le run suivant.</p>
+      <p>Skills (instructions pour Pi) et serveurs MCP sur deux portées — globale (administrateur) et personnelle — avec permissions par outil et hôtes MCP distants autorisés. Un skill est disponible dès sa création ; pour un skill global, l’administrateur règle « activé par défaut pour tous », chaque utilisateur gardant la main sur son propre interrupteur. Les skills se suppriment (auteur, ou administrateur pour un skill global) ; si la revue des skills personnels est imposée, ils attendent la validation d’un administrateur. Un skill ne contient que des fichiers markdown, éventuellement en dossiers ; il s’importe et s’exporte en .zip (voir le <a href="guide.html">guide</a>). Les <strong>catégories</strong> de skills se créent, se renomment, s’ordonnent et se suppriment ici (leurs skills passent alors « sans catégorie ») ; elles organisent la page Skills de tous les utilisateurs. L’analyse automatique signale notamment les secrets probables, les commandes dangereuses citées et les formulations d’injection de prompt. Les secrets des serveurs MCP sont dans Vault. Une révocation s’applique dès le run suivant.</p>
       <h3>Secrets &amp; stockage</h3>
       <p>État de Vault et des secrets d’infrastructure (sans jamais afficher de valeur), état du stockage S3.</p>
       <h3>Notifications &amp; SMTP</h3>
