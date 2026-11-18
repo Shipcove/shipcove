@@ -5,12 +5,13 @@ import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
 import { BytesPipe, CodeBlocksDirective, MarkdownPipe, TokensPipe, linkify } from '../../shared/pipes';
 import { ToolCard, toolLabel, toolSummary } from './tool-card';
+import { ScreenshotStrip } from './screenshot-strip';
 import { buildTimeline, summarizeSteps } from './timeline';
 import { WorkspaceStore } from './workspace.store';
 
 @Component({
   selector: 'cap-conversation',
-  imports: [NgTemplateOutlet, ToolCard, MarkdownPipe, CodeBlocksDirective, BytesPipe, TokensPipe, Icon],
+  imports: [NgTemplateOutlet, ToolCard, ScreenshotStrip, MarkdownPipe, CodeBlocksDirective, BytesPipe, TokensPipe, Icon],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div #scroller class="h-full overflow-x-hidden overflow-y-auto" (scroll)="onScroll()">
@@ -92,6 +93,8 @@ import { WorkspaceStore } from './workspace.store';
             <div class="prose-chat my-3 min-w-0" capCodeBlocks [innerHTML]="row.m.text | markdown"></div>
           } @else if (row.kind === 'interactive') {
             <div class="my-2 min-w-0"><cap-tool-card [call]="row.call" (openFile)="openFile.emit($event)" /></div>
+          } @else if (row.kind === 'images') {
+            <div class="-mt-1 mb-2 min-w-0"><cap-screenshot-strip [images]="row.images" /></div>
           } @else if (row.kind === 'error') {
             <div class="my-2 text-sm text-red-600">La réponse du modèle s’est terminée en erreur.</div>
           } @else if (row.steps.length === 1) {
@@ -136,7 +139,7 @@ import { WorkspaceStore } from './workspace.store';
               <div class="mt-1 border-l-2 border-stone-200 pl-3 whitespace-pre-wrap [overflow-wrap:anywhere] dark:border-stone-700">{{ step.text }}</div>
             </details>
           } @else {
-            <cap-tool-card [call]="step.call" (openFile)="openFile.emit($event)" />
+            <cap-tool-card [call]="step.call" [showImages]="false" (openFile)="openFile.emit($event)" />
           }
         </ng-template>
         @if (store.compacting()) {

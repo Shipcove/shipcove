@@ -11,7 +11,7 @@ import {
   workspaces,
   type Database,
 } from '@cap/database';
-import { PI_KEEP_RECENT_TOKENS, PI_PROVIDER, PI_RESERVE_TOKENS, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
+import { BROWSER_PLUGIN, PI_KEEP_RECENT_TOKENS, PI_PROVIDER, SCREENSHOT_PROMPT, PI_RESERVE_TOKENS, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
 import { DB, ENV, EnvironmentService, EventsService, NotificationService, modelAllowedFor, ObjectStorage, PgNotifier, QuotaService, RunQueueService, StreamScrubber, redactString, scrubDeep, scrubSecrets, type NewEvent } from '@cap/server-core';
 import { contextPercent, type ToolFileDto } from '@cap/contracts';
 import { toUserPath } from '@cap/storage';
@@ -234,13 +234,18 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     await this.sandboxes.provider.exec(sandbox.handle, ['pkill', '-f', 'pi --mode rpc']).then((p) => p.wait()).catch(() => undefined);
     // Mode Plan : liste blanche d'outils en lecture seule appliquée par Pi lui-même.
     const planMode = run.agentMode === 'plan';
+    const plugins = await this.sandboxes.availablePlugins(sandbox);
+    // Captures d'écran sans demande de l'utilisateur dès qu'une interface web change (hors mode Plan).
+    const screenshots = !planMode && plugins.includes(BROWSER_PLUGIN) ? SCREENSHOT_PROMPT : null;
     const command = piCommand({
       sessionFile: conv.piSessionPath,
       skillDirs: [],
-      plugins: await this.sandboxes.availablePlugins(sandbox),
+      plugins,
       ...(planMode ? { tools: PLAN_MODE_TOOLS } : {}),
       appendSystemPrompt:
-        [planMode ? PLAN_MODE_PROMPT : null, ws.repositoryId ? null : NO_REPOSITORY_PROMPT, coAuthorPrompt(await this.sandboxes.commitTrailer().catch(() => null))].filter(Boolean).join('\n\n') || undefined,
+        [planMode ? PLAN_MODE_PROMPT : null, ws.repositoryId ? null : NO_REPOSITORY_PROMPT, screenshots, coAuthorPrompt(await this.sandboxes.commitTrailer().catch(() => null))]
+          .filter(Boolean)
+          .join('\n\n') || undefined,
     });
     // Variables et secrets du dépôt : processus de Pi (donc ses commandes) uniquement,
     // jamais écrits sur disque par la plateforme. Les variables de la plateforme l'emportent.

@@ -83,9 +83,23 @@ export const PLAN_MODE_PROMPT =
   'Si une décision revient à l’utilisateur, pose-lui la question avec l’outil ask_user avant de finaliser le plan. ' +
   'L’utilisateur repassera en mode autonome pour exécuter le plan.';
 
+/** Plugin de captures d'écran (outil `browser_screenshot`). */
+export const BROWSER_PLUGIN = '/opt/cap/pi-extension/browser.ts';
+
+/**
+ * Consigne de la plateforme quand le plugin de captures est disponible : Pi montre lui-même le
+ * rendu de toute interface web qu'il crée ou modifie, sans attendre qu'on le lui demande.
+ */
+export const SCREENSHOT_PROMPT =
+  'CAPTURES D’ÉCRAN : dès que tu crées ou modifies une interface web (pages, composants, styles, mise en page), ' +
+  'tu dois, avant de terminer ta réponse et sans attendre qu’on te le demande : lancer l’application en arrière-plan ' +
+  '(serveur de développement), attendre qu’elle réponde, puis prendre des captures avec l’outil browser_screenshot ' +
+  '(bureau ; mobile et thème sombre quand c’est pertinent), les examiner et corriger ce qui ne va pas (rendu, erreurs JavaScript). ' +
+  'Les captures sont affichées à l’utilisateur : termine en résumant ce qu’elles montrent. Ne le fais pas pour un changement sans effet visible.';
+
 /** Ligne de commande de Pi en mode RPC dans la sandbox. */
 /** Plugins Pi livrés dans l'image de sandbox, chargés s'ils sont présents (images plus anciennes). */
-export const PI_PLUGINS = ['/opt/cap/pi-extension/browser.ts', '/opt/cap/pi-extension/ask.ts'] as const;
+export const PI_PLUGINS = [BROWSER_PLUGIN, '/opt/cap/pi-extension/ask.ts'] as const;
 
 export function piCommand(opts: { sessionFile: string | null; skillDirs: string[]; tools?: readonly string[]; appendSystemPrompt?: string; plugins?: readonly string[] }): string[] {
   return [
