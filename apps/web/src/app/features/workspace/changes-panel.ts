@@ -38,8 +38,9 @@ import { WorkspaceStore } from './workspace.store';
           <span class="truncate font-mono">{{ file.path }}</span>
           @if (!file.statsSkipped) { <span class="text-emerald-600">+{{ file.additions }}</span><span class="text-red-600">−{{ file.deletions }}</span> }
           <span class="ml-auto flex gap-1">
-            <button class="btn-ghost hidden !px-2 !py-0.5 text-xs whitespace-nowrap sm:inline-flex" [class.bg-stone-200]="!sideBySide()" (click)="sideBySide.set(false)">Unifié</button>
-            <button class="btn-ghost hidden !px-2 !py-0.5 text-xs whitespace-nowrap sm:inline-flex" [class.bg-stone-200]="sideBySide()" (click)="sideBySide.set(true)">Côte à côte</button>
+            <!-- Bouton actif lisible dans les deux thèmes (fond clair en clair, foncé en sombre). -->
+            <button class="btn-ghost hidden !px-2 !py-0.5 text-xs whitespace-nowrap sm:inline-flex" [class.bg-stone-200]="!sideBySide()" [class.dark:bg-stone-700]="!sideBySide()" [attr.aria-pressed]="!sideBySide()" (click)="sideBySide.set(false)">Unifié</button>
+            <button class="btn-ghost hidden !px-2 !py-0.5 text-xs whitespace-nowrap sm:inline-flex" [class.bg-stone-200]="sideBySide()" [class.dark:bg-stone-700]="sideBySide()" [attr.aria-pressed]="sideBySide()" (click)="sideBySide.set(true)">Côte à côte</button>
             @if (file.status !== 'deleted') { <button class="btn-ghost !px-2 !py-0.5 text-xs whitespace-nowrap" (click)="openFile.emit(file.path)">Voir le fichier</button> }
           </span>
         </div>

@@ -59,6 +59,22 @@ export class WorkspaceStore {
 
   readonly activeRun = computed(() => this.runs().find((r) => ['queued', 'running', 'interrupting', 'paused_quota'].includes(r.status)) ?? null);
   readonly isOwner = computed(() => this.workspace()?.access === 'owner');
+  /**
+   * Plan de tâches de Pi : arguments du dernier appel `update_plan` de la conversation (mis à jour en
+   * direct dès que l'appel démarre). `null` tant que Pi n'a pas établi de plan.
+   */
+  readonly plan = computed<PlanItem[] | null>(() => {
+    const msgs = this.messages();
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const calls = msgs[i].toolCalls;
+      for (let j = calls.length - 1; j >= 0; j--) {
+        if (calls[j].toolName !== 'update_plan') continue;
+        const items = parsePlan(calls[j].args);
+        if (items) return items;
+      }
+    }
+    return null;
+  });
   readonly pendingApprovals = computed(() => this.approvals().filter((a) => a.status === 'pending'));
   readonly currentModel = computed<ModelDto | null>(() => {
     const id = this.workspace()?.modelId;
@@ -393,4 +409,24 @@ export class WorkspaceStore {
 
 function emptyMessage(id: string, role: 'user' | 'assistant' | 'system', text: string, runId: string | null, ts: string): MessageDto {
   return { id, conversationId: '', runId, role, authorId: null, text, thinking: null, attachments: [], toolCalls: [], model: null, stopReason: null, meta: null, createdAt: ts, completedAt: null };
+}
+
+/** Tâche du plan de Pi (outil `update_plan`). */
+export interface PlanItem {
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
+
+/** Arguments d'un appel `update_plan`, validés ; `null` s'ils sont inexploitables. */
+export function parsePlan(args: unknown): PlanItem[] | null {
+  const items = (args as { items?: unknown } | null)?.items;
+  if (!Array.isArray(items)) return null;
+  const out: PlanItem[] = [];
+  for (const it of items) {
+    const content = (it as { content?: unknown })?.content;
+    const status = (it as { status?: unknown })?.status;
+    if (typeof content !== 'string' || !content.trim()) continue;
+    out.push({ content, status: status === 'completed' || status === 'in_progress' ? status : 'pending' });
+  }
+  return out.length ? out : null;
 }

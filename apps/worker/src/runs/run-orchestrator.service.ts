@@ -11,7 +11,7 @@ import {
   workspaces,
   type Database,
 } from '@cap/database';
-import { BROWSER_PLUGIN, PI_KEEP_RECENT_TOKENS, PI_PROVIDER, SCREENSHOT_PROMPT, PI_RESERVE_TOKENS, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
+import { BROWSER_PLUGIN, PI_KEEP_RECENT_TOKENS, PI_PROVIDER, PLAN_PLUGIN, SCREENSHOT_PROMPT, PI_RESERVE_TOKENS, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
 import { DB, ENV, EnvironmentService, EventsService, NotificationService, modelAllowedFor, ObjectStorage, PgNotifier, QuotaService, RunQueueService, StreamScrubber, redactString, scrubDeep, scrubSecrets, type NewEvent } from '@cap/server-core';
 import { contextPercent, type ToolFileDto } from '@cap/contracts';
 import { toUserPath } from '@cap/storage';
@@ -242,7 +242,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       sessionFile: conv.piSessionPath,
       skillDirs: [],
       plugins,
-      ...(planMode ? { tools: PLAN_MODE_TOOLS } : {}),
+      // Mode Plan : lecture seule, questions et, si le plugin est dans l'image, le plan de tâches.
+      ...(planMode ? { tools: plugins.includes(PLAN_PLUGIN) ? [...PLAN_MODE_TOOLS, 'update_plan'] : PLAN_MODE_TOOLS } : {}),
       appendSystemPrompt:
         [planMode ? PLAN_MODE_PROMPT : null, ws.repositoryId ? null : NO_REPOSITORY_PROMPT, screenshots, coAuthorPrompt(await this.sandboxes.commitTrailer().catch(() => null))]
           .filter(Boolean)
