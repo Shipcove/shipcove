@@ -1,4 +1,5 @@
 import { Injectable, signal } from '@angular/core';
+import { t } from './i18n';
 
 export interface ConfirmOptions {
   title: string;
@@ -45,23 +46,23 @@ export class ConfirmService {
 /** Confirmation de suppression d'une conversation (barre latérale et en-tête). */
 export function leaveShareDialog(name: string): ConfirmOptions {
   return {
-    title: 'Retirer le partage ?',
-    message: '{subject} disparaîtra de votre liste et vous n’y aurez plus accès.',
+    title: t('Retirer le partage ?'),
+    message: t('{subject} disparaîtra de votre liste et vous n’y aurez plus accès.'),
     subject: name,
-    details: ['La conversation n’est ni supprimée ni modifiée pour son propriétaire', 'Les autres personnes avec qui elle est partagée gardent leur accès', 'Le propriétaire pourra la partager de nouveau avec vous'],
-    confirmLabel: 'Retirer',
+    details: [t('La conversation n’est ni supprimée ni modifiée pour son propriétaire'), t('Les autres personnes avec qui elle est partagée gardent leur accès'), t('Le propriétaire pourra la partager de nouveau avec vous')],
+    confirmLabel: t('Retirer'),
     danger: true,
   };
 }
 
 export function deleteConversationDialog(name: string, running: boolean): ConfirmOptions {
   return {
-    title: 'Supprimer la conversation ?',
-    message: '{subject} sera supprimée définitivement. Cette action est irréversible.',
+    title: t('Supprimer la conversation ?'),
+    message: t('{subject} sera supprimée définitivement. Cette action est irréversible.'),
     subject: name,
-    details: ['La sandbox et ses services sont détruits', 'Les sauvegardes, fichiers, pièces jointes et captures sont effacés', 'Tout l’historique de la conversation est perdu'],
-    warning: running ? 'Pi est en train de travailler : sa tâche sera interrompue.' : undefined,
-    confirmLabel: 'Supprimer',
+    details: [t('La sandbox et ses services sont détruits'), t('Les sauvegardes, fichiers, pièces jointes et captures sont effacés'), t('Tout l’historique de la conversation est perdu')],
+    warning: running ? t('Pi est en train de travailler : sa tâche sera interrompue.') : undefined,
+    confirmLabel: t('Supprimer'),
     danger: true,
   };
 }

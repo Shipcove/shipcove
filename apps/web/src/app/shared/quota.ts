@@ -1,4 +1,5 @@
 import type { QuotaWindowDto } from '@cap/contracts';
+import { t, locale } from '../core/i18n';
 
 /**
  * Présentation des quotas côté utilisateur : uniquement des pourcentages (jamais de crédits),
@@ -35,12 +36,12 @@ export function quotaStroke(pct: number | null): string {
 }
 
 export function windowLabel(w: QuotaWindowDto['window']): string {
-  return w === '5h' ? 'Limite de 5 heures' : '7 jours glissants';
+  return w === '5h' ? t('Limite de 5 heures') : t('7 jours glissants');
 }
 
 export function formatReset(iso: string): string {
   const d = new Date(iso);
   const sameDay = d.toDateString() === new Date().toDateString();
-  const time = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  return sameDay ? `à ${time}` : `le ${d.toLocaleDateString('fr-FR', { weekday: 'short' })} ${time}`;
+  const time = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  return sameDay ? t('à {time}', { time }) : t('le {day} {time}', { day: d.toLocaleDateString(locale, { weekday: 'short' }), time });
 }

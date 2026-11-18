@@ -49,7 +49,7 @@ test('interface : CSP stricte respectée, connexion, conversation Pi et panneau 
 
   const browser = await chromium.launch({ executablePath, args: ['--no-sandbox'] });
   try {
-    const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+    const page = await browser.newPage({ locale: 'fr-FR', viewport: { width: 1600, height: 1000 } });
     const issues = watch(page);
 
     await page.goto(`${BASE}/auth/login`, { waitUntil: 'networkidle' });
@@ -308,7 +308,7 @@ test('responsive : téléphone et tablette — tiroir de navigation, volets en p
   const browser = await chromium.launch({ executablePath, args: ['--no-sandbox'] });
   try {
     for (const [label, device] of [['telephone', devices['iPhone 13']], ['tablette', devices['iPad (gen 7)']]]) {
-      const ctx = await browser.newContext({ ...device });
+      const ctx = await browser.newContext({ ...device, locale: 'fr-FR' });
       const page = await ctx.newPage();
       const issues = watch(page);
       const noOverflow = async (where) => {
@@ -430,7 +430,7 @@ test('skills : état activé visible d’un coup d’œil, import .zip, éditeur
 
   const browser = await chromium.launch({ executablePath, args: ['--no-sandbox'] });
   try {
-    const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
+    const page = await browser.newPage({ locale: 'fr-FR', viewport: { width: 1400, height: 950 } });
     const issues = watch(page);
     await page.goto(`${BASE}/auth/login`, { waitUntil: 'networkidle' });
     await page.fill('#login', username);
@@ -510,7 +510,7 @@ test('skills : état activé visible d’un coup d’œil, import .zip, éditeur
     assert.match(saved.files.find((f) => f.path === 'references/api/auth.md').content, /Authentification/);
 
     // Mobile : liste puis éditeur (onglets Fichiers / fichier).
-    const mobile = await browser.newContext({ ...devices['iPhone 13'] });
+    const mobile = await browser.newContext({ ...devices['iPhone 13'], locale: 'fr-FR' });
     await mobile.addCookies((await page.context().cookies()).map((k) => ({ ...k })));
     const mp = await mobile.newPage();
     await mp.goto(`${BASE}/extensions`, { waitUntil: 'networkidle' });

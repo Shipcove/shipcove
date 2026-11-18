@@ -4,6 +4,7 @@ import type { FileEntryDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
 import { Icon } from '../../shared/icon';
 import { WorkspaceStore } from './workspace.store';
+import { t } from '../../core/i18n';
 
 interface Node extends FileEntryDto {
   children?: Node[];
@@ -22,17 +23,17 @@ interface Node extends FileEntryDto {
   template: `
     <div class="flex h-full flex-col">
       <div class="flex items-center justify-end gap-1 px-2 pt-2">
-        <button class="btn-ghost !p-1" (click)="collapseAll()" [disabled]="mode() === 'list'" title="Tout replier" aria-label="Tout replier"><cap-icon name="chevronDown" [size]="14" class="rotate-180" /></button>
+        <button class="btn-ghost !p-1" (click)="collapseAll()" [disabled]="mode() === 'list'" [title]="t('Tout replier')" [attr.aria-label]="t('Tout replier')"><cap-icon name="chevronDown" [size]="14" class="rotate-180" /></button>
         <button class="btn-ghost !p-1" [class.bg-stone-200]="mode() === 'list'" [class.dark:bg-stone-700]="mode() === 'list'" (click)="toggleMode()"
-          [title]="mode() === 'tree' ? 'Afficher en liste' : 'Afficher en arborescence'" [attr.aria-pressed]="mode() === 'list'" aria-label="Basculer liste / arborescence"><cap-icon name="list" [size]="14" /></button>
+          [title]="mode() === 'tree' ? t('Afficher en liste') : t('Afficher en arborescence')" [attr.aria-pressed]="mode() === 'list'" [attr.aria-label]="t('Basculer liste / arborescence')"><cap-icon name="list" [size]="14" /></button>
       </div>
       <div class="px-2 py-2">
         <div class="relative">
           <cap-icon name="search" [size]="13" class="absolute top-1/2 left-2 -translate-y-1/2 text-stone-400" />
-          <input class="input !py-1.5 !pl-7 text-xs" placeholder="Rechercher des fichiers…" [ngModel]="query()" (ngModelChange)="query.set($event)" name="fq" aria-label="Rechercher des fichiers" />
+          <input class="input !py-1.5 !pl-7 text-xs" [placeholder]="t('Rechercher des fichiers…')" [ngModel]="query()" (ngModelChange)="query.set($event)" name="fq" [attr.aria-label]="t('Rechercher des fichiers')" />
         </div>
       </div>
-      <div class="min-h-0 flex-1 overflow-y-auto pb-2 text-sm" role="tree" aria-label="Fichiers du workspace">
+      <div class="min-h-0 flex-1 overflow-y-auto pb-2 text-sm" role="tree" [attr.aria-label]="t('Fichiers du workspace')">
         @if (showFlat()) {
           @for (p of filtered(); track p) {
             <button class="flex w-full items-center gap-1.5 truncate rounded-md px-2 py-1 text-left hover:bg-stone-200/70 dark:hover:bg-stone-800"
@@ -42,7 +43,7 @@ interface Node extends FileEntryDto {
               @if (dir(p)) { <span class="truncate text-xs text-stone-400">{{ dir(p) }}</span> }
             </button>
           } @empty {
-            <p class="px-3 py-4 text-xs text-stone-500">{{ query() ? 'Aucun fichier ne correspond.' : 'Aucun fichier (workspace vierge ou pas encore initialisé).' }}</p>
+            <p class="px-3 py-4 text-xs text-stone-500">{{ query() ? t('Aucun fichier ne correspond.') : t('Aucun fichier (workspace vierge ou pas encore initialisé).') }}</p>
           }
         } @else {
           @for (n of flat(); track n.path) {
@@ -54,7 +55,7 @@ interface Node extends FileEntryDto {
               <span class="truncate">{{ base(n.path) }}</span>
             </button>
           } @empty {
-            <p class="px-3 py-4 text-xs text-stone-500">Aucun fichier (workspace vierge ou pas encore initialisé).</p>
+            <p class="px-3 py-4 text-xs text-stone-500">{{ t('Aucun fichier (workspace vierge ou pas encore initialisé).') }}</p>
           }
         }
       </div>
@@ -63,6 +64,7 @@ interface Node extends FileEntryDto {
   host: { class: 'block h-full' },
 })
 export class Explorer {
+  protected readonly t = t;
   private readonly api = inject(Api);
   private readonly store = inject(WorkspaceStore);
   /** Fichier actif (mis en évidence). */

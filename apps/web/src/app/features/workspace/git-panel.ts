@@ -5,6 +5,7 @@ import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
 import { ChangesPanel } from './changes-panel';
 import { WorkspaceStore } from './workspace.store';
+import { t } from '../../core/i18n';
 
 /**
  * Onglet Git : branche de travail (sélecteur, suit les changements de branche faits par Pi) et
@@ -22,14 +23,14 @@ import { WorkspaceStore } from './workspace.store';
         <cap-icon name="git" [size]="14" class="shrink-0 text-stone-500" />
         @if (branches(); as b) {
           @if (!b.available) {
-            <span class="text-xs text-stone-500">Branche indisponible : démarrez la conversation (ou rattachez un dépôt).</span>
+            <span class="text-xs text-stone-500">{{ t('Branche indisponible : démarrez la conversation (ou rattachez un dépôt).') }}</span>
           } @else {
-            <label class="sr-only" for="git-branch">Branche de travail</label>
+            <label class="sr-only" for="git-branch">{{ t('Branche de travail') }}</label>
             <select id="git-branch" class="input !w-auto max-w-full min-w-0 flex-1 !py-1 font-mono text-xs" (change)="checkout($event)"
-              [disabled]="switching() || !!store.activeRun()" [title]="store.activeRun() ? 'Disponible quand Pi a terminé sa réponse' : 'Changer de branche de travail'">
+              [disabled]="switching() || !!store.activeRun()" [title]="store.activeRun() ? t('Disponible quand Pi a terminé sa réponse') : t('Changer de branche de travail')">
               <!-- Sélection portée par chaque option : un [value] sur le select serait appliqué avant
                    que l'option de la nouvelle branche n'existe (branche distante devenue locale). -->
-              @if (!b.current) { <option value="" disabled selected>HEAD détaché</option> }
+              @if (!b.current) { <option value="" disabled selected>{{ t('HEAD détaché') }}</option> }
               <optgroup label="Branches locales">
                 @for (br of b.local; track br.name) { <option [value]="br.name" [selected]="br.name === b.current">{{ br.name }}</option> }
               </optgroup>
@@ -39,10 +40,10 @@ import { WorkspaceStore } from './workspace.store';
                 </optgroup>
               }
             </select>
-            @if (switching()) { <span class="h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent-500" aria-label="Changement de branche en cours"></span> }
+            @if (switching()) { <span class="h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent-500" [attr.aria-label]="t('Changement de branche en cours')"></span> }
           }
         } @else {
-          <span class="text-xs text-stone-500">Chargement…</span>
+          <span class="text-xs text-stone-500">{{ t('Chargement…') }}</span>
         }
       </div>
       }
@@ -54,6 +55,7 @@ import { WorkspaceStore } from './workspace.store';
   host: { class: 'block h-full' },
 })
 export class GitPanel {
+  protected readonly t = t;
   private readonly api = inject(Api);
   private readonly toast = inject(ToastService);
   protected readonly store = inject(WorkspaceStore);
@@ -118,7 +120,7 @@ export class GitPanel {
     this.switching.set(true);
     try {
       await this.api.post(`/workspaces/${this.workspaceId()}/git/checkout`, { branch });
-      this.toast.show(`Branche de travail : ${branch}`, 'success');
+      this.toast.show(t('Branche de travail : {branch}', { branch }), 'success');
     } catch (err) {
       select.value = previous;
       this.toast.error(err);

@@ -6,6 +6,7 @@ import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
 import { DiffEditor } from '../../shared/monaco';
 import { WorkspaceStore } from './workspace.store';
+import { t } from '../../core/i18n';
 
 /**
  * Liste des modifications et diff (onglet Git : portée `git_head`, git diff par rapport à HEAD).
@@ -20,45 +21,45 @@ import { WorkspaceStore } from './workspace.store';
     <div class="flex h-full flex-col">
       <div class="flex items-center gap-2 border-b border-stone-200 px-3 py-2 dark:border-stone-800">
         @if (!fixedScope()) {
-          <select class="input !w-auto !py-1 text-xs" [ngModel]="scope()" (ngModelChange)="chosenScope.set($event)" name="scope" aria-label="Portée des modifications">
-            <option value="conversation">Toute la conversation</option>
-            <option value="last_run">Dernier run</option>
+          <select class="input !w-auto !py-1 text-xs" [ngModel]="scope()" (ngModelChange)="chosenScope.set($event)" name="scope" [attr.aria-label]="t('Portée des modifications')">
+            <option value="conversation">{{ t('Toute la conversation') }}</option>
+            <option value="last_run">{{ t('Dernier run') }}</option>
             <option value="git_head">Git (vs HEAD)</option>
           </select>
         }
         <div class="relative flex-1">
           <cap-icon name="search" [size]="13" class="absolute top-1/2 left-2 -translate-y-1/2 text-stone-400" />
-          <input class="input !py-1 !pl-7 text-xs" placeholder="Rechercher des fichiers…" [ngModel]="query()" (ngModelChange)="query.set($event)" name="q" aria-label="Rechercher" />
+          <input class="input !py-1 !pl-7 text-xs" [placeholder]="t('Rechercher des fichiers…')" [ngModel]="query()" (ngModelChange)="query.set($event)" name="q" [attr.aria-label]="t('Rechercher')" />
         </div>
-        <button class="btn-ghost !p-1" (click)="reload()" aria-label="Actualiser"><cap-icon name="refresh" [size]="14" /></button>
+        <button class="btn-ghost !p-1" (click)="reload()" [attr.aria-label]="t('Actualiser')"><cap-icon name="refresh" [size]="14" /></button>
       </div>
       @if (selected(); as file) {
         <div class="flex items-center gap-2 border-b border-stone-200 px-3 py-1.5 text-xs dark:border-stone-800">
-          <button class="btn-ghost !p-1" (click)="selected.set(null)" aria-label="Retour à la liste"><cap-icon name="chevronRight" [size]="14" class="rotate-180" /></button>
+          <button class="btn-ghost !p-1" (click)="selected.set(null)" [attr.aria-label]="t('Retour à la liste')"><cap-icon name="chevronRight" [size]="14" class="rotate-180" /></button>
           <span class="truncate font-mono">{{ file.path }}</span>
           @if (!file.statsSkipped) { <span class="text-emerald-600">+{{ file.additions }}</span><span class="text-red-600">−{{ file.deletions }}</span> }
           <span class="ml-auto flex gap-1">
             <!-- Bouton actif lisible dans les deux thèmes (fond clair en clair, foncé en sombre). -->
-            <button class="btn-ghost hidden !px-2 !py-0.5 text-xs whitespace-nowrap sm:inline-flex" [class.bg-stone-200]="!sideBySide()" [class.dark:bg-stone-700]="!sideBySide()" [attr.aria-pressed]="!sideBySide()" (click)="sideBySide.set(false)">Unifié</button>
-            <button class="btn-ghost hidden !px-2 !py-0.5 text-xs whitespace-nowrap sm:inline-flex" [class.bg-stone-200]="sideBySide()" [class.dark:bg-stone-700]="sideBySide()" [attr.aria-pressed]="sideBySide()" (click)="sideBySide.set(true)">Côte à côte</button>
-            @if (file.status !== 'deleted') { <button class="btn-ghost !px-2 !py-0.5 text-xs whitespace-nowrap" (click)="openFile.emit(file.path)">Voir le fichier</button> }
+            <button class="btn-ghost hidden !px-2 !py-0.5 text-xs whitespace-nowrap sm:inline-flex" [class.bg-stone-200]="!sideBySide()" [class.dark:bg-stone-700]="!sideBySide()" [attr.aria-pressed]="!sideBySide()" (click)="sideBySide.set(false)">{{ t('Unifié') }}</button>
+            <button class="btn-ghost hidden !px-2 !py-0.5 text-xs whitespace-nowrap sm:inline-flex" [class.bg-stone-200]="sideBySide()" [class.dark:bg-stone-700]="sideBySide()" [attr.aria-pressed]="sideBySide()" (click)="sideBySide.set(true)">{{ t('Côte à côte') }}</button>
+            @if (file.status !== 'deleted') { <button class="btn-ghost !px-2 !py-0.5 text-xs whitespace-nowrap" (click)="openFile.emit(file.path)">{{ t('Voir le fichier') }}</button> }
           </span>
         </div>
         <div class="min-h-0 flex-1">
           @if (diff(); as d) {
             @if (d.binary) {
-              <p class="p-4 text-sm text-stone-500">Fichier binaire ou trop volumineux : diff non affiché.</p>
+              <p class="p-4 text-sm text-stone-500">{{ t('Fichier binaire ou trop volumineux : diff non affiché.') }}</p>
             } @else {
               <cap-diff-editor [original]="d.original" [modified]="d.modified" [path]="d.path" [sideBySide]="sideBySide()" />
             }
           } @else {
-            <p class="p-4 text-sm text-stone-500">Chargement du diff…</p>
+            <p class="p-4 text-sm text-stone-500">{{ t('Chargement du diff…') }}</p>
           }
         </div>
       } @else {
         <div class="flex items-center justify-between px-3 py-1.5 text-xs text-stone-500">
           <span>{{ data()?.baseLabel }}</span>
-          <span>{{ filtered().length }} fichier(s) · <span class="text-emerald-600">+{{ totals().add }}</span> <span class="text-red-600">−{{ totals().del }}</span></span>
+          <span>{{ t('{n} fichier(s)', { n: filtered().length }) }} · <span class="text-emerald-600">+{{ totals().add }}</span> <span class="text-red-600">−{{ totals().del }}</span></span>
         </div>
         <ul class="min-h-0 flex-1 overflow-y-auto pb-2" role="list">
           @for (f of filtered(); track f.path) {
@@ -70,12 +71,12 @@ import { WorkspaceStore } from './workspace.store';
                   <span class="ml-1 text-stone-400">{{ dir(f.path) }}</span>
                 </span>
                 @if (f.binary) { <span class="text-xs text-stone-400">bin</span> }
-                @else if (f.statsSkipped) { <span class="text-xs text-stone-400" title="Lignes non comptées (trop de fichiers modifiés)">—</span> }
+                @else if (f.statsSkipped) { <span class="text-xs text-stone-400" [title]="t('Lignes non comptées (trop de fichiers modifiés)')">—</span> }
                 @else { <span class="shrink-0 text-xs"><span class="text-emerald-600">+{{ f.additions }}</span> <span class="text-red-600">−{{ f.deletions }}</span></span> }
               </button>
             </li>
           } @empty {
-            <li class="px-3 py-6 text-center text-sm text-stone-500">{{ loading() ? 'Chargement…' : 'Aucune modification' }}</li>
+            <li class="px-3 py-6 text-center text-sm text-stone-500">{{ loading() ? t('Chargement…') : t('Aucune modification') }}</li>
           }
         </ul>
       }
@@ -84,6 +85,7 @@ import { WorkspaceStore } from './workspace.store';
   host: { class: 'block h-full' },
 })
 export class ChangesPanel {
+  protected readonly t = t;
   private readonly api = inject(Api);
   private readonly toast = inject(ToastService);
   protected readonly store = inject(WorkspaceStore);

@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input, model, output, sig
 import { Icon } from '../../shared/icon';
 import { Explorer } from './explorer';
 import { FilePanel } from './file-panel';
+import { t } from '../../core/i18n';
 
 /**
  * Volet « Fichiers » : onglets des fichiers ouverts, visionneuse (Monaco) et colonne de
@@ -14,25 +15,25 @@ import { FilePanel } from './file-panel';
   template: `
     <div class="flex h-full flex-col">
       <div class="flex items-center gap-1 border-b border-stone-200 py-1.5 pr-2 pl-2 dark:border-stone-800">
-        <div class="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" role="tablist" aria-label="Fichiers ouverts">
+        <div class="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" role="tablist" [attr.aria-label]="t('Fichiers ouverts')">
           @for (p of openFiles(); track p) {
             <div class="flex shrink-0 items-center gap-1 rounded-md py-1 pr-1 pl-2.5 text-sm" role="tab" [attr.aria-selected]="p === active()"
               [class]="p === active() ? 'bg-stone-100 dark:bg-stone-800' : 'text-stone-500 hover:bg-stone-100/70 dark:hover:bg-stone-800/60'">
               <button class="max-w-48 truncate" [class.italic]="p === active()" (click)="active.set(p)" [title]="p">{{ base(p) }}</button>
-              <button class="rounded p-0.5 text-stone-400 hover:bg-stone-200 hover:text-stone-700 dark:hover:bg-stone-700" (click)="closeFile(p)" [attr.aria-label]="'Fermer ' + base(p)"><cap-icon name="x" [size]="12" /></button>
+              <button class="rounded p-0.5 text-stone-400 hover:bg-stone-200 hover:text-stone-700 dark:hover:bg-stone-700" (click)="closeFile(p)" [attr.aria-label]="t('Fermer {name}', { name: base(p) })"><cap-icon name="x" [size]="12" /></button>
             </div>
           } @empty {
-            <span class="px-1 text-sm text-stone-600 dark:text-stone-300">Fichiers</span>
+            <span class="px-1 text-sm text-stone-600 dark:text-stone-300">{{ t('Fichiers') }}</span>
           }
         </div>
         @if (compact()) {
           <button class="btn-ghost !p-1.5" [class.bg-stone-200]="browsing()" [class.dark:bg-stone-700]="browsing()" (click)="browse.set(!browse())"
-            [attr.aria-pressed]="browsing()" aria-label="Arborescence des fichiers" title="Arborescence"><cap-icon name="folder" [size]="15" /></button>
+            [attr.aria-pressed]="browsing()" [attr.aria-label]="t('Arborescence des fichiers')" [title]="t('Arborescence')"><cap-icon name="folder" [size]="15" /></button>
         }
         @if (expandable()) {
-        <button class="btn-ghost !p-1.5" (click)="toggleExpand.emit()" [attr.aria-label]="expanded() ? 'Réduire' : 'Agrandir'" [title]="expanded() ? 'Réduire' : 'Agrandir'"><cap-icon [name]="expanded() ? 'minimize' : 'maximize'" [size]="14" /></button>
+        <button class="btn-ghost !p-1.5" (click)="toggleExpand.emit()" [attr.aria-label]="expanded() ? t('Réduire') : t('Agrandir')" [title]="expanded() ? t('Réduire') : t('Agrandir')"><cap-icon [name]="expanded() ? 'minimize' : 'maximize'" [size]="14" /></button>
         }
-        <button class="btn-ghost !p-1.5" (click)="closed.emit()" aria-label="Fermer l’explorateur" title="Fermer"><cap-icon name="x" [size]="15" /></button>
+        <button class="btn-ghost !p-1.5" (click)="closed.emit()" [attr.aria-label]="t('Fermer l’explorateur')" [title]="t('Fermer')"><cap-icon name="x" [size]="15" /></button>
       </div>
       <!-- Écran étroit : arborescence ou fichier, l'un après l'autre. -->
       <div class="flex min-h-0 flex-1">
@@ -46,6 +47,7 @@ import { FilePanel } from './file-panel';
   host: { class: 'block h-full' },
 })
 export class FilesPane {
+  protected readonly t = t;
   /** Fichiers ouverts (onglets) et fichier actif, partagés avec la page. */
   readonly openFiles = model<string[]>([]);
   readonly active = model<string | null>(null);

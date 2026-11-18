@@ -3,52 +3,53 @@ import { FormsModule } from '@angular/forms';
 import type { PlatformSettings } from '@cap/contracts';
 import { Api } from '../../core/api.service';
 import { ToastService } from '../../core/toast.service';
+import { t } from '../../core/i18n';
 
 type Section = keyof PlatformSettings;
 
 const LABELS: Record<string, string> = {
-  localLoginEnabled: 'Connexion locale (login / mot de passe)',
-  registrationEnabled: 'Inscription libre',
-  emailVerificationRequired: 'Vérification d’email obligatoire',
-  mfaPolicy: 'Politique MFA',
-  sessionIdleHours: 'Expiration de session après inactivité (h)',
-  sessionAbsoluteHours: 'Durée maximale de session (h)',
-  maxFailedLogins: 'Échecs avant verrouillage',
-  lockoutMinutes: 'Durée de verrouillage (min)',
-  manualEditingEnabled: 'Édition manuelle des fichiers dans l’interface',
-  idleTimeoutMinutes: 'Destruction après inactivité (min)',
-  maxRunMinutes: 'Durée maximale d’un run (min)',
-  cpu: 'CPU par sandbox',
-  memoryMb: 'Mémoire par sandbox (Mo)',
-  diskMb: 'Disque par sandbox (Mo)',
-  pidsLimit: 'Processus max',
-  maxActiveSandboxesPerUser: 'Sandboxes actives par utilisateur',
-  maxActiveSandboxesTotal: 'Sandboxes actives au total',
-  egressAllowlist: 'Domaines autorisés en sortie (un par ligne)',
-  excludeDependencyDirs: 'Ne pas sauvegarder les dépendances et caches (node_modules, .venv, __pycache__…)',
-  checkpointExcludes: 'Exclusions supplémentaires des checkpoints (motifs, un par ligne)',
-  maxPortsPerWorkspace: 'Ports de preview simultanés par workspace',
-  allowedPorts: 'Ports autorisés pour les previews (un port ou une plage par ligne, ex. 3000-9999)',
-  enabled: 'Activé',
-  defaultOutputReservation: 'Réservation de sortie par défaut (tokens)',
-  unknownUsagePolicy: 'Usage inconnu après réconciliation',
-  maxFileMb: 'Taille max par fichier (Mo)',
-  maxFilesPerMessage: 'Fichiers par message',
-  allowArchives: 'Autoriser les archives',
-  maxArchiveEntries: 'Entrées max d’archive',
-  maxArchiveExpandedMb: 'Taille décompressée max (Mo)',
-  personalSkillsAllowed: 'Skills personnels autorisés',
-  personalSkillsRequireReview: 'Revue obligatoire des skills personnels',
-  personalServersAllowed: 'Serveurs MCP personnels autorisés',
-  allowedRemoteHosts: 'Hôtes MCP distants autorisés (portée personnelle)',
-  insecureHttpHosts: 'Forges auto-hébergées joignables en HTTP (hôte[:port] ; vide = HTTPS obligatoire)',
-  maxServicesPerWorkspace: 'Services lancés par l’agent : nombre max. par sandbox',
-  setupTimeoutMinutes: 'Durée max. du script de démarrage (min)',
-  startupScript: 'Script bash exécuté au démarrage de chaque sandbox',
-  allowPersonalTokens: 'Autoriser les jetons d’accès personnels (sinon : OAuth uniquement)',
-  coAuthorEmail: 'Adresse du co-auteur « Shipcove » ajouté à chaque commit (vide : aucune mention)',
-  emailEnabled: 'Envoi d’emails',
-  mandatoryEmailTypes: 'Emails imposés (types)',
+  localLoginEnabled: t('Connexion locale (login / mot de passe)'),
+  registrationEnabled: t('Inscription libre'),
+  emailVerificationRequired: t('Vérification d’email obligatoire'),
+  mfaPolicy: t('Politique MFA'),
+  sessionIdleHours: t('Expiration de session après inactivité (h)'),
+  sessionAbsoluteHours: t('Durée maximale de session (h)'),
+  maxFailedLogins: t('Échecs avant verrouillage'),
+  lockoutMinutes: t('Durée de verrouillage (min)'),
+  manualEditingEnabled: t('Édition manuelle des fichiers dans l’interface'),
+  idleTimeoutMinutes: t('Destruction après inactivité (min)'),
+  maxRunMinutes: t('Durée maximale d’un run (min)'),
+  cpu: t('CPU par sandbox'),
+  memoryMb: t('Mémoire par sandbox (Mo)'),
+  diskMb: t('Disque par sandbox (Mo)'),
+  pidsLimit: t('Processus max'),
+  maxActiveSandboxesPerUser: t('Sandboxes actives par utilisateur'),
+  maxActiveSandboxesTotal: t('Sandboxes actives au total'),
+  egressAllowlist: t('Domaines autorisés en sortie (un par ligne)'),
+  excludeDependencyDirs: t('Ne pas sauvegarder les dépendances et caches (node_modules, .venv, __pycache__…)'),
+  checkpointExcludes: t('Exclusions supplémentaires des checkpoints (motifs, un par ligne)'),
+  maxPortsPerWorkspace: t('Ports de preview simultanés par workspace'),
+  allowedPorts: t('Ports autorisés pour les previews (un port ou une plage par ligne, ex. 3000-9999)'),
+  enabled: t('Activé'),
+  defaultOutputReservation: t('Réservation de sortie par défaut (tokens)'),
+  unknownUsagePolicy: t('Usage inconnu après réconciliation'),
+  maxFileMb: t('Taille max par fichier (Mo)'),
+  maxFilesPerMessage: t('Fichiers par message'),
+  allowArchives: t('Autoriser les archives'),
+  maxArchiveEntries: t('Entrées max d’archive'),
+  maxArchiveExpandedMb: t('Taille décompressée max (Mo)'),
+  personalSkillsAllowed: t('Skills personnels autorisés'),
+  personalSkillsRequireReview: t('Revue obligatoire des skills personnels'),
+  personalServersAllowed: t('Serveurs MCP personnels autorisés'),
+  allowedRemoteHosts: t('Hôtes MCP distants autorisés (portée personnelle)'),
+  insecureHttpHosts: t('Forges auto-hébergées joignables en HTTP (hôte[:port] ; vide = HTTPS obligatoire)'),
+  maxServicesPerWorkspace: t('Services lancés par l’agent : nombre max. par sandbox'),
+  setupTimeoutMinutes: t('Durée max. du script de démarrage (min)'),
+  startupScript: t('Script bash exécuté au démarrage de chaque sandbox'),
+  allowPersonalTokens: t('Autoriser les jetons d’accès personnels (sinon : OAuth uniquement)'),
+  coAuthorEmail: t('Adresse du co-auteur « Shipcove » ajouté à chaque commit (vide : aucune mention)'),
+  emailEnabled: t('Envoi d’emails'),
+  mandatoryEmailTypes: t('Emails imposés (types)'),
 };
 
 const ENUMS: Record<string, string[]> = {
@@ -83,11 +84,12 @@ const ENUMS: Record<string, string[]> = {
           }
         </div>
       }
-      <button class="btn-primary">Enregistrer</button>
+      <button class="btn-primary">{{ t('Enregistrer') }}</button>
     </form>
   `,
 })
 export class SettingsSection implements OnInit {
+  protected readonly t = t;
   readonly section = input.required<Section>();
   readonly title = input('');
   /** Clés affichées (toutes par défaut) ; permet de répartir une section sur plusieurs cartes. */
@@ -126,7 +128,7 @@ export class SettingsSection implements OnInit {
   protected async save() {
     try {
       await this.api.patch('/admin/settings', { section: this.section(), values: this.values() });
-      this.toast.show('Paramètres enregistrés', 'success');
+      this.toast.show(t('Paramètres enregistrés'), 'success');
     } catch (e) {
       this.toast.error(e);
     }

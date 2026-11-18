@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, viewChild } from '@angular/core';
+import { t } from '../core/i18n';
 import { ConfirmService } from '../core/confirm.service';
 import { Icon } from './icon';
 
@@ -46,10 +47,10 @@ import { Icon } from './icon';
             </div>
           </div>
           <div class="flex justify-end gap-2 rounded-b-2xl border-t border-stone-100 bg-stone-50 px-5 py-3 dark:border-stone-800 dark:bg-stone-900/60">
-            <button #cancel type="button" class="btn-secondary" (click)="confirm.answer(false)">{{ c.cancelLabel ?? 'Annuler' }}</button>
+            <button #cancel type="button" class="btn-secondary" (click)="confirm.answer(false)">{{ c.cancelLabel ?? t('Annuler') }}</button>
             <button #ok type="button" (click)="confirm.answer(true)"
               [class]="c.danger ? 'btn-danger' : 'btn-primary'">
-              {{ c.confirmLabel ?? 'Confirmer' }}
+              {{ c.confirmLabel ?? t('Confirmer') }}
             </button>
           </div>
         </div>
@@ -65,6 +66,7 @@ import { Icon } from './icon';
   `,
 })
 export class ConfirmDialog {
+  protected readonly t = t;
   protected readonly confirm = inject(ConfirmService);
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   private readonly cancelBtn = viewChild<ElementRef<HTMLButtonElement>>('cancel');

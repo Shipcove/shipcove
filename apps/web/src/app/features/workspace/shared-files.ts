@@ -3,6 +3,7 @@ import type { ToolCallDto, ToolFileDto } from '@cap/contracts';
 import { Icon } from '../../shared/icon';
 import { BytesPipe } from '../../shared/pipes';
 import { WorkspaceStore } from './workspace.store';
+import { t } from '../../core/i18n';
 
 /**
  * Fichiers proposés au téléchargement par Pi (outil `share_files`) : une carte par fichier, toujours
@@ -15,18 +16,18 @@ import { WorkspaceStore } from './workspace.store';
   template: `
     @if (call().status === 'running') {
       <div class="flex items-center gap-2 text-sm text-stone-500">
-        <span class="h-2 w-2 animate-pulse rounded-full bg-accent-500" aria-hidden="true"></span> Préparation des fichiers à télécharger…
+        <span class="h-2 w-2 animate-pulse rounded-full bg-accent-500" aria-hidden="true"></span> {{ t('Préparation des fichiers à télécharger…') }}
       </div>
     } @else {
       @if (files().length) {
-        <div class="flex flex-wrap gap-2" role="list" aria-label="Fichiers à télécharger">
+        <div class="flex flex-wrap gap-2" role="list" [attr.aria-label]="t('Fichiers à télécharger')">
           @for (f of files(); track f.attachmentId) {
             <a
               role="listitem"
               class="flex max-w-72 min-w-0 items-center gap-2.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm shadow-sm transition hover:border-accent-400 hover:shadow focus-visible:outline-2 focus-visible:outline-accent-500 dark:border-stone-700 dark:bg-stone-900"
               [href]="url(f)"
               [download]="f.fileName"
-              [title]="'Télécharger ' + f.path"
+              [title]="t('Télécharger {name}', { name: f.path })"
             >
               <cap-icon [name]="icon(f)" [size]="18" class="shrink-0 text-stone-500" />
               <span class="min-w-0">
@@ -45,6 +46,7 @@ import { WorkspaceStore } from './workspace.store';
   `,
 })
 export class SharedFiles {
+  protected readonly t = t;
   readonly call = input.required<ToolCallDto>();
   private readonly store = inject(WorkspaceStore);
   protected readonly files = computed(() => this.call().files ?? []);

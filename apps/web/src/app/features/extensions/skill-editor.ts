@@ -12,6 +12,7 @@ import { CodeEditor } from '../../shared/monaco';
 import { BytesPipe, CodeBlocksDirective, MarkdownPipe } from '../../shared/pipes';
 import { downloadSkillZip, isTextFile, splitFrontmatter } from './skill-util';
 import { SkillScopeService } from './skill-scope.service';
+import { t, tr } from '../../core/i18n';
 
 /** Fichier en cours d'édition. `sourcePath` : fichier repris tel quel de la version chargée. */
 interface EditFile {
@@ -32,18 +33,18 @@ interface TreeNode {
 
 const TEMPLATE = (name: string) => `---
 name: ${name}
-description: Ce que fait ce skill et quand l’utiliser (Pi s’appuie sur cette phrase pour le choisir).
+description: ${t('Ce que fait ce skill et quand l’utiliser (Pi s’appuie sur cette phrase pour le choisir).')}
 ---
 
 # ${name}
 
-## Instructions
+## ${t('Instructions')}
 
 1. …
 
-## Ressources
+## ${t('Ressources')}
 
-Les fichiers markdown annexes (dossier \`references/\` par exemple) sont lus par Pi à la demande.
+${t('Les fichiers markdown annexes (dossier `references/` par exemple) sont lus par Pi à la demande.')}
 `;
 
 /**
@@ -60,11 +61,11 @@ Les fichiers markdown annexes (dossier \`references/\` par exemple) sont lus par
     <div class="flex h-full flex-col">
       <!-- En-tête -->
       <header class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-stone-200 px-3 py-2 sm:px-4 dark:border-stone-800">
-        <a routerLink="/extensions" class="btn-ghost !p-1.5" aria-label="Retour aux skills" title="Retour"><cap-icon name="chevronLeft" /></a>
+        <a routerLink="/extensions" class="btn-ghost !p-1.5" [attr.aria-label]="t('Retour aux skills')" [title]="t('Retour')"><cap-icon name="chevronLeft" /></a>
         @if (isNew()) {
-          <input class="input !w-56 font-mono" [(ngModel)]="newName" (ngModelChange)="renameTemplate()" placeholder="nom-du-skill" aria-label="Nom du skill" autocomplete="off" />
-          <select class="input !w-auto" [ngModel]="categoryId()" (ngModelChange)="categoryId.set($event)" aria-label="Catégorie">
-            <option [ngValue]="null">Sans catégorie</option>
+          <input class="input !w-56 font-mono" [(ngModel)]="newName" (ngModelChange)="renameTemplate()" [placeholder]="t('nom-du-skill')" [attr.aria-label]="t('Nom du skill')" autocomplete="off" />
+          <select class="input !w-auto" [ngModel]="categoryId()" (ngModelChange)="categoryId.set($event)" [attr.aria-label]="t('Catégorie')">
+            <option [ngValue]="null">{{ t('Sans catégorie') }}</option>
             @for (c of categories(); track c.id) { <option [ngValue]="c.id">{{ c.name }}</option> }
           </select>
         } @else if (detail(); as d) {
@@ -74,8 +75,8 @@ Les fichiers markdown annexes (dossier \`references/\` par exemple) sont lus par
               <span class="badge bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300">{{ d.skill.scope === 'global' ? 'Global' : 'Personnel' }}</span>
               @if (d.skill.status !== 'published') { <span class="badge bg-amber-100 text-amber-800">{{ statusLabel(d.skill.status) }}</span> }
               @if (d.skill.canManage && categories().length) {
-                <select class="input !w-auto !py-0.5 text-xs" [ngModel]="d.skill.categoryId" (ngModelChange)="setCategory($event)" aria-label="Catégorie">
-                  <option [ngValue]="null">Sans catégorie</option>
+                <select class="input !w-auto !py-0.5 text-xs" [ngModel]="d.skill.categoryId" (ngModelChange)="setCategory($event)" [attr.aria-label]="t('Catégorie')">
+                  <option [ngValue]="null">{{ t('Sans catégorie') }}</option>
                   @for (c of categories(); track c.id) { <option [ngValue]="c.id">{{ c.name }}</option> }
                 </select>
               } @else if (categoryName(d.skill.categoryId); as cn) { <span class="badge bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300">{{ cn }}</span> }
@@ -86,27 +87,27 @@ Les fichiers markdown annexes (dossier \`references/\` par exemple) sont lus par
         <div class="ml-auto flex flex-wrap items-center gap-2">
           @if (detail(); as d) {
             @if (d.skill.status === 'published') {
-              <label class="flex cursor-pointer items-center gap-2 text-sm" [title]="d.skill.enabledForMe ? 'Pi peut utiliser ce skill' : 'Pi n’utilise pas ce skill'">
+              <label class="flex cursor-pointer items-center gap-2 text-sm" [title]="d.skill.enabledForMe ? t('Pi peut utiliser ce skill') : t('Pi n’utilise pas ce skill')">
                 <input type="checkbox" class="peer sr-only" [checked]="d.skill.enabledForMe" (change)="toggleEnabled()" />
                 <span class="relative h-5 w-9 rounded-full bg-stone-300 transition-colors peer-checked:bg-emerald-600 peer-focus-visible:ring-2 peer-focus-visible:ring-accent-500 after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4 dark:bg-stone-700"></span>
-                {{ d.skill.enabledForMe ? 'Activé' : 'Désactivé' }}
+                {{ d.skill.enabledForMe ? t('Activé') : t('Désactivé') }}
               </label>
             }
             @if (auth.isAdmin()) {
               <button class="btn-ghost !py-1 text-sm" (click)="toggleScope()" [disabled]="busy()"
-                [title]="d.skill.scope === 'global' ? 'Le skill redevient personnel (à vous) et n’est plus disponible pour les autres' : 'Rendre ce skill disponible pour tous les utilisateurs'">
-                <cap-icon name="globe" [size]="14" /> <span class="hidden sm:inline">{{ d.skill.scope === 'global' ? 'Retirer du global' : 'Rendre global' }}</span></button>
+                [title]="d.skill.scope === 'global' ? t('Le skill redevient personnel (à vous) et n’est plus disponible pour les autres') : t('Rendre ce skill disponible pour tous les utilisateurs')">
+                <cap-icon name="globe" [size]="14" /> <span class="hidden sm:inline">{{ d.skill.scope === 'global' ? t('Retirer du global') : t('Rendre global') }}</span></button>
             }
-            <button class="btn-ghost !py-1 text-sm" (click)="exportZip()" title="Télécharger le skill (.zip)"><cap-icon name="archive" [size]="14" /> <span class="hidden sm:inline">Exporter</span></button>
+            <button class="btn-ghost !py-1 text-sm" (click)="exportZip()" [title]="t('Télécharger le skill (.zip)')"><cap-icon name="archive" [size]="14" /> <span class="hidden sm:inline">{{ t('Exporter') }}</span></button>
           }
           @if (detail()?.skill?.canManage) {
-            <button class="btn-ghost !py-1 text-sm text-stone-500 hover:text-red-600" (click)="deleteSkill()" title="Supprimer le skill" aria-label="Supprimer le skill"><cap-icon name="trash" [size]="14" /></button>
+            <button class="btn-ghost !py-1 text-sm text-stone-500 hover:text-red-600" (click)="deleteSkill()" [title]="t('Supprimer le skill')" [attr.aria-label]="t('Supprimer le skill')"><cap-icon name="trash" [size]="14" /></button>
           }
           @if (editable()) {
-            <button class="btn-ghost !py-1 text-sm" (click)="zipInput.click()" [title]="isNew() ? 'Créer le skill depuis une archive .zip' : 'Remplacer le contenu par une archive .zip'">
-              <cap-icon name="paperclip" [size]="14" /> <span class="hidden sm:inline">Importer .zip</span></button>
+            <button class="btn-ghost !py-1 text-sm" (click)="zipInput.click()" [title]="isNew() ? t('Créer le skill depuis une archive .zip') : t('Remplacer le contenu par une archive .zip')">
+              <cap-icon name="paperclip" [size]="14" /> <span class="hidden sm:inline">{{ t('Importer .zip') }}</span></button>
             <button class="btn-primary !py-1 text-sm" (click)="save()" [disabled]="busy() || (!isNew() && !dirty())">
-              {{ isNew() ? 'Créer le skill' : dirty() ? 'Enregistrer' : 'Enregistré' }}</button>
+              {{ isNew() ? t('Créer le skill') : dirty() ? t('Enregistrer') : t('Enregistré') }}</button>
           }
           <input #zipInput type="file" accept=".zip,application/zip" class="hidden" (change)="importZip($event)" />
         </div>
@@ -114,38 +115,38 @@ Les fichiers markdown annexes (dossier \`references/\` par exemple) sont lus par
 
       @if (findings().length) {
         <div class="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300" role="status">
-          <div class="font-medium">Points à vérifier :</div>
-          <ul class="list-disc pl-5">@for (f of findings(); track f) { <li>{{ f }}</li> }</ul>
+          <div class="font-medium">{{ t('Points à vérifier :') }}</div>
+          <ul class="list-disc pl-5">@for (f of findings(); track f) { <li>{{ tr(f) }}</li> }</ul>
         </div>
       }
       @if (!editable() && detail()) {
         <div class="border-b border-stone-200 bg-stone-50 px-4 py-1.5 text-xs text-stone-500 dark:border-stone-800 dark:bg-stone-900/60">
-          <cap-icon name="lock" [size]="12" /> Lecture seule : ce skill est géré par {{ detail()!.skill.scope === 'global' ? 'l’administrateur' : 'son propriétaire' }}. Vous pouvez l’activer ou le désactiver pour vous.
+          <cap-icon name="lock" [size]="12" /> {{ detail()!.skill.scope === 'global' ? t('Lecture seule : ce skill est géré par l’administrateur. Vous pouvez l’activer ou le désactiver pour vous.') : t('Lecture seule : ce skill est géré par son propriétaire. Vous pouvez l’activer ou le désactiver pour vous.') }}
         </div>
       }
 
       <!-- Onglets sur mobile -->
       <div class="flex border-b border-stone-200 md:hidden dark:border-stone-800" role="tablist">
-        <button role="tab" class="flex-1 py-2 text-sm" [class]="mobileTab() === 'tree' ? 'border-b-2 border-accent-600 font-medium' : 'text-stone-500'" (click)="mobileTab.set('tree')">Fichiers ({{ files().length }})</button>
+        <button role="tab" class="flex-1 py-2 text-sm" [class]="mobileTab() === 'tree' ? 'border-b-2 border-accent-600 font-medium' : 'text-stone-500'" (click)="mobileTab.set('tree')">{{ t('Fichiers ({n})', { n: files().length }) }}</button>
         <button role="tab" class="flex-1 py-2 text-sm" [class]="mobileTab() === 'file' ? 'border-b-2 border-accent-600 font-medium' : 'text-stone-500'" (click)="mobileTab.set('file')">{{ selectedName() }}</button>
       </div>
 
       <div class="flex min-h-0 flex-1">
         <!-- Arborescence -->
-        <aside class="flex w-full shrink-0 flex-col border-stone-200 md:w-72 md:border-r dark:border-stone-800" [class.max-md:hidden]="mobileTab() !== 'tree'" aria-label="Fichiers du skill">
+        <aside class="flex w-full shrink-0 flex-col border-stone-200 md:w-72 md:border-r dark:border-stone-800" [class.max-md:hidden]="mobileTab() !== 'tree'" [attr.aria-label]="t('Fichiers du skill')">
           @if (editable()) {
             <div class="flex items-center gap-1 border-b border-stone-200 px-2 py-1.5 dark:border-stone-800">
-              <button class="btn-ghost !p-1.5" (click)="startCreate('file')" title="Nouveau fichier" aria-label="Nouveau fichier"><cap-icon name="file" [size]="15" /><cap-icon name="plus" [size]="10" class="-ml-1.5" /></button>
-              <button class="btn-ghost !p-1.5" (click)="startCreate('dir')" title="Nouveau dossier" aria-label="Nouveau dossier"><cap-icon name="folder" [size]="15" /><cap-icon name="plus" [size]="10" class="-ml-1.5" /></button>
-              <button class="btn-ghost !p-1.5" (click)="uploadInput.click()" title="Téléverser des fichiers markdown (.md) dans le dossier sélectionné" aria-label="Téléverser des fichiers markdown"><cap-icon name="paperclip" [size]="15" /></button>
+              <button class="btn-ghost !p-1.5" (click)="startCreate('file')" [title]="t('Nouveau fichier')" [attr.aria-label]="t('Nouveau fichier')"><cap-icon name="file" [size]="15" /><cap-icon name="plus" [size]="10" class="-ml-1.5" /></button>
+              <button class="btn-ghost !p-1.5" (click)="startCreate('dir')" [title]="t('Nouveau dossier')" [attr.aria-label]="t('Nouveau dossier')"><cap-icon name="folder" [size]="15" /><cap-icon name="plus" [size]="10" class="-ml-1.5" /></button>
+              <button class="btn-ghost !p-1.5" (click)="uploadInput.click()" [title]="t('Téléverser des fichiers markdown (.md) dans le dossier sélectionné')" [attr.aria-label]="t('Téléverser des fichiers markdown')"><cap-icon name="paperclip" [size]="15" /></button>
               <input #uploadInput type="file" multiple accept=".md,.markdown,text/markdown" class="hidden" (change)="uploadFiles($event)" />
-              <span class="ml-auto truncate text-[11px] text-stone-400" [title]="'Dossier cible : ' + (targetDir() || 'racine')">{{ targetDir() ? targetDir() + '/' : 'racine' }}</span>
+              <span class="ml-auto truncate text-[11px] text-stone-400" [title]="t('Dossier cible : {dir}', { dir: targetDir() || t('racine') })">{{ targetDir() ? targetDir() + '/' : t('racine') }}</span>
             </div>
           }
           @if (creating(); as c) {
             <form class="flex items-center gap-1 border-b border-stone-200 px-2 py-1.5 dark:border-stone-800" (ngSubmit)="confirmCreate()">
               <cap-icon [name]="c === 'dir' ? 'folder' : 'file'" [size]="14" class="shrink-0 text-stone-400" />
-              <input #createInput class="input !py-1 font-mono text-xs" name="newPath" [(ngModel)]="newPath" [placeholder]="c === 'dir' ? 'dossier/sous-dossier' : 'dossier/fichier.md (markdown)'" (keydown.escape)="creating.set(null)" aria-label="Chemin" />
+              <input #createInput class="input !py-1 font-mono text-xs" name="newPath" [(ngModel)]="newPath" [placeholder]="c === 'dir' ? t('dossier/sous-dossier') : t('dossier/fichier.md (markdown)')" (keydown.escape)="creating.set(null)" [attr.aria-label]="t('Chemin')" />
               <button class="btn-primary !px-2 !py-1 text-xs">OK</button>
             </form>
           }
@@ -155,7 +156,7 @@ Les fichiers markdown annexes (dossier \`references/\` par exemple) sont lus par
                 <div class="group flex items-center gap-1 py-1 pr-1 hover:bg-stone-100 dark:hover:bg-stone-800/60"
                   [style.padding-left.px]="8 + n.depth * 14" [class.bg-stone-200]="n.path === selected() || (n.kind === 'dir' && n.path === selectedDir())" [class.dark:bg-stone-800]="n.path === selected() || (n.kind === 'dir' && n.path === selectedDir())">
                   @if (renaming() === n.path) {
-                    <input #renameInput class="input !py-0.5 font-mono text-xs" [value]="n.path" (keydown.enter)="confirmRename(n, renameInput.value)" (keydown.escape)="renaming.set(null)" (blur)="confirmRename(n, renameInput.value)" aria-label="Nouveau chemin" />
+                    <input #renameInput class="input !py-0.5 font-mono text-xs" [value]="n.path" (keydown.enter)="confirmRename(n, renameInput.value)" (keydown.escape)="renaming.set(null)" (blur)="confirmRename(n, renameInput.value)" [attr.aria-label]="t('Nouveau chemin')" />
                   } @else {
                     <button class="flex min-w-0 flex-1 items-center gap-1.5 text-left" (click)="n.kind === 'dir' ? toggleDir(n.path) : select(n.path)" [title]="n.path">
                       @if (n.kind === 'dir') {
@@ -166,12 +167,12 @@ Les fichiers markdown annexes (dossier \`references/\` par exemple) sont lus par
                         <cap-icon name="file" [size]="14" class="shrink-0 text-stone-400" />
                       }
                       <span class="truncate" [class.font-semibold]="n.path === 'SKILL.md'" [class.italic]="n.file?.dirty">{{ n.name }}</span>
-                      @if (n.file?.dirty) { <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-500" title="Modifié"></span> }
+                      @if (n.file?.dirty) { <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-500" [title]="t('Modifié')"></span> }
                     </button>
                     @if (editable() && n.path !== 'SKILL.md') {
                       <span class="flex shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 touch:opacity-100">
-                        <button class="rounded p-1 text-stone-400 hover:bg-stone-200 hover:text-stone-700 dark:hover:bg-stone-700" (click)="startRename(n.path)" [attr.aria-label]="'Renommer ' + n.path" title="Renommer / déplacer"><cap-icon name="edit" [size]="12" /></button>
-                        <button class="rounded p-1 text-stone-400 hover:bg-stone-200 hover:text-red-600 dark:hover:bg-stone-700" (click)="remove(n)" [attr.aria-label]="'Supprimer ' + n.path" title="Supprimer"><cap-icon name="trash" [size]="12" /></button>
+                        <button class="rounded p-1 text-stone-400 hover:bg-stone-200 hover:text-stone-700 dark:hover:bg-stone-700" (click)="startRename(n.path)" [attr.aria-label]="t('Renommer {name}', { name: n.path })" [title]="t('Renommer / déplacer')"><cap-icon name="edit" [size]="12" /></button>
+                        <button class="rounded p-1 text-stone-400 hover:bg-stone-200 hover:text-red-600 dark:hover:bg-stone-700" (click)="remove(n)" [attr.aria-label]="t('Supprimer {name}', { name: n.path })" [title]="t('Supprimer')"><cap-icon name="trash" [size]="12" /></button>
                       </span>
                     }
                   }
@@ -180,17 +181,17 @@ Les fichiers markdown annexes (dossier \`references/\` par exemple) sont lus par
             }
           </ul>
           <div class="border-t border-stone-200 px-3 py-1.5 text-[11px] text-stone-400 dark:border-stone-800">
-            {{ files().length }} fichier(s) · {{ totalSize() | bytes }} / {{ maxTotal | bytes }}
+            {{ t('{n} fichier(s)', { n: files().length }) }} · {{ totalSize() | bytes }} / {{ maxTotal | bytes }}
           </div>
         </aside>
 
         <!-- Fichier sélectionné -->
-        <section class="flex min-w-0 flex-1 flex-col" [class.max-md:hidden]="mobileTab() !== 'file'" aria-label="Contenu du fichier">
+        <section class="flex min-w-0 flex-1 flex-col" [class.max-md:hidden]="mobileTab() !== 'file'" [attr.aria-label]="t('Contenu du fichier')">
           @if (current(); as f) {
             <div class="flex items-center gap-2 border-b border-stone-200 px-3 py-1.5 text-xs text-stone-500 dark:border-stone-800">
               <span class="min-w-0 truncate font-mono text-stone-700 dark:text-stone-300">{{ f.path }}</span>
               <span class="shrink-0">{{ f.size | bytes }}</span>
-              <div class="ml-auto flex shrink-0 gap-0.5 rounded-md bg-stone-100 p-0.5 dark:bg-stone-800" role="tablist" aria-label="Affichage">
+              <div class="ml-auto flex shrink-0 gap-0.5 rounded-md bg-stone-100 p-0.5 dark:bg-stone-800" role="tablist" [attr.aria-label]="t('Affichage')">
                 @for (m of modes(); track m.id) {
                   <button role="tab" class="rounded px-2 py-0.5" [attr.aria-selected]="view() === m.id"
                     [class]="view() === m.id ? 'bg-white font-medium text-stone-800 shadow-sm dark:bg-stone-900 dark:text-stone-100' : 'hover:text-stone-800 dark:hover:text-stone-200'" (click)="view.set(m.id)">{{ m.label }}</button>
@@ -205,7 +206,7 @@ Les fichiers markdown annexes (dossier \`references/\` par exemple) sont lus par
               }
               @if (view() !== 'code') {
                 <!-- Aperçu : rendu identique aux réponses de Pi (HTML assaini). Liens vers d'autres .md du skill : ouverts ici. -->
-                <div class="min-h-0 min-w-0 flex-1 overflow-y-auto px-5 py-4" (click)="onPreviewClick($event)" aria-label="Aperçu markdown" data-skill-preview>
+                <div class="min-h-0 min-w-0 flex-1 overflow-y-auto px-5 py-4" (click)="onPreviewClick($event)" [attr.aria-label]="t('Aperçu markdown')" data-skill-preview>
                   @if (preview(); as p) {
                     @if (p.meta.length) {
                       <dl class="mb-4 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm dark:border-stone-800 dark:bg-stone-900/60">
@@ -220,7 +221,7 @@ Les fichiers markdown annexes (dossier \`references/\` par exemple) sont lus par
               }
             </div>
           } @else {
-            <div class="flex flex-1 items-center justify-center p-6 text-sm text-stone-500">Sélectionnez un fichier.</div>
+            <div class="flex flex-1 items-center justify-center p-6 text-sm text-stone-500">{{ t('Sélectionnez un fichier.') }}</div>
           }
         </section>
       </div>
@@ -228,6 +229,8 @@ Les fichiers markdown annexes (dossier \`references/\` par exemple) sont lus par
   `,
 })
 export class SkillEditor implements OnDestroy {
+  protected readonly t = t;
+  protected readonly tr = tr;
   /** `new` ou identifiant du skill. */
   readonly skillId = input.required<string>();
   protected readonly auth = inject(AuthStore);
@@ -260,9 +263,9 @@ export class SkillEditor implements OnDestroy {
   private readonly liveContent = signal('');
   protected readonly preview = computed(() => (this.current() ? splitFrontmatter(this.liveContent()) : null));
   protected readonly modes = computed(() => [
-    { id: 'code' as const, label: 'Code' },
-    { id: 'preview' as const, label: 'Aperçu' },
-    ...(this.layout.wide() ? [{ id: 'split' as const, label: 'Les deux' }] : []),
+    { id: 'code' as const, label: t('Code') },
+    { id: 'preview' as const, label: t('Aperçu') },
+    ...(this.layout.wide() ? [{ id: 'split' as const, label: t('Les deux') }] : []),
   ]);
   protected readonly maxTotal = SKILL_LIMITS.maxTotalBytes;
   protected newName = '';
@@ -328,7 +331,7 @@ export class SkillEditor implements OnDestroy {
       this.findings.set([]);
       this.newName = '';
       this.categoryId.set(null);
-      this.files.set([{ path: 'SKILL.md', content: TEMPLATE('nom-du-skill'), size: 0, sourcePath: null, dirty: true }]);
+      this.files.set([{ path: 'SKILL.md', content: TEMPLATE(t('nom-du-skill')), size: 0, sourcePath: null, dirty: true }]);
       this.files.update((l) => l.map((f) => ({ ...f, size: new Blob([f.content]).size })));
       this.select('SKILL.md', false);
       return;
@@ -348,7 +351,7 @@ export class SkillEditor implements OnDestroy {
 
 
   protected statusLabel(s: SkillDto['status']): string {
-    return s === 'pending_review' ? 'En attente de validation' : 'Disponible';
+    return s === 'pending_review' ? t('En attente de validation') : t('Disponible');
   }
 
 
@@ -399,7 +402,7 @@ export class SkillEditor implements OnDestroy {
     try {
       await this.api.patch(`/skills/${d.skill.id}`, { categoryId });
       this.detail.set({ ...d, skill: { ...d.skill, categoryId } });
-      this.toast.show(categoryId ? `Classé dans « ${this.categoryName(categoryId)} »` : 'Sans catégorie', 'success');
+      this.toast.show(categoryId ? t('Classé dans « {name} »', { name: this.categoryName(categoryId) }) : t('Sans catégorie'), 'success');
     } catch (e) {
       this.toast.error(e);
     }
@@ -419,7 +422,7 @@ export class SkillEditor implements OnDestroy {
     const target = parts.join('/');
     e.preventDefault();
     if (this.files().some((f) => f.path === target)) this.select(target);
-    else this.toast.show(`Fichier introuvable dans le skill : ${target}`, 'error');
+    else this.toast.show(t('Fichier introuvable dans le skill : {path}', { path: target }), 'error');
   }
 
   /** Nouveau skill : le nom du frontmatter suit le nom saisi. */
@@ -439,9 +442,9 @@ export class SkillEditor implements OnDestroy {
     const kind = this.creating();
     const path = this.newPath.trim().replace(/^\/+|\/+$/g, '');
     if (!kind || !path) return this.creating.set(null);
-    if (!isSafeSkillPath(path)) return this.toast.show('Chemin invalide (relatif, sans « .. »)', 'error');
-    if (kind === 'file' && !isMarkdownPath(path)) return this.toast.show('Seuls les fichiers markdown (.md) sont acceptés', 'error');
-    if (this.exists(path)) return this.toast.show(`« ${path} » existe déjà`, 'error');
+    if (!isSafeSkillPath(path)) return this.toast.show(t('Chemin invalide (relatif, sans « .. »)'), 'error');
+    if (kind === 'file' && !isMarkdownPath(path)) return this.toast.show(t('Seuls les fichiers markdown (.md) sont acceptés'), 'error');
+    if (this.exists(path)) return this.toast.show(t('« {path} » existe déjà', { path }), 'error');
     if (kind === 'dir') {
       this.emptyDirs.update((s) => new Set([...s, path]));
       this.reveal(`${path}/x`);
@@ -469,11 +472,11 @@ export class SkillEditor implements OnDestroy {
     this.renaming.set(null);
     const to = value.trim().replace(/^\/+|\/+$/g, '');
     if (!to || to === n.path) return;
-    if (!isSafeSkillPath(to)) return this.toast.show('Chemin invalide (relatif, sans « .. »)', 'error');
-    if (n.kind === 'file' && !isMarkdownPath(to)) return this.toast.show('Seuls les fichiers markdown (.md) sont acceptés', 'error');
+    if (!isSafeSkillPath(to)) return this.toast.show(t('Chemin invalide (relatif, sans « .. »)'), 'error');
+    if (n.kind === 'file' && !isMarkdownPath(to)) return this.toast.show(t('Seuls les fichiers markdown (.md) sont acceptés'), 'error');
     const moved = (p: string) => (n.kind === 'dir' ? (p.startsWith(`${n.path}/`) ? to + p.slice(n.path.length) : p) : p === n.path ? to : p);
     const others = this.files().filter((f) => moved(f.path) === f.path);
-    if (others.some((f) => f.path.toLowerCase() === to.toLowerCase() || f.path.toLowerCase().startsWith(`${to.toLowerCase()}/`))) return this.toast.show(`« ${to} » existe déjà`, 'error');
+    if (others.some((f) => f.path.toLowerCase() === to.toLowerCase() || f.path.toLowerCase().startsWith(`${to.toLowerCase()}/`))) return this.toast.show(t('« {path} » existe déjà', { path: to }), 'error');
     this.files.update((l) => l.map((f) => ({ ...f, path: moved(f.path) })));
     this.emptyDirs.update((s) => new Set([...s].map((d) => (n.kind === 'dir' && (d === n.path || d.startsWith(`${n.path}/`)) ? to + d.slice(n.path.length) : d))));
     if (this.selected()) this.selected.set(moved(this.selected()!));
@@ -483,10 +486,10 @@ export class SkillEditor implements OnDestroy {
   protected async remove(n: TreeNode): Promise<void> {
     const inside = n.kind === 'dir' ? this.files().filter((f) => f.path.startsWith(`${n.path}/`)) : [];
     const ok = await this.confirm.ask({
-      title: n.kind === 'dir' ? 'Supprimer le dossier ?' : 'Supprimer le fichier ?',
-      message: n.kind === 'dir' ? `{subject} et ses ${inside.length} fichier(s) seront retirés du skill à l’enregistrement.` : '{subject} sera retiré du skill à l’enregistrement.',
+      title: n.kind === 'dir' ? t('Supprimer le dossier ?') : t('Supprimer le fichier ?'),
+      message: n.kind === 'dir' ? t('{subject} et ses {n} fichier(s) seront retirés du skill à l’enregistrement.', { n: inside.length }) : t('{subject} sera retiré du skill à l’enregistrement.'),
       subject: n.path,
-      confirmLabel: 'Supprimer',
+      confirmLabel: t('Supprimer'),
       danger: true,
     });
     if (!ok) return;
@@ -505,16 +508,16 @@ export class SkillEditor implements OnDestroy {
     for (const file of list) {
       const path = this.targetDir() ? `${this.targetDir()}/${file.name}` : file.name;
       if (!isMarkdownPath(path)) {
-        this.toast.show(`${file.name} ignoré : seuls les fichiers markdown (.md) sont acceptés`, 'error');
+        this.toast.show(t('{name} ignoré : seuls les fichiers markdown (.md) sont acceptés', { name: file.name }), 'error');
         continue;
       }
       if (file.size > SKILL_LIMITS.maxFileBytes || !isSafeSkillPath(path)) {
-        this.toast.show(`${file.name} refusé (taille ou nom invalide)`, 'error');
+        this.toast.show(t('{name} refusé (taille ou nom invalide)', { name: file.name }), 'error');
         continue;
       }
       const buf = new Uint8Array(await file.arrayBuffer());
       if (!isTextFile(buf)) {
-        this.toast.show(`${file.name} n’est pas un fichier texte`, 'error');
+        this.toast.show(t('{name} n’est pas un fichier texte', { name: file.name }), 'error');
         continue;
       }
       const entry: EditFile = { path, content: new TextDecoder().decode(buf), size: buf.length, sourcePath: null, dirty: true };
@@ -522,7 +525,7 @@ export class SkillEditor implements OnDestroy {
       this.reveal(path);
       added++;
     }
-    if (added) this.toast.show(`${added} fichier(s) ajouté(s) dans ${this.targetDir() || 'la racine'}`, 'success');
+    if (added) this.toast.show(t('{n} fichier(s) ajouté(s) dans {dir}', { n: added, dir: this.targetDir() || t('la racine') }), 'success');
   }
 
   /* ------------------------------ Enregistrement ------------------------------ */
@@ -536,17 +539,17 @@ export class SkillEditor implements OnDestroy {
   }
 
   protected async save(): Promise<void> {
-    if (this.totalSize() > SKILL_LIMITS.maxTotalBytes) return this.toast.show(`Le skill dépasse ${SKILL_LIMITS.maxTotalBytes / 1024 / 1024} Mo`, 'error');
+    if (this.totalSize() > SKILL_LIMITS.maxTotalBytes) return this.toast.show(t('Le skill dépasse {size} Mo', { size: SKILL_LIMITS.maxTotalBytes / 1024 / 1024 }), 'error');
     this.busy.set(true);
     try {
       if (this.isNew()) {
         const name = this.newName.trim();
         const r = await this.api.post<{ id: string; findings: string[] }>('/skills', { name, categoryId: this.categoryId(), files: this.payload(false) });
-        this.toast.show('Skill créé', 'success');
+        this.toast.show(t('Skill créé'), 'success');
         await this.router.navigate(['/extensions/skills', r.id], { replaceUrl: true });
       } else {
         await this.api.put<{ findings: string[] }>(`/skills/${this.skillId()}/files`, { files: this.payload(true) });
-        this.toast.show('Skill enregistré', 'success');
+        this.toast.show(t('Skill enregistré'), 'success');
         await this.load(this.skillId());
       }
     } catch (e) {
@@ -560,16 +563,16 @@ export class SkillEditor implements OnDestroy {
     const d = this.detail();
     if (!d) return;
     const ok = await this.confirm.ask({
-      title: 'Supprimer le skill ?',
-      message: d.skill.scope === 'global' ? '{subject} sera supprimé pour tous les utilisateurs.' : '{subject} sera supprimé définitivement.',
+      title: t('Supprimer le skill ?'),
+      message: d.skill.scope === 'global' ? t('{subject} sera supprimé pour tous les utilisateurs.') : t('{subject} sera supprimé définitivement.'),
       subject: d.skill.name,
-      confirmLabel: 'Supprimer',
+      confirmLabel: t('Supprimer'),
       danger: true,
     });
     if (!ok) return;
     try {
       await this.api.delete(`/skills/${d.skill.id}`);
-      this.toast.show('Skill supprimé', 'success');
+      this.toast.show(t('Skill supprimé'), 'success');
       await this.router.navigateByUrl('/extensions');
     } catch (e) {
       this.toast.error(e);
@@ -589,7 +592,7 @@ export class SkillEditor implements OnDestroy {
     input.value = '';
     if (!file) return;
     if (!this.isNew()) {
-      const ok = await this.confirm.ask({ title: 'Remplacer le contenu ?', message: 'Le contenu de {subject} sera remplacé par celui de l’archive.', subject: this.detail()?.skill.name, confirmLabel: 'Remplacer' });
+      const ok = await this.confirm.ask({ title: t('Remplacer le contenu ?'), message: t('Le contenu de {subject} sera remplacé par celui de l’archive.'), subject: this.detail()?.skill.name, confirmLabel: t('Remplacer') });
       if (!ok) return;
     }
     const form = new FormData();
@@ -601,11 +604,11 @@ export class SkillEditor implements OnDestroy {
     this.busy.set(true);
     try {
       const r = await this.api.upload<{ id: string; findings: string[]; ignored: string[] }>('/skills/import', form);
-      this.toast.show(r.ignored.length ? `Archive importée — ${r.ignored.length} fichier(s) non markdown ignoré(s) : ${r.ignored.slice(0, 5).join(', ')}${r.ignored.length > 5 ? '…' : ''}` : 'Archive importée', 'success', r.ignored.length ? 12_000 : 5000);
+      this.toast.show(r.ignored.length ? t('Archive importée — {n} fichier(s) non markdown ignoré(s) : {files}', { n: r.ignored.length, files: r.ignored.slice(0, 5).join(', ') + (r.ignored.length > 5 ? '…' : '') }) : t('Archive importée'), 'success', r.ignored.length ? 12_000 : 5000);
       if (this.isNew()) await this.router.navigate(['/extensions/skills', r.id], { replaceUrl: true });
       else await this.load(this.skillId());
     } catch (err) {
-      this.toast.show(err instanceof ApiError ? err.message : 'Import impossible', 'error', 10_000);
+      this.toast.show(err instanceof ApiError ? tr(err.message) : t('Import impossible'), 'error', 10_000);
     } finally {
       this.busy.set(false);
     }
@@ -613,7 +616,7 @@ export class SkillEditor implements OnDestroy {
 
   protected async exportZip(): Promise<void> {
     const d = this.detail();
-    if (d) await downloadSkillZip(this.api.base, d.skill.id, d.skill.name).catch(() => this.toast.show('Export impossible', 'error'));
+    if (d) await downloadSkillZip(this.api.base, d.skill.id, d.skill.name).catch(() => this.toast.show(t('Export impossible'), 'error'));
   }
 
   protected async toggleEnabled(): Promise<void> {

@@ -6,6 +6,7 @@ import { RepoPicker, type RepoChoice } from '../../shared/repo-picker';
 import { Composer } from '../workspace/composer';
 import { WorkspaceStore } from '../workspace/workspace.store';
 import { DraftWorkspaceStore } from './draft.store';
+import { t } from '../../core/i18n';
 
 /**
  * Accueil : une nouvelle conversation, avec la même zone de saisie que dans une conversation
@@ -25,14 +26,15 @@ import { DraftWorkspaceStore } from './draft.store';
           <cap-repo-picker composerStart #picker [value]="draft.repository()" (valueChange)="setRepository($event)" />
         </cap-composer>
         <p class="px-6 text-center text-xs text-stone-500">
-          @if (draft.repository(); as r) { Pi travaillera sur <span class="font-mono">{{ r.fullName }}</span> dans une sandbox isolée. }
-          @else { Sans dépôt, Pi dispose d’une sandbox vide. Choisissez un dépôt pour travailler sur votre code. }
+          @if (draft.repository(); as r) { {{ t('Pi travaillera sur') }} <span class="font-mono">{{ r.fullName }}</span> {{ t('dans une sandbox isolée.') }} }
+          @else { {{ t('Sans dépôt, Pi dispose d’une sandbox vide. Choisissez un dépôt pour travailler sur votre code.') }} }
         </p>
       </div>
     </div>
   `,
 })
 export class HomePage implements OnInit {
+  protected readonly t = t;
   protected readonly auth = inject(AuthStore);
   protected readonly draft = inject(DraftWorkspaceStore);
   private readonly route = inject(ActivatedRoute);
@@ -42,8 +44,9 @@ export class HomePage implements OnInit {
   protected readonly greeting = computed(() => {
     const first = (this.auth.me()?.displayName ?? '').split(/\s+/)[0];
     const h = new Date().getHours();
-    const hello = h >= 18 || h < 5 ? 'Bonsoir' : 'Bonjour';
-    return first ? `${hello} ${first}, on construit quoi ?` : 'On construit quoi ?';
+    const evening = h >= 18 || h < 5;
+    if (!first) return t('On construit quoi ?');
+    return evening ? t('Bonsoir {name}, on construit quoi ?', { name: first }) : t('Bonjour {name}, on construit quoi ?', { name: first });
   });
 
   ngOnInit(): void {

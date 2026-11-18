@@ -4,22 +4,24 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { ApiError } from '../../core/api.service';
 import { AuthStore } from '../../core/auth.store';
 import { AuthLayout } from './auth-layout';
+import { t, tr } from '../../core/i18n';
 
 @Component({
   selector: 'cap-mfa',
   imports: [FormsModule, AuthLayout],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <cap-auth-layout title="Vérification en deux étapes" subtitle="Saisissez le code de votre application d’authentification, ou un code de récupération.">
+    <cap-auth-layout [title]="t('Vérification en deux étapes')" [subtitle]="t('Saisissez le code de votre application d’authentification, ou un code de récupération.')">
       @if (error()) { <div class="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300" role="alert">{{ error() }}</div> }
       <form (ngSubmit)="submit()" class="space-y-4">
         <input class="input text-center font-mono text-lg tracking-widest" name="code" autocomplete="one-time-code" inputmode="text" [(ngModel)]="code" placeholder="123456" required autofocus />
-        <button class="btn-primary w-full" [disabled]="busy()">Vérifier</button>
+        <button class="btn-primary w-full" [disabled]="busy()">{{ t('Vérifier') }}</button>
       </form>
     </cap-auth-layout>
   `,
 })
 export class MfaPage {
+  protected readonly t = t;
   private readonly auth = inject(AuthStore);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -39,7 +41,7 @@ export class MfaPage {
         await this.router.navigate(['/auth/login'], { queryParams: { error: err.message } });
         return;
       }
-      this.error.set(err instanceof ApiError ? err.message : 'Code invalide');
+      this.error.set(err instanceof ApiError ? tr(err.message) : t('Code invalide'));
     } finally {
       this.busy.set(false);
     }
