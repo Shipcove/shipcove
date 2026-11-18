@@ -1,7 +1,9 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { SourceFooter } from '../../shared/source-footer';
 
 @Component({
   selector: 'cap-auth-layout',
+  imports: [SourceFooter],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex min-h-screen items-center justify-center px-4 py-10">
@@ -12,6 +14,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
           @if (subtitle()) { <p class="text-sm text-stone-500">{{ subtitle() }}</p> }
         </div>
         <div class="card p-6 shadow-sm"><ng-content /></div>
+        <div class="mt-6 text-center"><cap-source-footer /></div>
       </div>
     </div>
   `,
