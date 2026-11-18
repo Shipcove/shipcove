@@ -3,6 +3,7 @@ import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import { marked } from 'marked';
+import { lang, locale, t } from '../core/i18n';
 
 const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -29,10 +30,10 @@ marked.use({
       } else {
         html = escapeHtml(text);
       }
-      const label = escapeHtml(LANG_LABEL[language] ?? (language || 'texte'));
+      const label = escapeHtml(LANG_LABEL[language] ?? (language || t('texte')));
       return (
         `<div class="code-block"><div class="code-head"><span class="code-lang">${label}</span>` +
-        `<span class="code-actions"><button type="button" class="code-action" data-code-action="copy" title="Copier" aria-label="Copier le code"></button></span></div>` +
+        `<span class="code-actions"><button type="button" class="code-action" data-code-action="copy" title="${escapeHtml(t('Copier'))}" aria-label="${escapeHtml(t('Copier le code'))}"></button></span></div>` +
         `<pre><code class="hljs">${html}</code></pre></div>\n`
       );
     },
@@ -113,17 +114,17 @@ export class CodeBlocksDirective {
     if (btn.dataset['codeAction'] !== 'copy') return;
     await navigator.clipboard.writeText(block.querySelector('code')?.textContent ?? '');
     btn.classList.add('done');
-    btn.title = 'Copié';
+    btn.title = t('Copié');
     setTimeout(() => {
       btn.classList.remove('done');
-      btn.title = 'Copier';
+      btn.title = t('Copier');
     }, 1500);
   }
 }
 
 @Pipe({ name: 'ago' })
 export class AgoPipe implements PipeTransform {
-  private readonly fmt = new Intl.RelativeTimeFormat('fr', { numeric: 'auto' });
+  private readonly fmt = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' });
   transform(value: string | Date | null | undefined): string {
     if (!value) return '—';
     const d = typeof value === 'string' ? new Date(value) : value;
@@ -140,14 +141,15 @@ export class AgoPipe implements PipeTransform {
 export class BytesPipe implements PipeTransform {
   transform(v: number | null | undefined): string {
     if (v === null || v === undefined) return '—';
-    const u = ['o', 'Ko', 'Mo', 'Go', 'To'];
+    // Octets en français (o, Ko…), bytes en anglais (B, KB…).
+    const u = lang === 'fr' ? ['o', 'Ko', 'Mo', 'Go', 'To'] : ['B', 'KB', 'MB', 'GB', 'TB'];
     let i = 0;
     let n = v;
     while (n >= 1024 && i < u.length - 1) {
       n /= 1024;
       i++;
     }
-    return `${n.toFixed(i ? 1 : 0)} ${u[i]}`;
+    return `${n.toLocaleString(locale, { minimumFractionDigits: i ? 1 : 0, maximumFractionDigits: i ? 1 : 0 })} ${u[i]}`;
   }
 }
 
@@ -156,7 +158,7 @@ export class CreditsPipe implements PipeTransform {
   transform(v: string | null | undefined, digits = 2): string {
     if (v === null || v === undefined) return '∞';
     const n = Number(v);
-    return n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: digits });
+    return n.toLocaleString(locale, { minimumFractionDigits: 0, maximumFractionDigits: digits });
   }
 }
 

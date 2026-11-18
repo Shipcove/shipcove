@@ -1,4 +1,5 @@
 import { Injectable, signal } from '@angular/core';
+import { t, tr } from './i18n';
 import { ApiError } from './api.service';
 
 export interface Toast {
@@ -19,7 +20,8 @@ export class ToastService {
   }
 
   error(err: unknown): void {
-    const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Erreur inattendue';
+    // Messages du serveur : traduits s'ils sont connus du dictionnaire (sinon affichés tels quels).
+    const msg = err instanceof ApiError ? tr(err.message) : err instanceof Error ? tr(err.message) : t('Erreur inattendue');
     this.show(msg, 'error', 8000);
   }
 

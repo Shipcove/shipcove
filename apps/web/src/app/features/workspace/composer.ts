@@ -8,26 +8,27 @@ import { Icon } from '../../shared/icon';
 import { BytesPipe } from '../../shared/pipes';
 import { QUOTA_DANGER, QUOTA_WARN, formatReset, quotaBarClass, quotaPct, quotaStroke, quotaTextClass, windowLabel } from '../../shared/quota';
 import { WorkspaceStore } from './workspace.store';
+import { t, tr } from '../../core/i18n';
 
 type Menu = 'plus' | 'model' | 'effort' | 'more' | 'mode' | 'usage' | 'slash' | null;
 
 const EFFORTS: Array<{ id: ThinkingLevel; label: string }> = [
-  { id: 'off', label: 'Désactivé' },
-  { id: 'minimal', label: 'Minimal' },
-  { id: 'low', label: 'Faible' },
-  { id: 'medium', label: 'Moyen' },
-  { id: 'high', label: 'Élevé' },
-  { id: 'xhigh', label: 'Maximal' },
+  { id: 'off', label: t('Désactivé') },
+  { id: 'minimal', label: t('Minimal') },
+  { id: 'low', label: t('Faible') },
+  { id: 'medium', label: t('Moyen') },
+  { id: 'high', label: t('Élevé') },
+  { id: 'xhigh', label: t('Maximal') },
 ];
 
 const MODES: Array<{ id: AgentMode; label: string; description: string }> = [
-  { id: 'autonomous', label: 'Autonome', description: 'Pi lit, modifie et exécute librement dans sa sandbox' },
-  { id: 'plan', label: 'Plan', description: 'Lecture seule : Pi explore et propose un plan sans rien modifier' },
+  { id: 'autonomous', label: t('Autonome'), description: t('Pi lit, modifie et exécute librement dans sa sandbox') },
+  { id: 'plan', label: t('Plan'), description: t('Lecture seule : Pi explore et propose un plan sans rien modifier') },
 ];
 
 /** Commandes de la plateforme, proposées avant les skills. */
 const BUILTIN_COMMANDS: Array<{ command: string; name: string; description: string }> = [
-  { command: '/compact', name: 'compact', description: 'Compacter le contexte de la conversation (instructions facultatives à la suite)' },
+  { command: '/compact', name: 'compact', description: t('Compacter le contexte de la conversation (instructions facultatives à la suite)') },
 ];
 
 /** Nombre de modèles affichés directement (les autres sont sous « Plus de modèles »). */
@@ -47,8 +48,8 @@ const TOP_MODELS = 4;
     <div class="mx-auto max-w-3xl px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
       @if (store.quotaPaused(); as q) {
         <div class="mb-2 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200" role="status">
-          <cap-icon name="alert" /> {{ pausedLabel(q.window) }}. L’agent est suspendu.
-          <button class="btn-secondary ml-auto !py-1" (click)="resume()">Reprendre</button>
+          <cap-icon name="alert" /> {{ t('{reason}. L’agent est suspendu.', { reason: pausedLabel(q.window) }) }}
+          <button class="btn-secondary ml-auto !py-1" (click)="resume()">{{ t('Reprendre') }}</button>
         </div>
       }
 
@@ -69,41 +70,41 @@ const TOP_MODELS = 4;
                     <div><div class="line-clamp-2 font-medium break-all">{{ a.fileName }}</div><div class="text-stone-400">{{ a.size | bytes }}</div></div>
                   </div>
                 }
-                <button class="absolute top-1 right-1 rounded-full bg-black/60 p-0.5 text-white opacity-0 group-hover:opacity-100 touch:opacity-100 focus:opacity-100" (click)="remove(a)" [attr.aria-label]="'Retirer ' + a.fileName"><cap-icon name="x" [size]="12" /></button>
+                <button class="absolute top-1 right-1 rounded-full bg-black/60 p-0.5 text-white opacity-0 group-hover:opacity-100 touch:opacity-100 focus:opacity-100" (click)="remove(a)" [attr.aria-label]="t('Retirer {name}', { name: a.fileName })"><cap-icon name="x" [size]="12" /></button>
               </div>
             }
           </div>
         }
 
         @if (menu() === 'slash') {
-          <div id="slash-listbox" class="absolute bottom-full left-2 z-30 mb-2 max-h-72 w-96 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="listbox" aria-label="Commandes slash">
+          <div id="slash-listbox" class="absolute bottom-full left-2 z-30 mb-2 max-h-72 w-96 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="listbox" [attr.aria-label]="t('Commandes slash')">
             @for (c of slashFiltered(); track c.command; let i = $index) {
               <button [id]="'slash-opt-' + i" tabindex="-1" class="flex w-full flex-col items-start rounded-lg px-3 py-1.5 text-left hover:bg-stone-100 dark:hover:bg-stone-800" [class.bg-stone-100]="i === slashActive()" [class.dark:bg-stone-800]="i === slashActive()"
                 (click)="useSlash(c.command)" (mousemove)="slashActive.set(i)" (mousedown)="$event.preventDefault()" role="option" [attr.aria-selected]="i === slashActive()">
                 <span class="font-mono text-sm">{{ c.command }}</span><span class="line-clamp-1 text-xs text-stone-500">{{ c.description }}</span>
               </button>
             } @empty {
-              <p class="px-3 py-2 text-sm text-stone-500">Aucune commande. Activez des skills dans « Skills & MCP ».</p>
+              <p class="px-3 py-2 text-sm text-stone-500">{{ t('Aucune commande. Activez des skills dans « Skills & MCP ».') }}</p>
             }
           </div>
         }
 
         @if (store.queued().length) {
-          <div class="space-y-1 px-3 pt-3" aria-label="Messages en file d'attente">
+          <div class="space-y-1 px-3 pt-3" [attr.aria-label]="t('Messages en file d’attente')">
             @for (q of store.queued(); track q.messageId) {
               <div class="flex items-center gap-2 rounded-lg bg-stone-100 px-3 py-1.5 text-sm dark:bg-stone-800">
                 <span class="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent-500"></span>
                 @if (editingQueued() === q.messageId) {
-                  <textarea class="input min-w-0 flex-1 resize-y !py-1 text-sm" rows="2" [(ngModel)]="queuedDraft" name="queuedDraft" aria-label="Modifier le message en attente"
+                  <textarea class="input min-w-0 flex-1 resize-y !py-1 text-sm" rows="2" [(ngModel)]="queuedDraft" name="queuedDraft" [attr.aria-label]="t('Modifier le message en attente')"
                     (keydown)="onQueuedKey($event, q.messageId)"></textarea>
-                  <button class="btn-ghost shrink-0 !px-2 !py-0.5 text-xs" (click)="saveQueued(q.messageId)" [disabled]="!queuedDraft.trim()">Enregistrer</button>
-                  <button class="btn-ghost shrink-0 !px-2 !py-0.5 text-xs" (click)="editingQueued.set(null)">Annuler</button>
+                  <button class="btn-ghost shrink-0 !px-2 !py-0.5 text-xs" (click)="saveQueued(q.messageId)" [disabled]="!queuedDraft.trim()">{{ t('Enregistrer') }}</button>
+                  <button class="btn-ghost shrink-0 !px-2 !py-0.5 text-xs" (click)="editingQueued.set(null)">{{ t('Annuler') }}</button>
                 } @else {
                   <span class="min-w-0 flex-1 truncate" [title]="q.text">{{ q.text }}</span>
-                  <span class="shrink-0 text-xs text-stone-500">En file d’attente</span>
+                  <span class="shrink-0 text-xs text-stone-500">{{ t('En file d’attente') }}</span>
                   @if (store.isOwner()) {
-                    <button class="btn-ghost shrink-0 !p-1" (click)="editQueued(q)" title="Modifier" [attr.aria-label]="'Modifier le message en attente : ' + q.text"><cap-icon name="edit" [size]="13" /></button>
-                    <button class="btn-ghost shrink-0 !p-1 hover:text-red-600" (click)="removeQueued(q.messageId)" title="Supprimer" [attr.aria-label]="'Supprimer le message en attente : ' + q.text"><cap-icon name="trash" [size]="13" /></button>
+                    <button class="btn-ghost shrink-0 !p-1" (click)="editQueued(q)" [title]="t('Modifier')" [attr.aria-label]="t('Modifier le message en attente : {text}', { text: q.text })"><cap-icon name="edit" [size]="13" /></button>
+                    <button class="btn-ghost shrink-0 !p-1 hover:text-red-600" (click)="removeQueued(q.messageId)" [title]="t('Supprimer')" [attr.aria-label]="t('Supprimer le message en attente : {text}', { text: q.text })"><cap-icon name="trash" [size]="13" /></button>
                   }
                 }
               </div>
@@ -113,12 +114,12 @@ const TOP_MODELS = 4;
 
         <div class="flex items-center gap-1 px-2 py-2">
           <div class="relative">
-            <button class="btn-ghost !rounded-lg !p-1.5" [class.bg-stone-200]="menu() === 'plus'" [class.dark:bg-stone-700]="menu() === 'plus'" (click)="toggle('plus', $event)" aria-label="Ajouter" [disabled]="!store.isOwner()"><cap-icon name="plus" [size]="18" /></button>
+            <button class="btn-ghost !rounded-lg !p-1.5" [class.bg-stone-200]="menu() === 'plus'" [class.dark:bg-stone-700]="menu() === 'plus'" (click)="toggle('plus', $event)" [attr.aria-label]="t('Ajouter')" [disabled]="!store.isOwner()"><cap-icon name="plus" [size]="18" /></button>
             @if (menu() === 'plus') {
               <div class="absolute bottom-full left-0 z-30 mb-2 w-80 max-w-[calc(100vw-1.5rem)] rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="menu">
-                <button class="menu-item" role="menuitem" (click)="pickFiles()"><cap-icon name="paperclip" /> <span class="flex-1 truncate">Ajouter des fichiers ou des photos</span><kbd class="text-xs text-stone-400">Ctrl+U</kbd></button>
-                <button class="menu-item" role="menuitem" (click)="openSlash()"><span class="flex h-4 w-4 items-center justify-center rounded border border-current text-[10px] font-bold">/</span> <span class="flex-1">Commandes slash</span></button>
-                <button class="menu-item" role="menuitem" (click)="connectors()"><cap-icon name="puzzle" /> <span class="flex-1">Ajouter des connecteurs</span></button>
+                <button class="menu-item" role="menuitem" (click)="pickFiles()"><cap-icon name="paperclip" /> <span class="flex-1 truncate">{{ t('Ajouter des fichiers ou des photos') }}</span><kbd class="text-xs text-stone-400">Ctrl+U</kbd></button>
+                <button class="menu-item" role="menuitem" (click)="openSlash()"><span class="flex h-4 w-4 items-center justify-center rounded border border-current text-[10px] font-bold">/</span> <span class="flex-1">{{ t('Commandes slash') }}</span></button>
+                <button class="menu-item" role="menuitem" (click)="connectors()"><cap-icon name="puzzle" /> <span class="flex-1">{{ t('Ajouter des connecteurs') }}</span></button>
               </div>
             }
           </div>
@@ -130,25 +131,25 @@ const TOP_MODELS = 4;
                 <span class="opacity-60">/</span>{{ s.name }}
                 <span role="tooltip" class="pointer-events-auto invisible absolute bottom-full left-0 z-40 mb-2 w-80 max-w-[calc(100vw-1.5rem)] rounded-2xl border border-stone-200 bg-white p-4 font-normal opacity-0 shadow-[0_8px_30px_rgb(0_0_0/0.12)] transition-opacity delay-150 group-hover/skill:visible group-hover/skill:opacity-100 group-focus-visible/skill:visible group-focus-visible/skill:opacity-100 dark:border-stone-700 dark:bg-stone-900">
                   <span class="block font-mono text-sm text-stone-500">{{ s.command }}</span>
-                  <span class="mt-1.5 block max-h-60 overflow-y-auto text-sm leading-relaxed whitespace-pre-line text-stone-800 dark:text-stone-200">{{ s.description || 'Aucune description.' }}</span>
+                  <span class="mt-1.5 block max-h-60 overflow-y-auto text-sm leading-relaxed whitespace-pre-line text-stone-800 dark:text-stone-200">{{ s.description || t('Aucune description.') }}</span>
                 </span>
               </span>
             }
             <textarea #textarea class="block h-9 max-h-60 min-w-40 flex-1 resize-none overflow-y-auto bg-transparent px-2 py-1.5 text-[0.95rem] leading-6 placeholder:text-stone-400 focus:outline-none" rows="1"
-              [placeholder]="selectedSkills().length ? 'Ajoutez vos instructions (facultatif)' : store.draft ? 'Décrivez ce que Pi doit faire…' : running() ? 'Message mis en file d’attente jusqu’à la fin de la tâche en cours…' : 'Tapez / pour les commandes.'" [(ngModel)]="text" name="text"
-              (ngModelChange)="onTextChange()" (keydown)="onKey($event)" (paste)="onPaste($event)" [disabled]="!store.isOwner()" aria-label="Message"
+              [placeholder]="selectedSkills().length ? t('Ajoutez vos instructions (facultatif)') : store.draft ? t('Décrivez ce que Pi doit faire…') : running() ? t('Message mis en file d’attente jusqu’à la fin de la tâche en cours…') : t('Tapez / pour les commandes.')" [(ngModel)]="text" name="text"
+              (ngModelChange)="onTextChange()" (keydown)="onKey($event)" (paste)="onPaste($event)" [disabled]="!store.isOwner()" [attr.aria-label]="t('Message')"
               role="combobox" aria-autocomplete="list" aria-controls="slash-listbox" [attr.aria-expanded]="menu() === 'slash'"
               [attr.aria-activedescendant]="menu() === 'slash' && slashFiltered().length ? 'slash-opt-' + slashActive() : null"></textarea>
           </div>
           @if (running()) {
             @if (store.activeRun()?.status === 'interrupting') {
-              <button class="btn-ghost !rounded-lg !p-1.5" disabled aria-label="Arrêt en cours" title="Arrêt en cours…"><span class="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"></span></button>
+              <button class="btn-ghost !rounded-lg !p-1.5" disabled [attr.aria-label]="t('Arrêt en cours')" [title]="t('Arrêt en cours…')"><span class="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"></span></button>
             } @else {
-              <button class="btn-ghost !rounded-lg !p-1.5" (click)="interrupt()" aria-label="Interrompre" title="Interrompre"><span class="block h-3.5 w-3.5 rounded-sm bg-current"></span></button>
+              <button class="btn-ghost !rounded-lg !p-1.5" (click)="interrupt()" [attr.aria-label]="t('Interrompre')" [title]="t('Interrompre')"><span class="block h-3.5 w-3.5 rounded-sm bg-current"></span></button>
             }
           }
           <button class="btn-ghost !rounded-lg !p-1.5" (click)="submit()" [disabled]="!canSend() || (!text.trim() && !selectedSkills().length)"
-            [attr.aria-label]="running() ? 'Mettre en file d’attente' : 'Envoyer'" [title]="running() ? 'Mettre en file d’attente (Entrée)' : 'Envoyer (Entrée)'"><cap-icon name="enter" [size]="18" /></button>
+            [attr.aria-label]="running() ? t('Mettre en file d’attente') : t('Envoyer')" [title]="running() ? t('Mettre en file d’attente (Entrée)') : t('Envoyer (Entrée)')"><cap-icon name="enter" [size]="18" /></button>
         </div>
       </div>
 
@@ -156,7 +157,7 @@ const TOP_MODELS = 4;
         <div class="mr-auto min-w-0 shrink"><ng-content select="[composerStart]" /></div>
         <div class="relative">
           <button class="flex min-w-0 items-center rounded-md px-2 py-1 hover:bg-stone-200/70 dark:hover:bg-stone-800" [class.bg-stone-200]="isModelMenu()" [class.dark:bg-stone-800]="isModelMenu()" (click)="toggle('model', $event)" [disabled]="!store.isOwner()" aria-haspopup="menu">
-            <span class="max-w-[9rem] truncate text-stone-800 sm:max-w-none dark:text-stone-200">{{ store.currentModel()?.displayName ?? 'Modèle' }}</span>
+            <span class="max-w-[9rem] truncate text-stone-800 sm:max-w-none dark:text-stone-200">{{ store.currentModel()?.displayName ?? t('Modèle') }}</span>
             @if (store.currentModel()?.supportsReasoning) { <span class="ml-1 text-stone-500">{{ effortLabel() }}</span> }
           </button>
           @if (isModelMenu()) {
@@ -170,7 +171,7 @@ const TOP_MODELS = 4;
               <div class="my-1 h-px bg-stone-200 dark:bg-stone-800"></div>
               <div class="relative">
                 <button class="menu-item" [class.bg-stone-100]="menu() === 'effort'" [class.dark:bg-stone-800]="menu() === 'effort'" (click)="toggle('effort', $event)" [disabled]="!store.currentModel()?.supportsReasoning" role="menuitem" aria-haspopup="menu">
-                  <span class="flex-1">Effort</span><span class="text-stone-500">{{ effortLabel() }}</span><cap-icon name="chevronRight" [size]="14" />
+                  <span class="flex-1">{{ t('Effort') }}</span><span class="text-stone-500">{{ effortLabel() }}</span><cap-icon name="chevronRight" [size]="14" />
                 </button>
                 @if (menu() === 'effort') {
                   <div class="absolute bottom-0 left-full z-40 ml-2 max-sm:bottom-full max-sm:left-auto max-sm:right-0 max-sm:mb-1 max-sm:ml-0 w-48 max-w-[calc(100vw-1.5rem)] rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="menu">
@@ -185,7 +186,7 @@ const TOP_MODELS = 4;
               @if (moreModels().length) {
                 <div class="relative">
                   <button class="menu-item" [class.bg-stone-100]="menu() === 'more'" [class.dark:bg-stone-800]="menu() === 'more'" (click)="toggle('more', $event)" role="menuitem" aria-haspopup="menu">
-                    <span class="flex-1">Plus de modèles</span><cap-icon name="chevronRight" [size]="14" />
+                    <span class="flex-1">{{ t('Plus de modèles') }}</span><cap-icon name="chevronRight" [size]="14" />
                   </button>
                   @if (menu() === 'more') {
                     <div class="absolute bottom-0 left-full z-40 ml-2 max-sm:bottom-full max-sm:left-auto max-sm:right-0 max-sm:mb-1 max-sm:ml-0 max-h-80 w-64 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-xl border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-700 dark:bg-stone-900" role="menu">
@@ -212,13 +213,13 @@ const TOP_MODELS = 4;
                   @if (m.id === store.workspace()?.agentMode) { <cap-icon name="check" class="mt-0.5 text-sky-600" /> } @else { <span class="text-xs text-stone-400">{{ i + 1 }}</span> }
                 </button>
               }
-              <p class="px-3 pt-1 pb-2 text-[11px] text-stone-400">Les publications Git exigent toujours votre approbation.</p>
+              <p class="px-3 pt-1 pb-2 text-[11px] text-stone-400">{{ t('Les publications Git exigent toujours votre approbation.') }}</p>
             </div>
           }
         </div>
 
         <div class="relative">
-          <button class="rounded-md p-1 hover:bg-stone-200/70 dark:hover:bg-stone-800" [class.bg-stone-200]="menu() === 'usage'" [class.dark:bg-stone-800]="menu() === 'usage'" (click)="toggle('usage', $event)" aria-label="Utilisation des quotas" [title]="usageTitle()">
+          <button class="rounded-md p-1 hover:bg-stone-200/70 dark:hover:bg-stone-800" [class.bg-stone-200]="menu() === 'usage'" [class.dark:bg-stone-800]="menu() === 'usage'" (click)="toggle('usage', $event)" [attr.aria-label]="t('Utilisation des quotas')" [title]="usageTitle()">
             <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true">
               <circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="2.5" class="text-stone-200 dark:text-stone-700" />
               <circle cx="10" cy="10" r="7.5" fill="none" stroke-width="2.5" stroke-linecap="round" transform="rotate(-90 10 10)"
@@ -227,19 +228,19 @@ const TOP_MODELS = 4;
           </button>
           @if (menu() === 'usage') {
             <div class="absolute right-0 bottom-full z-30 mb-2 max-sm:fixed max-sm:inset-x-3 max-sm:right-3 max-sm:bottom-[calc(env(safe-area-inset-bottom)+7.5rem)] max-sm:w-auto max-sm:max-w-none w-[22rem] max-w-[calc(100vw-1.5rem)] rounded-xl border border-stone-200 bg-white p-4 shadow-lg dark:border-stone-700 dark:bg-stone-900">
-              <div class="mb-3 flex items-center text-sm"><span class="text-stone-500">Utilisation des quotas</span><a routerLink="/usage" class="ml-auto font-medium hover:underline" (click)="menu.set(null)">Tout voir →</a></div>
-              @if (!store.usage()?.quotasEnabled) { <p class="mb-2 text-xs text-stone-500">Les quotas sont désactivés.</p> }
+              <div class="mb-3 flex items-center text-sm"><span class="text-stone-500">{{ t('Utilisation des quotas') }}</span><a routerLink="/usage" class="ml-auto font-medium hover:underline" (click)="menu.set(null)">{{ t('Tout voir →') }}</a></div>
+              @if (!store.usage()?.quotasEnabled) { <p class="mb-2 text-xs text-stone-500">{{ t('Les quotas sont désactivés.') }}</p> }
               @for (w of usageRows(); track w.label) {
                 <div class="mb-3">
                   <div class="flex items-baseline gap-2 text-sm"><span class="shrink-0 font-medium whitespace-nowrap">{{ w.label }}</span><span class="ml-auto min-w-0 truncate text-xs whitespace-nowrap text-stone-500">{{ w.reset }}</span>
-                    <span class="w-12 shrink-0 text-right whitespace-nowrap text-xs tabular-nums" [class]="textClass(w.pct)">{{ w.pct === null ? 'Illimité' : w.pct + '\u00a0%' }}</span></div>
+                    <span class="w-12 shrink-0 text-right whitespace-nowrap text-xs tabular-nums" [class]="textClass(w.pct)">{{ w.pct === null ? t('Illimité') : w.pct + '\u00a0%' }}</span></div>
                   @if (w.pct !== null) {
                     <div class="mt-1.5 h-1.5 rounded bg-stone-200 dark:bg-stone-800"><div class="h-1.5 rounded transition-all" [class]="barClass(w.pct)" [style.width.%]="w.pct"></div></div>
                   }
                 </div>
               }
               @if (usagePct() >= warnAt) {
-                <p class="text-xs" [class]="textClass(usagePct())">{{ usagePct() >= dangerAt ? 'Quota presque épuisé : l’agent sera suspendu à 100\u00a0%.' : 'Vous approchez de votre limite.' }}</p>
+                <p class="text-xs" [class]="textClass(usagePct())">{{ usagePct() >= dangerAt ? t('Quota presque épuisé : l’agent sera suspendu à 100 %.') : t('Vous approchez de votre limite.') }}</p>
               }
             </div>
           }
@@ -254,6 +255,7 @@ const TOP_MODELS = 4;
   `,
 })
 export class Composer {
+  protected readonly t = t;
   protected readonly store = inject(WorkspaceStore);
   private readonly api = inject(Api);
   private readonly toast = inject(ToastService);
@@ -280,8 +282,8 @@ export class Composer {
   protected readonly isModelMenu = computed(() => ['model', 'effort', 'more'].includes(this.menu() ?? ''));
   protected readonly topModels = computed(() => this.orderedModels().slice(0, TOP_MODELS));
   protected readonly moreModels = computed(() => this.orderedModels().slice(TOP_MODELS));
-  protected readonly effortLabel = computed(() => EFFORTS.find((e) => e.id === this.store.workspace()?.thinkingLevel)?.label ?? 'Moyen');
-  protected readonly modeLabel = computed(() => MODES.find((m) => m.id === this.store.workspace()?.agentMode)?.label ?? 'Autonome');
+  protected readonly effortLabel = computed(() => EFFORTS.find((e) => e.id === this.store.workspace()?.thinkingLevel)?.label ?? t('Moyen'));
+  protected readonly modeLabel = computed(() => MODES.find((m) => m.id === this.store.workspace()?.agentMode)?.label ?? t('Autonome'));
 
   protected readonly slashCommands = computed(() => [
     ...BUILTIN_COMMANDS,
@@ -292,8 +294,8 @@ export class Composer {
   /** Skills choisis : blocs dans la zone de saisie, envoyés en tête du message. */
   protected readonly selectedSkills = signal<Array<{ command: string; name: string; description: string }>>([]);
   protected readonly slashFiltered = computed(() => {
-    const t = this.textSig();
-    const q = t.startsWith('/') ? t.slice(1).split(/\s/)[0].toLowerCase() : '';
+    const txt = this.textSig();
+    const q = txt.startsWith('/') ? txt.slice(1).split(/\s/)[0].toLowerCase() : '';
     return this.slashCommands().filter((c) => c.command.slice(1).toLowerCase().includes(q));
   });
   /** Message en attente en cours de modification. */
@@ -361,7 +363,7 @@ export class Composer {
     const c = 2 * Math.PI * 7.5;
     return `${(c * this.usagePct()) / 100} ${c}`;
   });
-  protected readonly usageTitle = computed(() => (this.usageRows().length ? this.usageRows().map((r) => `${r.label} : ${r.pct ?? '—'} %`).join(' · ') : 'Consommation'));
+  protected readonly usageTitle = computed(() => (this.usageRows().length ? this.usageRows().map((r) => `${r.label} : ${r.pct ?? '—'} %`).join(' · ') : t('Consommation')));
 
   private orderedModels(): ModelDto[] {
     const list = [...this.store.models()];
@@ -370,15 +372,15 @@ export class Composer {
 
   protected pausedLabel(window: string): string {
     const labels: Record<string, string> = {
-      '5h': 'Quota atteint (limite de 5 heures)',
-      '7d': 'Quota atteint (7 jours glissants)',
+      '5h': t('Quota atteint (limite de 5 heures)'),
+      '7d': t('Quota atteint (7 jours glissants)'),
     };
-    return labels[window] ?? 'Quota atteint';
+    return labels[window] ?? t('Quota atteint');
   }
 
   private row(w: QuotaWindowDto, label: string) {
     const pct = quotaPct(w);
-    const reset = pct !== null && w.resetsAt ? `Réinitialisation ${formatReset(w.resetsAt)}` : '';
+    const reset = pct !== null && w.resetsAt ? t('Réinitialisation {when}', { when: formatReset(w.resetsAt) }) : '';
     return { label, pct, reset };
   }
 
@@ -481,7 +483,7 @@ export class Composer {
   protected async setMode(mode: AgentMode): Promise<void> {
     this.menu.set(null);
     await this.store.update({ agentMode: mode }).catch((e) => this.toast.error(e));
-    if (this.running()) this.toast.show('Le mode s’appliquera au prochain run.', 'info');
+    if (this.running()) this.toast.show(t('Le mode s’appliquera au prochain run.'), 'info');
   }
 
   /* ------------------------------- Saisie ------------------------------ */
@@ -593,7 +595,7 @@ export class Composer {
       return;
     }
     this.lastEscapeAt = now;
-    this.toast.show('Appuyez de nouveau sur Échap pour arrêter Pi', 'info', 1500);
+    this.toast.show(t('Appuyez de nouveau sur Échap pour arrêter Pi'), 'info', 1500);
   }
 
   protected async interrupt() {
@@ -631,13 +633,13 @@ export class Composer {
     const accepted: File[] = [];
     for (const f of files) {
       if (cfg && f.size > cfg.maxFileMb * 1024 * 1024) {
-        this.toast.show(`${f.name} dépasse ${cfg.maxFileMb} Mo`, 'error');
+        this.toast.show(t('{name} dépasse {size} Mo', { name: f.name, size: cfg.maxFileMb }), 'error');
         continue;
       }
       accepted.push(f);
     }
     if (cfg && this.attachments().length + accepted.length > cfg.maxFilesPerMessage) {
-      this.toast.show(`${cfg.maxFilesPerMessage} fichiers au maximum par message`, 'error');
+      this.toast.show(t('{n} fichiers au maximum par message', { n: cfg.maxFilesPerMessage }), 'error');
       accepted.splice(Math.max(0, cfg.maxFilesPerMessage - this.attachments().length));
     }
     if (!accepted.length) return;
@@ -645,7 +647,7 @@ export class Composer {
       const res = await this.store.uploadAttachments(accepted);
       this.attachments.update((l) => [...l, ...res]);
       for (const a of res) {
-        if (a.status === 'rejected') this.toast.show(`${a.fileName} refusé : ${a.rejectionReason}`, 'error');
+        if (a.status === 'rejected') this.toast.show(t('{name} refusé : {reason}', { name: a.fileName, reason: tr(a.rejectionReason) }), 'error');
         const local = files.find((f) => f.name === a.fileName);
         if (a.kind === 'image' && local) this.previews.update((p) => ({ ...p, [a.id]: URL.createObjectURL(local) }));
       }

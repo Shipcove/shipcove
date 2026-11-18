@@ -1,4 +1,5 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
+import { tk } from './i18n';
 import type { WorkspaceDto } from '@cap/contracts';
 import { Api } from './api.service';
 
@@ -48,11 +49,11 @@ export class ConversationsService {
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const day = 86_400_000;
     const buckets: Array<{ label: string; from: number }> = [
-      { label: 'Aujourd’hui', from: startOfDay },
-      { label: 'Hier', from: startOfDay - day },
-      { label: '7 derniers jours', from: startOfDay - 7 * day },
-      { label: '30 derniers jours', from: startOfDay - 30 * day },
-      { label: 'Plus ancien', from: -Infinity },
+      { label: tk('Aujourd’hui'), from: startOfDay },
+      { label: tk('Hier'), from: startOfDay - day },
+      { label: tk('7 derniers jours'), from: startOfDay - 7 * day },
+      { label: tk('30 derniers jours'), from: startOfDay - 30 * day },
+      { label: tk('Plus ancien'), from: -Infinity },
     ];
     const groups: DateGroup[] = buckets.map((b) => ({ label: b.label, items: [] }));
     for (const w of this.active()) {
