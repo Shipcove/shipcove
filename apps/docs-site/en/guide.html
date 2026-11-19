@@ -2,33 +2,33 @@
 <html lang="en">
   <head>
     <title>User guide</title>
-    <meta name="description" content="Working with Pi: conversations, Git repositories, queue, Plan mode, task plan, Git tab, rewind, screenshots, downloadable files, approvals, previews, sharing and quotas." />
+    <meta name="description" content="Working with the agent: conversations, Git repositories, queue, Plan mode, task plan, Git tab, rewind, screenshots, downloadable files, approvals, previews, sharing and quotas." />
   </head>
   <body>
     <main>
       <h1>User guide</h1>
-      <p class="lead">Everything you need to hand tasks to Pi and stay in control of the result.</p>
+      <p class="lead">Everything you need to hand tasks to the agent and stay in control of the result.</p>
 
       <h2>Conversations</h2>
       <p>Everything starts with a <strong>conversation</strong>. The home page is a new conversation: write your request and send it. Each conversation has its own files, sandbox and history; code is shared between conversations through Git.</p>
       <ul>
-        <li><strong>Optional Git repository</strong>: under the input box, <em>No repository</em> opens the list of repositories available through your <a href="git.html">Git connections</a> (with search). The repository is cloned on its default branch, through the platform gateway: no token ever enters the sandbox. Without a repository, Pi gets an empty sandbox.</li>
+        <li><strong>Optional Git repository</strong>: under the input box, <em>No repository</em> opens the list of repositories available through your <a href="git.html">Git connections</a> (with search). The repository is cloned on its default branch, through the platform gateway: no token ever enters the sandbox. Without a repository, the agent gets an empty sandbox.</li>
         <li><strong>Automatic title</strong>: generated from the first message (by the model chosen by the administrator, otherwise the start of the message). Rename it from the header (pencil icon or double-click): your title is never replaced again.</li>
         <li><strong>Sidebar</strong>: conversations are grouped by Git repository (collapsible groups, <em>+</em> to start a conversation in that repository), then those without a repository, sorted by date (today, yesterday, last 7 and 30 days, older).</li>
-        <li>The sandbox starts at the first message and stops after a period of inactivity (15 minutes by default). Its files and Pi’s state are restored at the next message.</li>
-        <li><strong>Header</strong>: on the right, <em>Share</em>, then three panes — the <strong>file explorer</strong>, the <strong>panel</strong> (Git and Previews tabs) and Pi’s <strong>plan</strong> — only one of which is open at a time, then conversation deletion.</li>
-        <li>A conversation can be <strong>put to sleep</strong> from its header, and <strong>deleted</strong> from its header or from the trash icon shown on hover in the sidebar. Deletion is <strong>permanent</strong>: a running task is interrupted and the queue cancelled, then the sandbox and its services, the backups (checkpoints and Pi’s state), the files, attachments, screenshots and the whole history are erased. Only the consumption remains counted in your quota.</li>
+        <li>The sandbox starts at the first message and stops after a period of inactivity (15 minutes by default). Its files and the agent's state are restored at the next message.</li>
+        <li><strong>Header</strong>: on the right, <em>Share</em>, then three panes — the <strong>file explorer</strong>, the <strong>panel</strong> (Git and Previews tabs) and the agent's <strong>plan</strong> — only one of which is open at a time, then conversation deletion.</li>
+        <li>A conversation can be <strong>put to sleep</strong> from its header, and <strong>deleted</strong> from its header or from the trash icon shown on hover in the sidebar. Deletion is <strong>permanent</strong>: a running task is interrupted and the queue cancelled, then the sandbox and its services, the backups (checkpoints and the agent's state), the files, attachments, screenshots and the whole history are erased. Only the consumption remains counted in your quota.</li>
       </ul>
 
       <h2>The conversation</h2>
       <h3>Sending a request</h3>
-      <p>Write your request and press <kbd>Enter</kbd> (<kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line). Pi’s answer is streamed; every <strong>tool call</strong> (command, read, write…) appears in a collapsible card with its output, duration and the files it touched.</p>
-      <h3>While Pi is working</h3>
+      <p>Write your request and press <kbd>Enter</kbd> (<kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line). The agent's answer is streamed; every <strong>tool call</strong> (command, read, write…) appears in a collapsible card with its output, duration and the files it touched.</p>
+      <h3>While the agent is working</h3>
       <ul>
         <li><strong>Queue</strong>: a message sent during a generation is queued and shown above the input box; it is processed automatically when the current task ends.</li>
-        <li><strong>Interrupt</strong>: the square button, or <kbd>Esc</kbd> twice in a row, stops Pi cleanly; what was written is kept.</li>
-        <li><strong>Duration</strong>: the time elapsed since the start of the task is shown next to “Pi is working…”.</li>
-        <li><strong>Scrolling</strong>: the conversation follows Pi’s work as long as you are at the bottom. Scroll up to read back: it no longer pulls you down, and a <strong>↓</strong> button above the input box takes you back. Sending a message always brings you back to the bottom.</li>
+        <li><strong>Interrupt</strong>: the square button, or <kbd>Esc</kbd> twice in a row, stops the agent cleanly; what was written is kept.</li>
+        <li><strong>Duration</strong>: the time elapsed since the start of the task is shown next to “The agent is working…”.</li>
+        <li><strong>Scrolling</strong>: the conversation follows the agent's work as long as you are at the bottom. Scroll up to read back: it no longer pulls you down, and a <strong>↓</strong> button above the input box takes you back. Sending a message always brings you back to the bottom.</li>
         <li><strong>Steps</strong>: consecutive reasoning and commands are grouped into a collapsible block; a failed command is marked by a red cross on its card.</li>
       </ul>
       <h3>Input box</h3>
@@ -37,22 +37,22 @@
         <tbody>
           <tr><td><strong>+</strong></td><td>Add files or photos (<kbd>Ctrl</kbd>+<kbd>U</kbd>), slash commands, connectors (MCP).</td></tr>
           <tr><td><strong>Model · effort</strong></td><td>Choice of the model (among those enabled by the administrator) and of the reasoning level.</td></tr>
-          <tr><td><strong>Mode</strong></td><td><em>Autonomous</em> (default) or <em>Plan</em>: Pi then only has read tools and writes an implementation plan without changing anything; switch back to autonomous mode for it to carry it out.</td></tr>
+          <tr><td><strong>Mode</strong></td><td><em>Autonomous</em> (default) or <em>Plan</em>: the agent then only has read tools and writes an implementation plan without changing anything; switch back to autonomous mode for it to carry it out.</td></tr>
           <tr><td><strong>Ring</strong></td><td>Use of your quotas as a percentage (orange from 70%, red from 90%).</td></tr>
         </tbody>
       </table>
 
       <h2>Following and controlling changes</h2>
       <h3>“Git” tab</h3>
-      <p>The side panel shows the <strong>working branch</strong> and lets you switch it (local branches, or remote ones: the local branch is then created). The selector follows the branch switches made by Pi; a switch of yours is noted in the conversation and reported to Pi at its next turn. It is unavailable while Pi is working, and Git refuses the switch if your uncommitted changes conflict.</p>
-      <p>Below, the <strong>git diff</strong> against the last commit: added, modified or deleted files with their line counts; click a file to see its differences (unified or side by side). Everything else — commits, push, pull requests — happens in the conversation with Pi. Every commit made in the sandbox carries the <code>Co-Authored-By: Shipcove</code> trailer (address set by the administrator).</p>
+      <p>The side panel shows the <strong>working branch</strong> and lets you switch it (local branches, or remote ones: the local branch is then created). The selector follows the branch switches made by the agent; a switch of yours is noted in the conversation and reported to the agent at its next turn. It is unavailable while the agent is working, and Git refuses the switch if your uncommitted changes conflict.</p>
+      <p>Below, the <strong>git diff</strong> against the last commit: added, modified or deleted files with their line counts; click a file to see its differences (unified or side by side). Everything else — commits, push, pull requests — happens in the conversation with the agent. Every commit made in the sandbox carries the <code>Co-Authored-By: Shipcove</code> trailer (address set by the administrator).</p>
       <h3>File explorer</h3>
-      <p>The file icon opens the explorer (search, tree, tabs). Manual editing is disabled by default; if the administrator enables it, a save is refused when Pi has changed the file in the meantime (no silent overwrite).</p>
+      <p>The file icon opens the explorer (search, tree, tabs). Manual editing is disabled by default; if the administrator enables it, a save is refused when the agent has changed the file in the meantime (no silent overwrite).</p>
       <h3>Going back</h3>
-      <p>When you hover one of your messages, <strong>Go back before this message</strong> restores the conversation’s files to their state before that run. The conversation is kept, Pi is told at the next message, and the “Files restored…” message offers <strong>Undo</strong>. Unavailable while Pi is working.</p>
+      <p>When you hover one of your messages, <strong>Go back before this message</strong> restores the conversation’s files to their state before that run. The conversation is kept, the agent is told at the next message, and the “Files restored…” message offers <strong>Undo</strong>. Unavailable while the agent is working.</p>
 
       <h2>Skills</h2>
-      <p>A skill is a folder of instructions for Pi, <strong>in markdown only</strong>: a <code>SKILL.md</code> file (with a <code>name</code> and <code>description</code> header) and, if needed, other <code>.md</code> files organized in folders and subfolders (references, procedures, examples). No scripts or binaries. Pi sees the description of <strong>enabled</strong> skills and loads their content when the task calls for it; type <code>/</code> in the input box to force one or more.</p>
+      <p>A skill is a folder of instructions for the agent, <strong>in markdown only</strong>: a <code>SKILL.md</code> file (with a <code>name</code> and <code>description</code> header) and, if needed, other <code>.md</code> files organized in folders and subfolders (references, procedures, examples). No scripts or binaries. The agent sees the description of <strong>enabled</strong> skills and loads their content when the task calls for it; type <code>/</code> in the input box to force one or more.</p>
       <ul>
         <li><strong>Skills &amp; MCP</strong>: everyone turns each skill on or off for themselves with its switch, at any time. Enabled skills are highlighted (green check), with their count, <em>Enabled</em> / <em>Disabled</em> filters and grouping by <strong>category</strong> (defined by administrators; each author files their skills under one of them). A skill is available as soon as it is created.</li>
         <li><strong>Import .zip</strong>: an archive with <code>SKILL.md</code> at the root (or in a single root folder); the name and description are read from the header. Only markdown files are kept: the others (scripts, images…) are ignored and listed.</li>
@@ -64,36 +64,36 @@
       <p>Drag and drop, paste or add files (20 MB and 10 files per message by default). Images are passed to the model if it accepts them; other files are placed in the sandbox (<code>/workspace/.cap/attachments/…</code>, outside Git). Executables, dangerous archives or archives too large once decompressed, and inconsistent types are refused.</p>
 
       <h2>Services, environment and dependencies</h2>
-      <p>Pi starts by itself, when it needs them, the services approved by the administrator (PostgreSQL, Redis, RabbitMQ…), reachable on <code>localhost</code> in the sandbox. The sandbox startup script (registries, mirrors, tools) is defined by the platform administrator: see <a href="environnement.html">Environment and services</a>.</p>
+      <p>The agent starts by itself, when it needs them, the services approved by the administrator (PostgreSQL, Redis, RabbitMQ…), reachable on <code>localhost</code> in the sandbox. The sandbox startup script (registries, mirrors, tools) is defined by the platform administrator: see <a href="environnement.html">Environment and services</a>.</p>
 
       <h2>Git: publishing the work</h2>
       <ol>
         <li>Connect your account: <strong>Settings → Git connections → Connect via …</strong> (OAuth, forges configured by the administrator).</li>
-        <li>Pi then works autonomously with <code>git</code>, <code>gh</code> and <code>glab</code>, on your behalf: it pushes its branches, opens <strong>pull / merge requests</strong>, follows the CI, reads the logs and answers reviews.</li>
+        <li>The agent then works autonomously with <code>git</code>, <code>gh</code> and <code>glab</code>, on your behalf: it pushes its branches, opens <strong>pull / merge requests</strong>, follows the CI, reads the logs and answers reviews.</li>
         <li>For the default branch or a protected branch, a merge or a branch deletion, it creates an <strong>approval request</strong>, shown in the conversation under its message: check the exact operation (commits, diff), then <strong>Approve</strong> or <strong>Reject</strong>. An approval can be used only once; if the branch has changed since, a new request is needed.</li>
       </ol>
-      <div class="callout"><p>Your GitHub / GitLab token never enters the sandbox: the platform adds it on the way. Repository settings, access rights and long-lived keys or tokens stay out of the agent’s reach. Every write by Pi on a forge is logged.</p></div>
+      <div class="callout"><p>Your GitHub / GitLab token never enters the sandbox: the platform adds it on the way. Repository settings, access rights and long-lived keys or tokens stay out of the agent’s reach. Every write by the agent on a forge is logged.</p></div>
 
-      <h2>Pi’s plan</h2>
-      <p>For a complex task (three steps or more, several files to change), Pi sets out a <strong>plan</strong>: the list of its steps, kept up to date while it works. The <em>Plan</em> button in the header opens this plan next to the conversation: the current task is highlighted (and a dot appears on the button), completed tasks are checked and struck through, a counter shows the progress. For a simple request, Pi does not make one. Not to be confused with <em>Plan mode</em>, where Pi prepares a plan without changing anything.</p>
+      <h2>The agent's plan</h2>
+      <p>For a complex task (three steps or more, several files to change), the agent sets out a <strong>plan</strong>: the list of its steps, kept up to date while it works. The <em>Plan</em> button in the header opens this plan next to the conversation: the current task is highlighted (and a dot appears on the button), completed tasks are checked and struck through, a counter shows the progress. For a simple request, the agent does not make one. Not to be confused with <em>Plan mode</em>, where the agent prepares a plan without changing anything.</p>
 
-      <h2>Pi’s questions</h2>
-      <p>When a decision is yours to make (scope, technical choices, trade-offs), Pi asks its questions as a <strong>form</strong> in the conversation: single or multiple choice, recommended option highlighted, free “Other” answer. <strong>Submit these choices</strong> sends your answers and Pi resumes. It stops while waiting: the sandbox can go to sleep, nothing expires. Questions are also possible in Plan mode.</p>
+      <h2>The agent's questions</h2>
+      <p>When a decision is yours to make (scope, technical choices, trade-offs), the agent asks its questions as a <strong>form</strong> in the conversation: single or multiple choice, recommended option highlighted, free “Other” answer. <strong>Submit these choices</strong> sends your answers and the agent resumes. It stops while waiting: the sandbox can go to sleep, nothing expires. Questions are also possible in Plan mode.</p>
 
       <h2>Screenshots</h2>
-      <p>As soon as Pi creates or changes a web interface, it starts the project in the sandbox and takes screenshots with the sandbox’s Chromium (desktop, mobile, dark theme, after a click or some input), <strong>without you asking</strong>. They appear as <strong>thumbnails</strong> in the thread, always visible, even when Pi’s steps are collapsed; click to <strong>enlarge</strong> them (arrows to move between them, Esc to close). If the model accepts images, Pi reviews its screenshots itself to fix the rendering. People the conversation is shared with see them too.</p>
+      <p>As soon as the agent creates or changes a web interface, it starts the project in the sandbox and takes screenshots with the sandbox’s Chromium (desktop, mobile, dark theme, after a click or some input), <strong>without you asking</strong>. They appear as <strong>thumbnails</strong> in the thread, always visible, even when the agent's steps are collapsed; click to <strong>enlarge</strong> them (arrows to move between them, Esc to close). If the model accepts images, the agent reviews its screenshots itself to fix the rendering. People the conversation is shared with see them too.</p>
 
       <h2>Downloadable files</h2>
-      <p>When Pi produces a deliverable — a README, a report, a CSV export, an image, an archive… — it offers it as a download: a <strong>card per file</strong> appears in the conversation (name, type, size); click to download it. The file is copied when Pi shares it: if it changes it later, it shares it again. You can also simply ask “give me file X”. People the conversation is shared with can download these files too.</p>
+      <p>When the agent produces a deliverable — a README, a report, a CSV export, an image, an archive… — it offers it as a download: a <strong>card per file</strong> appears in the conversation (name, type, size); click to download it. The file is copied when the agent shares it: if it changes it later, it shares it again. You can also simply ask “give me file X”. People the conversation is shared with can download these files too.</p>
 
       <h2>Previews</h2>
-      <p>When Pi starts a server (port 3000, 5173…), open it from the <strong>Previews</strong> tab of the panel: it is served on a separate domain, protected by a token. Three ports per conversation by default.</p>
+      <p>When the agent starts a server (port 3000, 5173…), open it from the <strong>Previews</strong> tab of the panel: it is served on a separate domain, protected by a token. Three ports per conversation by default.</p>
 
       <h2>Sharing</h2>
       <p>The share button gives <strong>read-only</strong> access to the conversation and its files to named users of the platform (search by name or username); it can be revoked at any time. Nobody else — administrators included — can read a private conversation.</p>
 
       <h2>Quotas</h2>
-      <p>Consumption is limited over two rolling windows, <strong>5 hours</strong> and <strong>7 days</strong>, on your personal quota: a single counter per person, for all your conversations, that nobody else consumes. The <strong>Usage</strong> page and the ring of the input box show it as a percentage. At 100%, Pi is paused cleanly and resumes as soon as the quota allows (<em>Resume</em> button).</p>
+      <p>Consumption is limited over two rolling windows, <strong>5 hours</strong> and <strong>7 days</strong>, on your personal quota: a single counter per person, for all your conversations, that nobody else consumes. The <strong>Usage</strong> page and the ring of the input box show it as a percentage. At 100%, the agent is paused cleanly and resumes as soon as the quota allows (<em>Resume</em> button).</p>
 
       <h2>Notifications and account security</h2>
       <ul>

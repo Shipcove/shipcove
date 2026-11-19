@@ -162,7 +162,7 @@ export class SandboxRpcService implements OnApplicationBootstrap {
       .select({ id: agentRuns.id })
       .from(agentRuns)
       .where(and(eq(agentRuns.workspaceId, p.workspaceId), inArray(agentRuns.status, ['queued', 'running', 'interrupting'])));
-    if (active) return { ok: false, busy: true, output: 'Pi est en train de travailler : changez de branche une fois sa réponse terminée.' };
+    if (active) return { ok: false, busy: true, output: 'L’agent est en train de travailler : changez de branche une fois sa réponse terminée.' };
     const sb = await this.sandboxes.ensureRunning(p.workspaceId);
     const exec = (argv: string[]) => execCollect(this.sandboxes.provider, sb.handle, argv, { env: { GIT_TERMINAL_PROMPT: '0' }, timeoutMs: 120_000 });
     const valid = !p.branch.startsWith('-') && (await exec(['git', 'check-ref-format', '--branch', p.branch])).exitCode === 0;

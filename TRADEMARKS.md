@@ -4,6 +4,9 @@ Le code de Shipcove est un logiciel libre, publié sous licence **GNU AGPL v3** 
 `NOTICE`). Cette licence porte sur le code. Elle **n'accorde aucun droit sur la marque** : le nom
 « Shipcove », le logo et les signes distinctifs du projet (les « Marques ») restent réservés.
 
+Le logo officiel (deux voiles sur une vague, orange `#cb5a1a`) est dans [`docs/brand`](docs/brand) :
+`shipcove-logo.svg` et une version PNG en 512 px.
+
 Cette politique a deux buts : permettre à chacun d'utiliser, de modifier et de redistribuer le code
 librement, et garantir que les utilisateurs savent toujours s'ils utilisent la version officielle
 de Shipcove ou une version modifiée par quelqu'un d'autre.

@@ -12,7 +12,7 @@
       <pre><code>Browser ── nginx (web) ──► NestJS API (×N) ──► PostgreSQL (state, job queues, LISTEN/NOTIFY)
                                 │                Vault (secrets)   Garage/S3 (checkpoints, attachments)
                                 ▼
-                           NestJS worker ──► Docker sandboxes (Pi in RPC mode, isolated internal network)
+                           NestJS worker ──► Docker sandboxes (the agent in RPC mode, isolated internal network)
                                 │                    │  support services (sandbox localhost)
                                 ▼                    ▼
                       Gateway (LLM proxy, filtered egress, Git reads) ──► LiteLLM ──► providers
@@ -31,7 +31,7 @@
           <tr><td><strong>edge</strong> (optional)</td><td>Caddy: automatic TLS for the application and the previews.</td></tr>
           <tr><td><strong>PostgreSQL 18</strong></td><td>Source of truth, job queues, locks, real-time notifications (<code>LISTEN/NOTIFY</code>).</td></tr>
           <tr><td><strong>Vault</strong></td><td>Secrets (KV), one AppRole identity and one policy per service.</td></tr>
-          <tr><td><strong>Garage (S3)</strong></td><td>Conversation checkpoints (sandbox files), attachments, Pi’s state.</td></tr>
+          <tr><td><strong>Garage (S3)</strong></td><td>Conversation checkpoints (sandbox files), attachments, the agent's state.</td></tr>
           <tr><td><strong>LiteLLM</strong></td><td>Unified access to model providers.</td></tr>
         </tbody>
       </table>
@@ -39,8 +39,8 @@
       <h2>Run lifecycle</h2>
       <ol class="steps">
         <li><h3>Message</h3><p>The API stores the message and creates a job (or queues it if a run is in progress).</p></li>
-        <li><h3>Sandbox</h3><p>The worker takes the job, creates or wakes up the sandbox, restores the last checkpoint from S3, writes Pi’s configuration (skills, MCP, service catalog) and runs the startup script if needed.</p></li>
-        <li><h3>Pi</h3><p>Pi runs in RPC mode. The <em>platform-bridge</em> extension provides the platform tools (approved Git operations, support services, downloadable files, MCP); plugins add questions to the user (<code>ask_user</code>), screenshots (<code>browser_screenshot</code>) and the task plan (<code>update_plan</code>). Its LLM calls go through the gateway with a run token.</p></li>
+        <li><h3>Sandbox</h3><p>The worker takes the job, creates or wakes up the sandbox, restores the last checkpoint from S3, writes the agent's configuration (skills, MCP, service catalog) and runs the startup script if needed.</p></li>
+        <li><h3>The agent</h3><p>The agent (built on the open-source <a href="https://github.com/badlogic/pi-mono">Pi</a> engine) runs in RPC mode. The <em>platform-bridge</em> extension provides the platform tools (approved Git operations, support services, downloadable files, MCP); plugins add questions to the user (<code>ask_user</code>), screenshots (<code>browser_screenshot</code>) and the task plan (<code>update_plan</code>). Its LLM calls go through the gateway with a run token.</p></li>
         <li><h3>Stream</h3><p>Events (text, tools, files) are masked, persisted and streamed over SSE to every API instance via <code>NOTIFY</code>.</p></li>
         <li><h3>Checkpoint</h3><p>At the end of the run, the worker pushes an incremental checkpoint to S3. The sandbox stops after the idle timeout; it can be recreated anywhere from the checkpoint.</p></li>
       </ol>
@@ -57,7 +57,7 @@
       <p>The ADRs are in <a href="https://github.com/Shipcove/shipcove/tree/develop/docs/adr"><code>docs/adr</code></a> (in French):</p>
       <ul>
         <li>0001 Overall architecture · 0002 Stack and versions · 0003 PostgreSQL coordination</li>
-        <li>0004 Pi integration · 0005 LLM gateway and quotas · 0006 S3 checkpoints</li>
+        <li>0004 Agent integration · 0005 LLM gateway and quotas · 0006 S3 checkpoints</li>
         <li>0007 Git broker · 0008 Authentication and sessions · 0009 Vault</li>
         <li>0010 Sandbox and network · 0011 Previews · 0012 Identity federation</li>
         <li>0013 Autonomous forge access from the sandbox · 0014 Docker engine guard · 0015 Conversation-centric model</li>

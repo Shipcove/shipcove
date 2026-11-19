@@ -29,8 +29,8 @@ type Row = Record<string, never>;
     </div>
     <h2 class="mt-6 mb-1 text-sm font-semibold text-stone-500 uppercase">{{ t('Script de démarrage') }}</h2>
     <p class="mb-2 max-w-3xl text-sm text-stone-500">
-      {{ t('Exécuté en bash (set -e) dans /workspace, au démarrage de chaque sandbox (avec ou sans dépôt), avant le premier message traité par Pi.') }}
-      {{ t('Rejoué à chaque nouvelle sandbox et quand il change : il doit être idempotent. Sa sortie s’affiche dans la conversation ; en cas d’échec, Pi est prévenu et le travail continue.') }}
+      {{ t('Exécuté en bash (set -e) dans /workspace, au démarrage de chaque sandbox (avec ou sans dépôt), avant le premier message traité par l’agent.') }}
+      {{ t('Rejoué à chaque nouvelle sandbox et quand il change : il doit être idempotent. Sa sortie s’affiche dans la conversation ; en cas d’échec, l’agent est prévenu et le travail continue.') }}
       {{ t('Les hôtes contactés (registre privé…) doivent figurer dans le réseau sortant autorisé ci-dessus.') }}
     </p>
     <cap-settings-section section="sandbox" [title]="t('Registres, miroirs, outils')" [only]="startupKeys" />
@@ -45,7 +45,7 @@ type Row = Record<string, never>;
     </table></div>
     <h2 class="mt-6 mb-2 text-sm font-semibold text-stone-500 uppercase">{{ t('Images officielles') }}</h2>
     <div class="card overflow-x-auto"><table class="table">
-      <thead><tr><th>{{ t('Image') }}</th><th>Digest</th><th>Pi</th><th>{{ t('Statut') }}</th><th></th></tr></thead>
+      <thead><tr><th>{{ t('Image') }}</th><th>Digest</th><th>{{ t('Agent') }}</th><th>{{ t('Statut') }}</th><th></th></tr></thead>
       <tbody>@for (i of images(); track i['id']) {
         <tr><td>{{ i['name'] }}:{{ i['version'] }} <div class="font-mono text-xs text-stone-500">{{ i['reference'] }}</div></td><td class="font-mono text-xs">{{ i['digest'] ?? '—' }}</td><td>{{ i['piVersion'] }}</td><td>{{ i['status'] }} @if (i['isDefault']) { {{ t('(défaut)') }} }</td>
         <td class="text-right">@if (!i['isDefault']) { <button class="btn-ghost !py-0.5 text-xs" (click)="activate(i['id'])">{{ t('Activer') }}</button> }</td></tr>
@@ -54,7 +54,7 @@ type Row = Record<string, never>;
     <form class="card mt-3 grid gap-2 p-4 md:grid-cols-5" (ngSubmit)="addImage()">
       <input class="input" name="n" [placeholder]="t('nom')" [(ngModel)]="img.name" /><input class="input" name="v" [placeholder]="t('version')" [(ngModel)]="img.version" />
       <input class="input" name="r" [placeholder]="t('référence (registre/shipcove-sandbox:0.1.0)')" [(ngModel)]="img.reference" /><input class="input" name="d" placeholder="sha256:…" [(ngModel)]="img.digest" />
-      <input class="input" name="p" [placeholder]="t('version de Pi')" [(ngModel)]="img.piVersion" />
+      <input class="input" name="p" [placeholder]="t('version de l’agent')" [(ngModel)]="img.piVersion" />
       <button class="btn-secondary md:w-fit">{{ t('Enregistrer l’image') }}</button>
     </form>
   `,

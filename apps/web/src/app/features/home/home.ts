@@ -26,8 +26,8 @@ import { t } from '../../core/i18n';
           <cap-repo-picker composerStart #picker [value]="draft.repository()" (valueChange)="setRepository($event)" />
         </cap-composer>
         <p class="px-6 text-center text-xs text-stone-500">
-          @if (draft.repository(); as r) { {{ t('Pi travaillera sur') }} <span class="font-mono">{{ r.fullName }}</span> {{ t('dans une sandbox isolée.') }} }
-          @else { {{ t('Sans dépôt, Pi dispose d’une sandbox vide. Choisissez un dépôt pour travailler sur votre code.') }} }
+          @if (draft.repository(); as r) { {{ t('L’agent travaillera sur') }} <span class="font-mono">{{ r.fullName }}</span> {{ t('dans une sandbox isolée.') }} }
+          @else { {{ t('Sans dépôt, l’agent dispose d’une sandbox vide. Choisissez un dépôt pour travailler sur votre code.') }} }
         </p>
       </div>
     </div>

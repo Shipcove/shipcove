@@ -15,7 +15,7 @@
 pip config set global.index-url https://pypi.example.corp/simple
 npm install -g pnpm@10</code></pre>
       <ul>
-        <li>Run with bash in <code>/workspace</code>, without root privileges, <strong>in every new sandbox</strong> before the first message handled by Pi, and again when it changes: it must be idempotent.</li>
+        <li>Run with bash in <code>/workspace</code>, without root privileges, <strong>in every new sandbox</strong> before the first message handled by the agent, and again when it changes: it must be idempotent.</li>
         <li>What it produces in <code>/workspace</code> is kept (checkpoint); the rest (<code>~/.npmrc</code>, pip configuration, global tools in <code>~/.local</code>) lives with the sandbox and is redone in the next one.</li>
         <li>Its output appears in the conversation; if it fails, the agent is told and the run continues. Maximum duration: 20 minutes by default.</li>
         <li>The hosts it contacts must be in the <strong>allowed outbound network</strong> (same page).</li>
@@ -24,10 +24,10 @@ npm install -g pnpm@10</code></pre>
       <div class="callout warn"><p>The script is stored in clear text and runs in the sandbox, where the agent can read the files it writes: only put read-only credentials with minimal scope in it.</p></div>
 
       <h2>Sandbox image</h2>
-      <p>All sandboxes use the <strong>default</strong> image declared by the administrator. The official image <code>ghcr.io/shipcove/shipcove-sandbox</code> contains Pi (and its plugins: questions, screenshots, plan), Git, Python, uv, Node.js, npm, Playwright and Chromium; a derived image starts from it (<code>FROM ghcr.io/shipcove/shipcove-sandbox:&lt;version&gt;@sha256:…</code>), for example to add a JDK, Go or Rust. Changing the default image recreates the sandboxes at the next run.</p>
+      <p>All sandboxes use the <strong>default</strong> image declared by the administrator. The official image <code>ghcr.io/shipcove/shipcove-sandbox</code> contains the agent (and its plugins: questions, screenshots, plan), Git, Python, uv, Node.js, npm, Playwright and Chromium; a derived image starts from it (<code>FROM ghcr.io/shipcove/shipcove-sandbox:&lt;version&gt;@sha256:…</code>), for example to add a JDK, Go or Rust. Changing the default image recreates the sandboxes at the next run.</p>
 
       <h2>Services started by the agent</h2>
-      <p>Pi starts <strong>by itself, when it needs them</strong>, databases, caches or message queues chosen from a <strong>catalog managed by the administrator</strong> (<em>Administration → Sandboxes &amp; previews</em>): image, port, health probe, default variables, memory. Nothing starts until the agent asks for it; no setting on the user side.</p>
+      <p>The agent starts <strong>by itself, when it needs them</strong>, databases, caches or message queues chosen from a <strong>catalog managed by the administrator</strong> (<em>Administration → Sandboxes &amp; previews</em>): image, port, health probe, default variables, memory. Nothing starts until the agent asks for it; no setting on the user side.</p>
       <table>
         <thead><tr><th>Initial catalog</th><th>Image</th><th>Port</th></tr></thead>
         <tbody>

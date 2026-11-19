@@ -93,7 +93,7 @@ export class AskForm {
   private readonly submitted = signal(false);
 
   private readonly args = computed(() => (this.call().args ?? {}) as { title?: string; questions?: AskQuestion[] });
-  protected readonly title = computed(() => this.args().title || t('Questions de Pi'));
+  protected readonly title = computed(() => this.args().title || t('Questions de l’agent'));
   protected readonly questions = computed(() => (this.args().questions ?? []).filter((q) => q && q.question && Array.isArray(q.options)));
   protected readonly answers = signal<Answer[]>([]);
 

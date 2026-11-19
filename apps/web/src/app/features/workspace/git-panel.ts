@@ -27,7 +27,7 @@ import { t } from '../../core/i18n';
           } @else {
             <label class="sr-only" for="git-branch">{{ t('Branche de travail') }}</label>
             <select id="git-branch" class="input !w-auto max-w-full min-w-0 flex-1 !py-1 font-mono text-xs" (change)="checkout($event)"
-              [disabled]="switching() || !!store.activeRun()" [title]="store.activeRun() ? t('Disponible quand Pi a terminé sa réponse') : t('Changer de branche de travail')">
+              [disabled]="switching() || !!store.activeRun()" [title]="store.activeRun() ? t('Disponible quand l’agent a terminé sa réponse') : t('Changer de branche de travail')">
               <!-- Sélection portée par chaque option : un [value] sur le select serait appliqué avant
                    que l'option de la nouvelle branche n'existe (branche distante devenue locale). -->
               @if (!b.current) { <option value="" disabled selected>{{ t('HEAD détaché') }}</option> }

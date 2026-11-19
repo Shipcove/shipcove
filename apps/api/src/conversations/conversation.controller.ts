@@ -262,7 +262,7 @@ export class ConversationController {
     await this.access.requireWorkspaceOwner(user, id);
     const [conv] = await this.db.select({ id: conversations.id }).from(conversations).where(eq(conversations.workspaceId, id));
     if (!conv || !(await this.runQueue.withdraw(id, conv.id, messageId))) {
-      throw new AppError('conflict', 'Ce message n’est plus en attente : il a déjà été transmis à Pi');
+      throw new AppError('conflict', 'Ce message n’est plus en attente : il a déjà été transmis à l’agent');
     }
   }
 
@@ -277,7 +277,7 @@ export class ConversationController {
     await this.access.requireWorkspaceOwner(user, id);
     const [conv] = await this.db.select({ id: conversations.id }).from(conversations).where(eq(conversations.workspaceId, id));
     if (!conv || !(await this.runQueue.withdraw(id, conv.id, messageId, { text: body.text }))) {
-      throw new AppError('conflict', 'Ce message n’est plus en attente : il a déjà été transmis à Pi');
+      throw new AppError('conflict', 'Ce message n’est plus en attente : il a déjà été transmis à l’agent');
     }
     return { messageId };
   }

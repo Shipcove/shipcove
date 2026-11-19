@@ -9,6 +9,7 @@ import { ConversationsService } from '../core/conversations.service';
 import { ThemeService } from '../core/theme.service';
 import { ToastService } from '../core/toast.service';
 import { ConfirmService, deleteConversationDialog, leaveShareDialog } from '../core/confirm.service';
+import { Logo } from '../shared/logo';
 import { Icon } from '../shared/icon';
 import { SourceFooter } from '../shared/source-footer';
 import { LayoutService } from '../core/layout.service';
@@ -29,7 +30,7 @@ const COLLAPSED_KEY = 'cap.sidebar.collapsedRepos';
  */
 @Component({
   selector: 'cap-shell',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, NgTemplateOutlet, Icon, SourceFooter],
+  imports: [Logo, RouterOutlet, RouterLink, RouterLinkActive, NgTemplateOutlet, Icon, SourceFooter],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '(document:keydown.escape)': 'layout.drawerOpen.set(false)' },
   styles: `
@@ -50,7 +51,7 @@ const COLLAPSED_KEY = 'cap.sidebar.collapsedRepos';
             ? 'flex w-72 shrink-0 flex-col border-r border-stone-200 bg-stone-100/60 dark:border-stone-800 dark:bg-stone-900/60'
             : 'cap-slide fixed inset-y-0 left-0 z-50 flex w-[85vw] max-w-80 flex-col bg-stone-50 pb-[env(safe-area-inset-bottom)] shadow-2xl dark:bg-stone-900'">
           <div class="flex items-center gap-2 px-4 py-3">
-            <div class="flex h-7 w-7 items-center justify-center rounded-md bg-accent-600 font-mono text-sm font-bold text-white">π</div>
+            <cap-logo [size]="28" />
             <span class="text-sm font-semibold">Shipcove</span>
             <button class="btn-ghost ml-auto !p-1.5" (click)="layout.toggleNav()" [attr.aria-label]="layout.desktop() ? t('Masquer la navigation') : t('Fermer la navigation')">
               <cap-icon [name]="layout.desktop() ? 'sidebar' : 'x'" />
@@ -125,7 +126,7 @@ const COLLAPSED_KEY = 'cap.sidebar.collapsedRepos';
               @if (unread() > 0) { <span class="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-accent-600"></span> }
             </button>
             <div class="flex min-w-0 flex-1 items-center gap-2">
-              <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent-600 font-mono text-xs font-bold text-white">π</div>
+              <cap-logo [size]="24" />
               <span class="truncate text-sm font-semibold">Shipcove</span>
             </div>
             <a routerLink="/" [queryParams]="{ new: 1 }" class="btn-ghost !p-2" [attr.aria-label]="t('Nouvelle conversation')" [title]="t('Nouvelle conversation')"><cap-icon name="plus" [size]="18" /></a>
@@ -133,7 +134,7 @@ const COLLAPSED_KEY = 'cap.sidebar.collapsedRepos';
         }
         @if (demo) {
           <div class="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-center text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200" role="note">
-            {{ t('Démonstration : données fictives, les réponses de Pi sont simulées et rien n’est enregistré.') }}
+            {{ t('Démonstration : données fictives, les réponses de l’agent sont simulées et rien n’est enregistré.') }}
             <button type="button" class="ml-1 underline" (click)="restartDemo()">{{ t('Recommencer') }}</button>
           </div>
         }
@@ -147,7 +148,7 @@ const COLLAPSED_KEY = 'cap.sidebar.collapsedRepos';
           class="flex items-center gap-2 rounded-md py-1.5 pr-2 pl-6 text-sm text-stone-700 group-hover/item:pr-8 hover:bg-stone-200/70 touch:pr-9 dark:text-stone-300 dark:hover:bg-stone-800" [title]="w.name">
           <span class="truncate">{{ w.name }}</span>
           @if (w.access === 'shared_read') { <cap-icon name="share" [size]="12" class="shrink-0 text-stone-400" /> }
-          @if (w.activeRunStatus === 'running' || w.activeRunStatus === 'queued') { <span class="ml-auto h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent-500 group-hover/item:hidden touch:hidden" [title]="t('Pi travaille')"></span> }
+          @if (w.activeRunStatus === 'running' || w.activeRunStatus === 'queued') { <span class="ml-auto h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent-500 group-hover/item:hidden touch:hidden" [title]="t('L’agent travaille')"></span> }
         </a>
         @if (w.access === 'owner') {
           <button class="absolute top-1/2 right-1 hidden -translate-y-1/2 rounded p-1 text-stone-500 group-hover/item:block hover:bg-stone-300/70 hover:text-red-600 focus-visible:block touch:block touch:p-1.5 dark:hover:bg-stone-700"

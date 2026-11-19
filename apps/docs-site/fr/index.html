@@ -2,13 +2,13 @@
 <html lang="fr">
   <head>
     <title>Présentation</title>
-    <meta name="description" content="Plateforme auto-hébergeable de coding agents : Pi travaille dans des sandboxes éphémères isolées, sauvegardées sur S3, avec LiteLLM, Vault et approbation humaine des publications Git." />
+    <meta name="description" content="Plateforme auto-hébergeable de coding agents : l’agent travaille dans des sandboxes éphémères isolées, sauvegardées sur S3, avec LiteLLM, Vault et approbation humaine des publications Git." />
   </head>
   <body>
     <main>
       <h1>Shipcove</h1>
       <p class="tagline"><em>Build in a safe cove. Ship with confidence.</em></p>
-      <p class="lead">Une plateforme <strong>auto-hébergeable</strong> où vos équipes confient des tâches de développement à un agent de code. L’agent <strong>Pi</strong> lit, modifie et teste le code dans une <strong>sandbox éphémère et isolée</strong>, pousse ses branches et ouvre ses pull requests en autonomie ; chaque modification est sauvegardée, et ce qui est irréversible (branche principale, fusion, suppression) est approuvé par un humain.</p>
+      <p class="lead">Une plateforme <strong>auto-hébergeable</strong> où vos équipes confient des tâches de développement à un <strong>agent de code</strong>. Il lit, modifie et teste le code dans une <strong>sandbox éphémère et isolée</strong>, pousse ses branches et ouvre ses pull requests en autonomie ; chaque modification est sauvegardée, et ce qui est irréversible (branche principale, fusion, suppression) est approuvé par un humain.</p>
 
       <div class="cards">
         <a class="card-link" href="quickstart.html"><strong>Démarrage rapide →</strong><span>Lancer la plateforme en quelques minutes à partir des images publiées.</span></a>
@@ -23,7 +23,7 @@
         <li><strong>Un agent autonome</strong> : il exécute des commandes, écrit du code, lance les tests, démarre au besoin une base PostgreSQL ou un Redis, et vous montre chaque action.</li>
         <li><strong>Rien ne se perd</strong> : un checkpoint est publié sur S3 après chaque écriture ; une sandbox détruite est restaurée à l’identique, et vous pouvez revenir à l’état d’avant n’importe quel message.</li>
         <li><strong>Il montre son travail</strong> : un <strong>plan</strong> de tâches tenu à jour pour les demandes complexes, des <strong>captures d’écran</strong> prises d’office dès qu’une interface web change, un <strong>git diff</strong> à jour, et ses livrables (README, rapport, export…) proposés au <strong>téléchargement</strong>.</li>
-        <li><strong>Rien d’irréversible sans vous</strong> : Pi pousse ses branches et ouvre ses pull requests seul, mais la branche par défaut, les fusions et les suppressions de branche attendent votre approbation, directement dans la conversation.</li>
+        <li><strong>Rien d’irréversible sans vous</strong> : l’agent pousse ses branches et ouvre ses pull requests seul, mais la branche par défaut, les fusions et les suppressions de branche attendent votre approbation, directement dans la conversation.</li>
         <li><strong>Vos modèles, vos règles</strong> : tous les appels passent par LiteLLM (Anthropic, OpenAI, Azure, Bedrock, Mistral, modèles locaux…), avec quotas personnels.</li>
         <li><strong>Prête pour l’entreprise</strong> : SSO (OIDC/Keycloak, SAML, LDAP/AD, GitHub, GitLab), MFA, secrets dans Vault, audit, rétention des données.</li>
       </ul>
@@ -31,9 +31,9 @@
       <h2>Comment ça marche</h2>
       <ol>
         <li>Vous écrivez une demande dans une conversation, liée ou non à un dépôt Git.</li>
-        <li>La plateforme démarre (ou réutilise) la sandbox de la conversation, restaure ses fichiers et l’état de Pi.</li>
-        <li>Pi travaille : pour une tâche complexe, il établit d’abord un plan ; chaque appel d’outil (commande, lecture, écriture) s’affiche en direct ; chaque écriture déclenche un checkpoint.</li>
-        <li>Vous suivez les fichiers modifiés dans l’onglet <em>Git</em> (git diff, branche de travail), testez l’application via une <em>preview</em>, et approuvez dans la conversation la publication Git proposée par Pi.</li>
+        <li>La plateforme démarre (ou réutilise) la sandbox de la conversation, restaure ses fichiers et l’état de l’agent.</li>
+        <li>L’agent travaille : pour une tâche complexe, il établit d’abord un plan ; chaque appel d’outil (commande, lecture, écriture) s’affiche en direct ; chaque écriture déclenche un checkpoint.</li>
+        <li>Vous suivez les fichiers modifiés dans l’onglet <em>Git</em> (git diff, branche de travail), testez l’application via une <em>preview</em>, et approuvez dans la conversation la publication Git proposée par l’agent.</li>
         <li>Après une période d’inactivité, la sandbox est détruite ; tout est conservé sur S3 et repart au message suivant.</li>
       </ol>
 
@@ -43,7 +43,7 @@
         <tbody>
           <tr><td>Angular + Tailwind CSS</td><td>Interface web</td></tr>
           <tr><td>NestJS</td><td>API, worker (orchestration), passerelle LLM / réseau / Git, passerelle de previews</td></tr>
-          <tr><td>Pi (mode RPC)</td><td>Agent de code exécuté dans chaque sandbox</td></tr>
+          <tr><td>L’agent (mode RPC)</td><td>Agent de code exécuté dans chaque sandbox</td></tr>
           <tr><td>LiteLLM</td><td>Accès unifié aux fournisseurs de modèles</td></tr>
           <tr><td>PostgreSQL</td><td>Données, files de travaux, notifications entre instances</td></tr>
           <tr><td>Vault</td><td>Tous les secrets (clés LLM, OAuth, jetons Git, secrets SSO et MCP…)</td></tr>

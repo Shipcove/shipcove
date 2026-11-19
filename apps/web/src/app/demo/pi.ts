@@ -101,8 +101,8 @@ export class PiSimulator {
 
     await planTool(1);
     const notes = D.L(
-      `# Notes de Pi\n\n## Demande\n\n> ${request.replace(/\n/g, '\n> ')}\n\n## Dans la vraie application\n\nPi modifierait ici le code du dépôt, lancerait les tests et vous montrerait le résultat.\nDans cette démonstration, son travail est simulé : ce fichier en garde la trace.\n`,
-      `# Pi's notes\n\n## Request\n\n> ${request.replace(/\n/g, '\n> ')}\n\n## In the real application\n\nPi would change the repository's code here, run the tests and show you the result.\nIn this demo, its work is simulated: this file keeps a record of it.\n`,
+      `# Notes de l’agent\n\n## Demande\n\n> ${request.replace(/\n/g, '\n> ')}\n\n## Dans la vraie application\n\nL’agent modifierait ici le code du dépôt, lancerait les tests et vous montrerait le résultat.\nDans cette démonstration, son travail est simulé : ce fichier en garde la trace.\n`,
+      `# The agent's notes\n\n## Request\n\n> ${request.replace(/\n/g, '\n> ')}\n\n## In the real application\n\nThe agent would change the repository's code here, run the tests and show you the result.\nIn this demo, its work is simulated: this file keeps a record of it.\n`,
     );
     w.files['NOTES.md'] = notes;
     await this.tool(r, wsId, 'write', { path: 'NOTES.md', content: notes }, D.L(`Fichier écrit (${notes.split('\n').length} lignes)`, `File written (${notes.split('\n').length} lines)`), 700, { filesTouched: ['NOTES.md'] });

@@ -50,7 +50,7 @@ import { t } from '../../core/i18n';
           </ul>
         } @else {
           <p class="mt-8 text-center text-sm text-stone-500">
-            {{ t('Pas encore de plan.') }}<br />{{ t('Pour une tâche complexe, Pi établit ici la liste de ses étapes et la tient à jour pendant qu’il travaille.') }}
+            {{ t('Pas encore de plan.') }}<br />{{ t('Pour une tâche complexe, l’agent établit ici la liste de ses étapes et la tient à jour pendant qu’il travaille.') }}
           </p>
         }
       </div>

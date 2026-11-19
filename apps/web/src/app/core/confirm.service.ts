@@ -61,7 +61,7 @@ export function deleteConversationDialog(name: string, running: boolean): Confir
     message: t('{subject} sera supprimée définitivement. Cette action est irréversible.'),
     subject: name,
     details: [t('La sandbox et ses services sont détruits'), t('Les sauvegardes, fichiers, pièces jointes et captures sont effacés'), t('Tout l’historique de la conversation est perdu')],
-    warning: running ? t('Pi est en train de travailler : sa tâche sera interrompue.') : undefined,
+    warning: running ? t('L’agent est en train de travailler : sa tâche sera interrompue.') : undefined,
     confirmLabel: t('Supprimer'),
     danger: true,
   };
