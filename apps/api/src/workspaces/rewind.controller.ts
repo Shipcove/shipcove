@@ -36,7 +36,7 @@ export class RewindController {
       .select({ id: agentRuns.id })
       .from(agentRuns)
       .where(and(eq(agentRuns.workspaceId, id), inArray(agentRuns.status, ['queued', 'running', 'interrupting'])));
-    if (active) throw new AppError('workspace_busy', 'Pi est en cours d’exécution : interrompez-le ou attendez la fin avant de revenir en arrière');
+    if (active) throw new AppError('workspace_busy', 'L’agent est en cours d’exécution : interrompez-le ou attendez la fin avant de revenir en arrière');
 
     let generation: number;
     let label: string;
@@ -64,7 +64,7 @@ export class RewindController {
       { op: 'workspace.rewind', workspaceId: id, generation, userId: user.id },
       300_000,
     );
-    if (r.busy) throw new AppError('workspace_busy', 'Pi a démarré entre-temps : réessayez à la fin du run');
+    if (r.busy) throw new AppError('workspace_busy', 'L’agent a démarré entre-temps : réessayez à la fin du run');
 
     const [conv] = await this.db.select({ id: conversations.id }).from(conversations).where(eq(conversations.workspaceId, id));
     const meta = { kind: 'rewind', runId, fromGeneration: r.fromGeneration, toGeneration: generation, generation: r.generation, deleted: r.deleted, written: r.written };

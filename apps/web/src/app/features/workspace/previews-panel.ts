@@ -34,7 +34,7 @@ import { t } from '../../core/i18n';
           </p>
         }
       } @empty {
-        <p class="text-stone-500">{{ t('Aucune preview ouverte. Demandez à Pi de démarrer un serveur (ex.') }} <code>npm run dev -- --host 0.0.0.0 --port 5173</code>).</p>
+        <p class="text-stone-500">{{ t('Aucune preview ouverte. Demandez à l’agent de démarrer un serveur (ex.') }} <code>npm run dev -- --host 0.0.0.0 --port 5173</code>).</p>
       }
     </div>
   `,

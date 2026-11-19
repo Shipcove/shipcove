@@ -18,7 +18,7 @@ import { t } from '../../core/i18n';
   template: `
     <div class="h-full overflow-y-auto"><div class="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-8">
       <h1 class="text-2xl font-semibold">{{ t('Skills & MCP') }}</h1>
-      <p class="mt-1 text-sm text-stone-500">{{ t('Les skills sont des instructions chargées par Pi ; ils ne confèrent aucun privilège. Les outils MCP sont filtrés par les politiques globales et personnelles.') }}</p>
+      <p class="mt-1 text-sm text-stone-500">{{ t('Les skills sont des instructions chargées par l’agent ; ils ne confèrent aucun privilège. Les outils MCP sont filtrés par les politiques globales et personnelles.') }}</p>
 
       <section class="mt-6" aria-labelledby="skills-title">
         <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -33,7 +33,7 @@ import { t } from '../../core/i18n';
             <input #zipInput type="file" accept=".zip,application/zip" class="hidden" (change)="importZip($event)" />
           </div>
         </div>
-        <p class="mt-1 text-sm text-stone-500">{{ t('Pi voit la description des skills activés et charge leur contenu quand la tâche s’y prête. Un skill est fait de fichiers markdown, organisés en dossiers si besoin.') }}</p>
+        <p class="mt-1 text-sm text-stone-500">{{ t('L’agent voit la description des skills activés et charge leur contenu quand la tâche s’y prête. Un skill est fait de fichiers markdown, organisés en dossiers si besoin.') }}</p>
 
         <div class="mt-3 flex flex-wrap items-center gap-2">
           <div class="flex gap-1 rounded-lg bg-stone-100 p-1 dark:bg-stone-800/70" role="tablist" [attr.aria-label]="t('Filtrer les skills')">
@@ -75,7 +75,7 @@ import { t } from '../../core/i18n';
                   <a [routerLink]="['/extensions/skills', s.id]" class="block truncate font-mono font-medium hover:underline">{{ s.name }}</a>
                   <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-stone-500">
                     <span class="badge bg-stone-200/70 text-stone-700 dark:bg-stone-800 dark:text-stone-300">{{ s.scope === 'global' ? 'Global' : 'Personnel' }}</span>
-                    @if (s.status === 'pending_review') { <span class="badge bg-amber-100 text-amber-800" [title]="t('Un administrateur doit valider ce skill avant que Pi puisse l’utiliser')">{{ t('En attente de validation') }}</span> }
+                    @if (s.status === 'pending_review') { <span class="badge bg-amber-100 text-amber-800" [title]="t('Un administrateur doit valider ce skill avant que l’agent puisse l’utiliser')">{{ t('En attente de validation') }}</span> }
                     <span>{{ t('{n} fichier(s)', { n: s.fileCount }) }}</span>
                     @if (s.findings.length) { <span class="inline-flex items-center gap-0.5 text-amber-700" [title]="s.findings.join('\n')"><cap-icon name="alert" [size]="12" /> {{ s.findings.length }}</span> }
                   </div>

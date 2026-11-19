@@ -51,7 +51,7 @@ type RightPane = 'panel' | 'files' | 'plan' | null;
               }
               <span class="badge shrink-0" [class]="statusClass()">{{ statusLabel() }}</span>
               @if (ws.access === 'shared_read') { <span class="badge shrink-0 bg-sky-100 text-sky-800" [title]="t('Lecture seule (partagé)')">{{ t('Lecture seule') }}</span> }
-              @if (ws.agentMode === 'plan') { <span class="badge hidden shrink-0 bg-sky-100 text-sky-800 sm:inline-flex" [title]="t('Pi n’a que des outils en lecture seule')">{{ t('Mode plan') }}</span> }
+              @if (ws.agentMode === 'plan') { <span class="badge hidden shrink-0 bg-sky-100 text-sky-800 sm:inline-flex" [title]="t('L’agent n’a que des outils en lecture seule')">{{ t('Mode plan') }}</span> }
             </div>
             <div class="flex min-w-0 items-center gap-2 text-xs text-stone-500">
               @if (ws.repository; as r) {
@@ -90,7 +90,7 @@ type RightPane = 'panel' | 'files' | 'plan' | null;
             <button class="btn-ghost !p-1.5" [class.bg-stone-200]="pane() === 'panel'" [class.dark:bg-stone-700]="pane() === 'panel'" (click)="toggle('panel')"
               [attr.aria-pressed]="pane() === 'panel'" [attr.aria-label]="t('Panneau latéral')" [title]="t('Git et previews')"><cap-icon name="panelRight" /></button>
             <button class="btn-ghost relative !p-1.5" [class.bg-stone-200]="pane() === 'plan'" [class.dark:bg-stone-700]="pane() === 'plan'" (click)="toggle('plan')"
-              [attr.aria-pressed]="pane() === 'plan'" [attr.aria-label]="t('Plan de Pi')" [title]="t('Plan de Pi')"><cap-icon name="checklist" />
+              [attr.aria-pressed]="pane() === 'plan'" [attr.aria-label]="t('Plan de l’agent')" [title]="t('Plan de l’agent')"><cap-icon name="checklist" />
               @if (planActive()) { <span class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-accent-500" aria-hidden="true"></span> }
             </button>
             @if (ws.access === 'owner') {
@@ -113,7 +113,7 @@ type RightPane = 'panel' | 'files' | 'plan' | null;
             </aside>
           }
           @if (pane() === 'plan') {
-            <aside class="bg-white dark:bg-stone-900" [attr.aria-label]="t('Plan de Pi')"
+            <aside class="bg-white dark:bg-stone-900" [attr.aria-label]="t('Plan de l’agent')"
               [class]="layout.wide() ? (planExpanded() ? 'w-full shrink-0 border-l border-stone-200 dark:border-stone-800' : 'w-[30%] max-w-[520px] min-w-[320px] shrink-0 border-l border-stone-200 dark:border-stone-800') : 'cap-pane fixed inset-0 z-40 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] md:absolute md:inset-y-0 md:right-0 md:left-auto md:w-[min(100%,440px)] md:border-l md:border-stone-200 md:shadow-2xl md:dark:border-stone-800'">
               <cap-plan-pane [expanded]="planExpanded()" [expandable]="layout.wide()" (toggleExpand)="planExpanded.set(!planExpanded())" (closed)="pane.set(null)" />
             </aside>
@@ -189,7 +189,7 @@ export class WorkspacePage implements OnDestroy {
   protected readonly statusLabel = computed(() => {
     const ws = this.store.workspace();
     const run = this.store.activeRun();
-    if (run?.status === 'running') return t('Pi travaille');
+    if (run?.status === 'running') return t('L’agent travaille');
     if (run?.status === 'queued') return t('En file');
     if (run?.status === 'paused_quota') return t('Suspendu (quota)');
     return t({ ready: tk('En veille'), starting: tk('Démarrage'), running: tk('Actif'), stopping: tk('Arrêt'), archived: tk('Archivé'), error: tk('Erreur') }[ws?.status ?? 'ready']);

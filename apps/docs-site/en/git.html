@@ -7,7 +7,7 @@
   <body>
     <main>
       <h1>Git forges</h1>
-      <p class="lead">Users connect their GitHub / GitLab accounts <strong>with OAuth</strong>, through the forges declared by the administrator. Pi then uses <code>git</code>, <code>gh</code> and <code>glab</code> autonomously; tokens stay in Vault and never enter the sandboxes.</p>
+      <p class="lead">Users connect their GitHub / GitLab accounts <strong>with OAuth</strong>, through the forges declared by the administrator. The agent then uses <code>git</code>, <code>gh</code> and <code>glab</code> autonomously; tokens stay in Vault and never enter the sandboxes.</p>
 
       <h2>Declaring a forge</h2>
       <p><strong>Administration → Git forges</strong>, one OAuth application per forge:</p>
@@ -35,8 +35,8 @@
         <li>The repositories available through your connections then appear under the input box of a new conversation.</li>
       </ul>
 
-      <h2>What Pi does on its own</h2>
-      <p>In the sandbox, <code>git</code>, <code>gh</code> and <code>glab</code> are authenticated with a <strong>run token</strong>. The gateway intercepts the traffic to the forges and replaces it with the user’s OAuth token: Pi acts on their behalf, on all their repositories, without ever seeing the token.</p>
+      <h2>What the agent does on its own</h2>
+      <p>In the sandbox, <code>git</code>, <code>gh</code> and <code>glab</code> are authenticated with a <strong>run token</strong>. The gateway intercepts the traffic to the forges and replaces it with the user’s OAuth token: the agent acts on their behalf, on all their repositories, without ever seeing the token.</p>
       <ul>
         <li>push work branches (including force pushes) and tags;</li>
         <li>open and update PRs/MRs, comment, answer reviews;</li>
@@ -46,7 +46,7 @@
 
       <h2>Following the work: Git tab</h2>
       <ul>
-        <li><strong>Working branch</strong>: the conversation panel (<em>Git</em> tab) shows the current branch and lets you switch it, among the local branches and those of <code>origin</code>. It follows the branch switches made by Pi; a switch of yours is noted in the conversation and reported to Pi. Not possible while Pi is working.</li>
+        <li><strong>Working branch</strong>: the conversation panel (<em>Git</em> tab) shows the current branch and lets you switch it, among the local branches and those of <code>origin</code>. It follows the branch switches made by the agent; a switch of yours is noted in the conversation and reported to the agent. Not possible while the agent is working.</li>
         <li><strong>git diff</strong>: the files changed since the last commit, with their differences file by file.</li>
         <li><strong>Co-author</strong>: every commit made in a sandbox carries the <code>Co-Authored-By: Shipcove &lt;address&gt;</code> trailer (address set in <em>Git settings</em>). It is added by platform Git hooks, which then run the repository’s own hooks (pre-commit, commitlint…).</li>
       </ul>
@@ -62,7 +62,7 @@
           <tr><td>SSH keys, deploy keys and tokens, tokens, runners, CI secrets</td><td>Forbidden from a sandbox</td></tr>
         </tbody>
       </table>
-      <p>Refusals are explicit: <code>git push</code> shows <code>! [remote rejected] main -&gt; main (…)</code>; <code>gh</code> and <code>glab</code> get an HTTP 403 with the reason. The approval request appears <strong>in the conversation</strong>, under Pi’s message: commits, diff, then <em>Approve</em> or <em>Reject</em>. It covers the exact operation (pinned commit), can be used only once and expires after 24 h. Every write and every refusal is audited.</p>
+      <p>Refusals are explicit: <code>git push</code> shows <code>! [remote rejected] main -&gt; main (…)</code>; <code>gh</code> and <code>glab</code> get an HTTP 403 with the reason. The approval request appears <strong>in the conversation</strong>, under the agent's message: commits, diff, then <em>Approve</em> or <em>Reject</em>. It covers the exact operation (pinned commit), can be used only once and expires after 24 h. Every write and every refusal is audited.</p>
       <p>The clone URL returned by the forge must point to the same host as the connection: a token is never presented to another host.</p>
 
       <h2>Internal forges over HTTP</h2>

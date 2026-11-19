@@ -296,7 +296,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       runtime.setBridgeHandler((req) => this.bridge.handle(ctx, req));
       await runtime.initialize();
       await runtime.setModel(PI_PROVIDER, model.litellmModel).catch((e) => {
-        throw new Error(`Modèle ${model.litellmModel} indisponible dans Pi : ${e.message}`);
+        throw new Error(`Modèle ${model.litellmModel} indisponible pour l’agent : ${e.message}`);
       });
       // Effort : niveau de raisonnement, uniquement pour les modèles qui le supportent.
       const level = model.supportsReasoning ? (run.thinkingLevel ?? ws.thinkingLevel) : 'off';
@@ -313,7 +313,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
             tokensBefore: null,
             summary: null,
             error: null,
-            skipped: `Rien à compacter : la conversation est encore courte (≈ ${Math.round(stats.contextTokens / 1000)}k tokens de contexte ; Pi garde tels quels les ${PI_KEEP_RECENT_TOKENS / 1000}k derniers)`,
+            skipped: `Rien à compacter : la conversation est encore courte (≈ ${Math.round(stats.contextTokens / 1000)}k tokens de contexte ; l’agent garde tels quels les ${PI_KEEP_RECENT_TOKENS / 1000}k derniers)`,
           });
           outcome = { error: null };
         } else {
@@ -540,7 +540,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
         userId: run.userId,
         type: status === 'completed' ? 'run.completed' : 'run.failed',
         title: status === 'completed' ? `Tâche terminée dans « ${w?.name} »` : `Échec de la tâche dans « ${w?.name} »`,
-        body: status === 'completed' ? 'Pi a terminé son exécution.' : (error ?? 'Erreur inconnue').slice(0, 500),
+        body: status === 'completed' ? 'L’agent a terminé son exécution.' : (error ?? 'Erreur inconnue').slice(0, 500),
         link: `/workspaces/${workspaceId}`,
         dedupeKey: `run:${runId}`,
       });
@@ -759,7 +759,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           break;
         }
         case 'process_exit':
-          this.finishRun(ctx, { error: e.code === 0 ? null : `Pi s’est arrêté (code ${e.code}) : ${redactString(e.stderr.slice(-500))}` });
+          this.finishRun(ctx, { error: e.code === 0 ? null : `L’agent s’est arrêté (code ${e.code}) : ${redactString(e.stderr.slice(-500))}` });
           break;
         default:
           break;

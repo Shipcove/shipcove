@@ -2,6 +2,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, afterNextRender, computed, effect, inject, output, signal, viewChild } from '@angular/core';
 import type { AttachmentDto, MessageDto } from '@cap/contracts';
 import { ToastService } from '../../core/toast.service';
+import { Logo } from '../../shared/logo';
 import { Icon } from '../../shared/icon';
 import { BytesPipe, CodeBlocksDirective, MarkdownPipe, TokensPipe, linkify } from '../../shared/pipes';
 import { ToolCard, toolLabel, toolSummary } from './tool-card';
@@ -13,16 +14,16 @@ import { t, tk, tr } from '../../core/i18n';
 
 @Component({
   selector: 'cap-conversation',
-  imports: [NgTemplateOutlet, ToolCard, ScreenshotStrip, MarkdownPipe, CodeBlocksDirective, BytesPipe, TokensPipe, Icon],
+  imports: [Logo, NgTemplateOutlet, ToolCard, ScreenshotStrip, MarkdownPipe, CodeBlocksDirective, BytesPipe, TokensPipe, Icon],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div #scroller class="h-full overflow-x-hidden overflow-y-auto" (scroll)="onScroll()" (wheel)="onWheel($event)">
       <div #content class="mx-auto max-w-3xl px-3 py-4 sm:px-6 sm:py-6">
         @if (store.messages().length === 0) {
           <div class="mt-20 text-center text-stone-500">
-            <div class="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-accent-100 font-mono text-xl font-bold text-accent-700 dark:bg-accent-700/20">π</div>
+            <cap-logo class="mb-3" [size]="48" />
             <p class="font-medium text-stone-700 dark:text-stone-300">{{ t('Que voulez-vous construire ?') }}</p>
-            <p class="mt-1 text-sm">{{ t('Pi travaille dans une sandbox isolée : il lit, modifie et teste le code. Chaque modification est sauvegardée.') }}</p>
+            <p class="mt-1 text-sm">{{ t('L’agent travaille dans une sandbox isolée : il lit, modifie et teste le code. Chaque modification est sauvegardée.') }}</p>
           </div>
         }
         @for (row of timeline(); track row.key) {
@@ -151,7 +152,7 @@ import { t, tk, tr } from '../../core/i18n';
         } @else if (store.activeRun()?.status === 'running' || store.activeRun()?.status === 'queued' || store.activeRun()?.status === 'interrupting') {
           <div class="my-3 flex items-center gap-2 text-sm text-stone-500">
             <span class="h-2 w-2 animate-pulse rounded-full bg-accent-500"></span>
-            {{ store.activeRun()?.status === 'queued' ? t('Démarrage de la sandbox et de Pi…') : store.activeRun()?.status === 'interrupting' ? t('Arrêt en cours…') : t('Pi travaille…') }}
+            {{ store.activeRun()?.status === 'queued' ? t('Démarrage de la sandbox et de l’agent…') : store.activeRun()?.status === 'interrupting' ? t('Arrêt en cours…') : t('L’agent travaille…') }}
             @if (runElapsed(); as d) { <span class="tabular-nums text-stone-400" [title]="t('Durée du run')">· {{ d }}</span> }
           </div>
         }
@@ -335,7 +336,7 @@ export class Conversation {
   }
 
   protected async rewind(m: MessageDto): Promise<void> {
-    const ok = confirm(t('Revenir à l’état des fichiers d’avant ce message ?\n\nLes modifications faites ensuite (par Pi ou manuellement) seront annulées. La conversation est conservée et vous pourrez annuler ce retour en arrière.'));
+    const ok = confirm(t('Revenir à l’état des fichiers d’avant ce message ?\n\nLes modifications faites ensuite (par l’agent ou manuellement) seront annulées. La conversation est conservée et vous pourrez annuler ce retour en arrière.'));
     if (!ok) return;
     await this.run(() => this.store.rewind({ runId: m.runId! }), t('Fichiers restaurés'));
   }

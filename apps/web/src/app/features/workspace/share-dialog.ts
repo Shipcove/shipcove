@@ -16,7 +16,7 @@ import { t } from '../../core/i18n';
     <div class="fixed inset-0 z-40 flex items-start justify-center bg-black/30 pt-24" (click)="closed.emit()">
       <div class="card w-full max-w-md p-5 shadow-xl" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="share-title">
         <div class="mb-1 flex items-center"><h2 id="share-title" class="font-semibold">{{ t('Partager la conversation') }}</h2><button class="btn-ghost ml-auto !p-1" (click)="closed.emit()" [attr.aria-label]="t('Fermer')"><cap-icon name="x" /></button></div>
-        <p class="mb-3 text-xs text-stone-500">{{ t('Lecture seule. Le destinataire ne peut ni lancer Pi, ni modifier la conversation, ni approuver d’opération Git, ni ouvrir les previews.') }}</p>
+        <p class="mb-3 text-xs text-stone-500">{{ t('Lecture seule. Le destinataire ne peut ni lancer l’agent, ni modifier la conversation, ni approuver d’opération Git, ni ouvrir les previews.') }}</p>
         <input class="input" [placeholder]="t('Rechercher un utilisateur (nom, identifiant, e-mail)…')" [(ngModel)]="q" (ngModelChange)="search()" name="q" />
         @for (u of results(); track u.id) {
           <button class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-stone-100 dark:hover:bg-stone-800" (click)="add(u)">

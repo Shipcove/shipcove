@@ -7,7 +7,7 @@
   <body>
     <main>
       <h1>Forges Git</h1>
-      <p class="lead">Les utilisateurs rattachent leurs comptes GitHub / GitLab <strong>par OAuth</strong>, via les forges déclarées par l’administrateur. Pi utilise ensuite <code>git</code>, <code>gh</code> et <code>glab</code> en autonomie ; les jetons restent dans Vault et n’entrent jamais dans les sandboxes.</p>
+      <p class="lead">Les utilisateurs rattachent leurs comptes GitHub / GitLab <strong>par OAuth</strong>, via les forges déclarées par l’administrateur. L’agent utilise ensuite <code>git</code>, <code>gh</code> et <code>glab</code> en autonomie ; les jetons restent dans Vault et n’entrent jamais dans les sandboxes.</p>
 
       <h2>Déclarer une forge</h2>
       <p><strong>Administration → Forges Git</strong>, une application OAuth par forge :</p>
@@ -35,8 +35,8 @@
         <li>Les dépôts accessibles avec vos connexions apparaissent ensuite sous la zone de saisie d’une nouvelle conversation.</li>
       </ul>
 
-      <h2>Ce que Pi fait seul</h2>
-      <p>Dans la sandbox, <code>git</code>, <code>gh</code> et <code>glab</code> sont authentifiés par un <strong>jeton de run</strong>. La gateway intercepte le trafic vers les forges et le remplace par le jeton OAuth de l’utilisateur : Pi agit en son nom, sur tous ses dépôts, sans jamais voir le jeton.</p>
+      <h2>Ce que l’agent fait seul</h2>
+      <p>Dans la sandbox, <code>git</code>, <code>gh</code> et <code>glab</code> sont authentifiés par un <strong>jeton de run</strong>. La gateway intercepte le trafic vers les forges et le remplace par le jeton OAuth de l’utilisateur : l’agent agit en son nom, sur tous ses dépôts, sans jamais voir le jeton.</p>
       <ul>
         <li>pousser des branches de travail (y compris en force) et des tags ;</li>
         <li>ouvrir et mettre à jour des PR/MR, commenter, répondre aux revues ;</li>
@@ -46,7 +46,7 @@
 
       <h2>Suivre le travail : onglet Git</h2>
       <ul>
-        <li><strong>Branche de travail</strong> : le panneau de la conversation (onglet <em>Git</em>) affiche la branche courante et permet d’en changer, parmi les branches locales et celles de <code>origin</code>. Il suit les changements de branche faits par Pi ; un changement de votre part est noté dans la conversation et signalé à Pi. Impossible pendant que Pi travaille.</li>
+        <li><strong>Branche de travail</strong> : le panneau de la conversation (onglet <em>Git</em>) affiche la branche courante et permet d’en changer, parmi les branches locales et celles de <code>origin</code>. Il suit les changements de branche faits par l’agent ; un changement de votre part est noté dans la conversation et signalé à l’agent. Impossible pendant que l’agent travaille.</li>
         <li><strong>git diff</strong> : les fichiers modifiés par rapport au dernier commit, avec leurs différences fichier par fichier.</li>
         <li><strong>Co-auteur</strong> : chaque commit fait dans une sandbox porte la mention <code>Co-Authored-By: Shipcove &lt;adresse&gt;</code> (adresse réglée dans <em>Réglages Git</em>). Elle est ajoutée par des hooks Git de la plateforme, qui exécutent ensuite ceux du dépôt (pre-commit, commitlint…).</li>
       </ul>
@@ -62,7 +62,7 @@
           <tr><td>Clés SSH, clés et jetons de déploiement, jetons, runners, secrets de CI</td><td>Interdit depuis une sandbox</td></tr>
         </tbody>
       </table>
-      <p>Les refus sont explicites : <code>git push</code> affiche <code>! [remote rejected] main -&gt; main (…)</code> ; <code>gh</code> et <code>glab</code> reçoivent un HTTP 403 avec la raison. La demande d’approbation s’affiche <strong>dans la conversation</strong>, sous le message de Pi : commits, diff, puis <em>Approuver</em> ou <em>Refuser</em>. Elle porte sur l’opération exacte (commit figé), ne sert qu’une fois et expire après 24 h. Chaque écriture et chaque refus sont audités.</p>
+      <p>Les refus sont explicites : <code>git push</code> affiche <code>! [remote rejected] main -&gt; main (…)</code> ; <code>gh</code> et <code>glab</code> reçoivent un HTTP 403 avec la raison. La demande d’approbation s’affiche <strong>dans la conversation</strong>, sous le message de l’agent : commits, diff, puis <em>Approuver</em> ou <em>Refuser</em>. Elle porte sur l’opération exacte (commit figé), ne sert qu’une fois et expire après 24 h. Chaque écriture et chaque refus sont audités.</p>
       <p>L’URL de clonage renvoyée par la forge doit désigner le même hôte que la connexion : un jeton n’est jamais présenté à un autre hôte.</p>
 
       <h2>Forges internes en HTTP</h2>

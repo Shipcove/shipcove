@@ -38,7 +38,7 @@ export function analyzeSkill(files: StoredSkillFile[], name?: string): string[] 
   else {
     const fm = readFrontmatter(md.content);
     if (!fm.name || !fm.description) findings.push('Frontmatter SKILL.md incomplet (name, description)');
-    else if (name && fm.name !== name) findings.push(`Le nom du frontmatter (« ${fm.name} ») devrait être « ${name} » : Pi s’appuie sur le nom du dossier`);
+    else if (name && fm.name !== name) findings.push(`Le nom du frontmatter (« ${fm.name} ») devrait être « ${name} » : l’agent s’appuie sur le nom du dossier`);
   }
   for (const f of files) {
     if (/curl[^\n|]*\|\s*(ba)?sh|wget[^\n|]*\|\s*(ba)?sh/.test(f.content)) findings.push(`Téléchargement exécuté (curl|sh) : ${f.path}`);

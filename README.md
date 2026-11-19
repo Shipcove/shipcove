@@ -1,12 +1,14 @@
+<p align="center"><img src="docs/brand/shipcove-logo.svg" width="96" height="96" alt="" /></p>
+
 # Shipcove
 
 > *Build in a safe cove. Ship with confidence.*
 
 Plateforme **auto-hébergeable** de coding agents pour équipes et entreprises.
 
-L'agent [Pi](https://github.com/badlogic/pi-mono) travaille dans une **sandbox éphémère et isolée** :
+L'agent de code travaille dans une **sandbox éphémère et isolée** :
 il lit, modifie et teste le code. Son état est **sauvegardé en continu sur S3**, et les modèles
-passent par **LiteLLM**. Les secrets sont dans **Vault**. Pi utilise `git`, `gh` et `glab` en
+passent par **LiteLLM**. Les secrets sont dans **Vault**. L'agent utilise `git`, `gh` et `glab` en
 autonomie, sans jamais voir le jeton de l'utilisateur. Toucher à la branche par défaut, fusionner ou
 supprimer exige une **approbation humaine**.
 
@@ -34,7 +36,7 @@ supprimer exige une **approbation humaine**.
 
 - **Workspaces** sur un dépôt Git (GitHub, GitLab, en SaaS ou auto-hébergé) ou vierges, avec une
   conversation par workspace.
-- **Conversation avec Pi** :
+- **Conversation avec l'agent** :
   - réponses et outils en flux continu ;
   - interruption ;
   - file d'attente des messages envoyés pendant une génération ;
@@ -53,14 +55,14 @@ supprimer exige une **approbation humaine**.
 - **Services d'appui à la demande** : l'agent lance lui-même PostgreSQL, Redis, RabbitMQ… sur le
   `localhost` de sa sandbox, parmi un catalogue approuvé par l'administrateur.
 - **Git** : comptes rattachés par **OAuth**.
-  - Pi pousse ses branches, ouvre des PR/MR, lit la CI et répond aux revues avec `git`, `gh` et
+  - L'agent pousse ses branches, ouvre des PR/MR, lit la CI et répond aux revues avec `git`, `gh` et
     `glab`.
   - Branche par défaut, branches protégées, fusion et suppression : uniquement après **approbation
     de l'opération exacte** (commit figé).
-- **Questions de Pi** : quand une décision vous revient, Pi pose ses questions dans un formulaire
-  (choix unique ou multiple, réponse libre), y compris en mode Plan (plugin Pi `ask`).
-- **Captures d'écran** : Pi lance le projet et le photographie avec le Chromium de la sandbox
-  (plugin Pi `browser`). Les captures s'affichent en miniatures dans la conversation et s'agrandissent
+- **Questions de l'agent** : quand une décision vous revient, l'agent pose ses questions dans un formulaire
+  (choix unique ou multiple, réponse libre), y compris en mode Plan (plugin `ask`).
+- **Captures d'écran** : l'agent lance le projet et le photographie avec le Chromium de la sandbox
+  (plugin `browser`). Les captures s'affichent en miniatures dans la conversation et s'agrandissent
   au clic.
 - **Previews** des applications lancées dans la sandbox, sur un domaine distinct et avec jeton.
 - **Pièces jointes** :
@@ -93,7 +95,7 @@ supprimer exige une **approbation humaine**.
 Navigateur ── nginx (web) ──► API NestJS (×N) ──► PostgreSQL (état, files de jobs, LISTEN/NOTIFY)
                                    │                Vault (secrets)   Garage/S3 (checkpoints, pièces jointes)
                                    ▼
-                              Worker NestJS ──► sandboxes Docker (Pi en RPC, réseau interne isolé)
+                              Worker NestJS ──► sandboxes Docker (agent en RPC, réseau interne isolé)
                                    │                     │  services d'appui (localhost de la sandbox)
                                    ▼                     ▼
                          Gateway (proxy LLM, egress filtré, lecture Git) ──► LiteLLM ──► fournisseurs
@@ -104,10 +106,10 @@ Navigateur ── nginx (web) ──► API NestJS (×N) ──► PostgreSQL (�
 |---|---|
 | `apps/web` | Interface Angular 22 (signals, zoneless) et Tailwind CSS 4, servie par nginx (CSP stricte). |
 | `apps/api` | API REST `/api/v1` (NestJS 12, OpenAPI), authentification, flux SSE, administration. |
-| `apps/worker` | Orchestration des runs Pi, sandboxes, checkpoints, broker Git, tâches de maintenance. |
+| `apps/worker` | Orchestration des runs de l'agent, sandboxes, checkpoints, broker Git, tâches de maintenance. |
 | `apps/gateway` | Proxy LLM (réservation et facturation des crédits), proxy de sortie filtré, lecture Git pour les sandboxes. |
 | `apps/preview` | Accès aux ports des sandboxes sur un domaine séparé, avec jeton. |
-| `packages/*` | Contrats Zod partagés, schéma Drizzle, sandbox (Docker / Kubernetes), stockage des checkpoints, secrets (Vault), runtime Pi, image de sandbox. |
+| `packages/*` | Contrats Zod partagés, schéma Drizzle, sandbox (Docker / Kubernetes), stockage des checkpoints, secrets (Vault), runtime de l'agent (moteur [Pi](https://github.com/badlogic/pi-mono)), image de sandbox. |
 
 Les décisions structurantes sont décrites dans [`docs/adr`](docs/adr) (ADR 0001 à 0015), et le
 cahier des charges dans [`SPEC.md`](SPEC.md).
@@ -176,7 +178,7 @@ MFA (TOTP) est demandée aux administrateurs dès la première connexion. Ensuit
    activez-en un et choisissez le modèle par défaut. Pour essayer sans fournisseur :
    `openai/mock-model` avec `api_base` = `http://mock-llm:4010/v1` (profil `dev`).
 2. **Invitations** : invitez vos collègues par email, ou créez leurs comptes dans **Utilisateurs**.
-3. **Accueil** : écrivez votre demande à Pi. Pour travailler sur un dépôt, configurez une forge dans
+3. **Accueil** : écrivez votre demande à l'agent. Pour travailler sur un dépôt, configurez une forge dans
    **Administration → Forges Git**, rattachez votre compte (**Paramètres → Git**), puis choisissez
    le dépôt sous la zone de saisie.
 
@@ -280,7 +282,7 @@ Sans eux, les suites concernées s'ignorent.
 - **Démonstration en ligne** : `pnpm docs:build:demo` construit le site de documentation avec une
   démo de l'application, publiée dans `demo/` et accessible par le bouton « Essayer la démo ».
   Elle fonctionne sans serveur : l'API est simulée dans le navigateur (conversations d'exemple,
-  réponses de Pi simulées, administration en lecture seule) et rien n'est enregistré. La démo
+  réponses de l'agent simulées, administration en lecture seule) et rien n'est enregistré. La démo
   seule : `pnpm --filter web build:demo` (dans `apps/web/dist/demo`, publiable dans n'importe
   quel dossier). Son code (`apps/web/src/app/demo`) n'entre pas dans la version normale.
 - **Guides d'exploitation** : [`docs/operations`](docs/operations)

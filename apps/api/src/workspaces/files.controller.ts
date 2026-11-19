@@ -171,7 +171,7 @@ export class FilesController {
       .select({ id: agentRuns.id })
       .from(agentRuns)
       .where(and(eq(agentRuns.workspaceId, id), eq(agentRuns.status, 'running')));
-    if (run) throw new AppError('workspace_busy', 'Pi est en cours d’exécution : attendez la fin du run pour éditer');
+    if (run) throw new AppError('workspace_busy', 'L’agent est en cours d’exécution : attendez la fin du run pour éditer');
     const r = await this.rpc.call<{ conflict: boolean; etag?: string; currentEtag?: string | null; generation?: number }>({
       op: 'file.write',
       workspaceId: id,
@@ -180,7 +180,7 @@ export class FilesController {
       ifMatch: expected,
       userId: user.id,
     });
-    if (r.conflict) throw new AppError('edit_conflict', 'Le fichier a été modifié entre-temps (par Pi ou une autre session)', { currentEtag: r.currentEtag });
+    if (r.conflict) throw new AppError('edit_conflict', 'Le fichier a été modifié entre-temps (par l’agent ou une autre session)', { currentEtag: r.currentEtag });
     res.setHeader('ETag', `"${r.etag}"`);
     await this.audit.record({ actorId: user.id, action: 'file.write', targetType: 'workspace', targetId: id, metadata: { path: body.path, size: body.content.length } });
     return { etag: r.etag, generation: r.generation };

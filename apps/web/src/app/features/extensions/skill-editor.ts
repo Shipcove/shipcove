@@ -33,7 +33,7 @@ interface TreeNode {
 
 const TEMPLATE = (name: string) => `---
 name: ${name}
-description: ${t('Ce que fait ce skill et quand l’utiliser (Pi s’appuie sur cette phrase pour le choisir).')}
+description: ${t('Ce que fait ce skill et quand l’utiliser (l’agent s’appuie sur cette phrase pour le choisir).')}
 ---
 
 # ${name}
@@ -44,7 +44,7 @@ description: ${t('Ce que fait ce skill et quand l’utiliser (Pi s’appuie sur 
 
 ## ${t('Ressources')}
 
-${t('Les fichiers markdown annexes (dossier `references/` par exemple) sont lus par Pi à la demande.')}
+${t('Les fichiers markdown annexes (dossier `references/` par exemple) sont lus par l’agent à la demande.')}
 `;
 
 /**
@@ -87,7 +87,7 @@ ${t('Les fichiers markdown annexes (dossier `references/` par exemple) sont lus 
         <div class="ml-auto flex flex-wrap items-center gap-2">
           @if (detail(); as d) {
             @if (d.skill.status === 'published') {
-              <label class="flex cursor-pointer items-center gap-2 text-sm" [title]="d.skill.enabledForMe ? t('Pi peut utiliser ce skill') : t('Pi n’utilise pas ce skill')">
+              <label class="flex cursor-pointer items-center gap-2 text-sm" [title]="d.skill.enabledForMe ? t('L’agent peut utiliser ce skill') : t('L’agent n’utilise pas ce skill')">
                 <input type="checkbox" class="peer sr-only" [checked]="d.skill.enabledForMe" (change)="toggleEnabled()" />
                 <span class="relative h-5 w-9 rounded-full bg-stone-300 transition-colors peer-checked:bg-emerald-600 peer-focus-visible:ring-2 peer-focus-visible:ring-accent-500 after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4 dark:bg-stone-700"></span>
                 {{ d.skill.enabledForMe ? t('Activé') : t('Désactivé') }}

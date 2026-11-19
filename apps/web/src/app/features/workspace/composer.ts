@@ -22,8 +22,8 @@ const EFFORTS: Array<{ id: ThinkingLevel; label: string }> = [
 ];
 
 const MODES: Array<{ id: AgentMode; label: string; description: string }> = [
-  { id: 'autonomous', label: t('Autonome'), description: t('Pi lit, modifie et exécute librement dans sa sandbox') },
-  { id: 'plan', label: t('Plan'), description: t('Lecture seule : Pi explore et propose un plan sans rien modifier') },
+  { id: 'autonomous', label: t('Autonome'), description: t('L’agent lit, modifie et exécute librement dans sa sandbox') },
+  { id: 'plan', label: t('Plan'), description: t('Lecture seule : l’agent explore et propose un plan sans rien modifier') },
 ];
 
 /** Commandes de la plateforme, proposées avant les skills. */
@@ -136,7 +136,7 @@ const TOP_MODELS = 4;
               </span>
             }
             <textarea #textarea class="block h-9 max-h-60 min-w-40 flex-1 resize-none overflow-y-auto bg-transparent px-2 py-1.5 text-[0.95rem] leading-6 placeholder:text-stone-400 focus:outline-none" rows="1"
-              [placeholder]="selectedSkills().length ? t('Ajoutez vos instructions (facultatif)') : store.draft ? t('Décrivez ce que Pi doit faire…') : running() ? t('Message mis en file d’attente jusqu’à la fin de la tâche en cours…') : t('Tapez / pour les commandes.')" [(ngModel)]="text" name="text"
+              [placeholder]="selectedSkills().length ? t('Ajoutez vos instructions (facultatif)') : store.draft ? t('Décrivez ce que l’agent doit faire…') : running() ? t('Message mis en file d’attente jusqu’à la fin de la tâche en cours…') : t('Tapez / pour les commandes.')" [(ngModel)]="text" name="text"
               (ngModelChange)="onTextChange()" (keydown)="onKey($event)" (paste)="onPaste($event)" [disabled]="!store.isOwner()" [attr.aria-label]="t('Message')"
               role="combobox" aria-autocomplete="list" aria-controls="slash-listbox" [attr.aria-expanded]="menu() === 'slash'"
               [attr.aria-activedescendant]="menu() === 'slash' && slashFiltered().length ? 'slash-opt-' + slashActive() : null"></textarea>
@@ -595,7 +595,7 @@ export class Composer {
       return;
     }
     this.lastEscapeAt = now;
-    this.toast.show(t('Appuyez de nouveau sur Échap pour arrêter Pi'), 'info', 1500);
+    this.toast.show(t('Appuyez de nouveau sur Échap pour arrêter l’agent'), 'info', 1500);
   }
 
   protected async interrupt() {

@@ -254,7 +254,7 @@ I checked the rendering in the browser (screenshot above) and pushed the \`feat/
   const approvals: ApprovalDto[] = [
     {
       id: 'appr-1', workspaceId: w.id, action: 'push', status: 'consumed', requestedBy: 'agent', toolCallId: pushTool.id, repository: 'acme/landing', target: 'feat/dark-mode', commitSha: '4f2a9c1',
-      commits: [{ sha: '4f2a9c1', subject: L('feat: mode sombre et bouton de bascule', 'feat: dark mode and theme toggle'), author: 'Pi' }],
+      commits: [{ sha: '4f2a9c1', subject: L('feat: mode sombre et bouton de bascule', 'feat: dark mode and theme toggle'), author: 'Shipcove' }],
       diffStat: ' index.html     |  3 ++-\n src/styles.css | 15 +++++++++++++++\n src/theme.js   | 11 +++++++++++\n 3 files changed, 28 insertions(+), 1 deletion(-)',
       patchPreview: null, title: null, body: null, expiresAt: ago(t0 - 66), decidedAt: ago(t0 - 6), decidedBy: ME.id, createdAt: ago(t0 - 6),
       operation: { id: 'op-1', status: 'succeeded', result: L('feat/dark-mode publiée (4f2a9c1)', 'feat/dark-mode pushed (4f2a9c1)') },
@@ -380,7 +380,7 @@ export const MCP: McpServerDto[] = [
 ];
 
 export const NOTIFICATIONS: NotificationDto[] = [
-  { id: 'n1', type: 'run.completed', title: L('Tâche terminée dans « Mode sombre de la landing page »', 'Task finished in “Dark mode for the landing page”'), body: L('Pi a terminé son exécution.', 'Pi has finished running.'), link: '/workspaces/w-landing', readAt: null, createdAt: ago(88) },
+  { id: 'n1', type: 'run.completed', title: L('Tâche terminée dans « Mode sombre de la landing page »', 'Task finished in “Dark mode for the landing page”'), body: L('L’agent a terminé son exécution.', 'The agent has finished running.'), link: '/workspaces/w-landing', readAt: null, createdAt: ago(88) },
   { id: 'n2', type: 'approval.required', title: L('Approbation Git requise', 'Git approval required'), body: L('Push de feat/dark-mode vers acme/landing', 'Push feat/dark-mode to acme/landing'), link: '/workspaces/w-landing', readAt: ago(87), createdAt: ago(89) },
   { id: 'n3', type: 'security', title: L('Double authentification activée', 'Two-factor authentication enabled'), body: L('Le TOTP a été configuré sur votre compte.', 'TOTP has been set up on your account.'), link: null, readAt: ago(60 * 24 * 30), createdAt: ago(60 * 24 * 30) },
 ];
