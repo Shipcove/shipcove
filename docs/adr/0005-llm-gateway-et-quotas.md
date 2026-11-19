@@ -48,3 +48,18 @@ conversations, aucun plafond collectif (voir ADR 0015). Les titres automatiques 
 - **Liste blanche** par modèle (`allowed_user_ids`, vide = tous), appliquée à `/models`, à la
   création et aux messages des conversations, à la configuration de Pi dans la sandbox et à la
   passerelle LLM.
+
+## Révision (2026-11-19) : admission sur le consommé, estimation de sortie plafonnée
+
+Constat : Pi envoie toujours `max_tokens` = sortie maximale du modèle. La réservation de ce plafond,
+ajoutée au consommé, dépassait le reste disponible : l'appel était refusé (402) et l'agent suspendu
+alors que l'interface affichait, par exemple, 27 % de la fenêtre utilisés.
+
+- **Admission** : un appel est refusé seulement si la fenêtre est déjà épuisée
+  (`ledger + réservations ouvertes ≥ limite`), comme pour la reprise d'un run (`canProceed`).
+  Le dépassement possible est borné au coût réel des appels en cours ; il est préféré à un refus
+  incompréhensible pour l'utilisateur.
+- **Estimation de sortie** : `min(max_tokens, maxOutputTokens du modèle, defaultOutputReservation)`.
+  Le réglage devient le plafond des tokens de sortie réservés par appel ; la régularisation débite
+  toujours l'usage réel. Les réservations ouvertes (et le pourcentage affiché, qui les inclut)
+  restent ainsi réalistes, y compris avec des sous-agents en parallèle.

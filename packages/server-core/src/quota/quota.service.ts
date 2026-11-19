@@ -110,8 +110,13 @@ export class QuotaService {
           for (const w of WINDOWS) {
             const limit = w.key === '5h' ? userLimits.limit5h : userLimits.limit7d;
             if (limit === null) continue;
+            // Admission sur ce qui est déjà consommé ou engagé (ledger + réservations ouvertes) :
+            // tant que la fenêtre n'est pas épuisée, l'appel passe, même si son estimation (plafond
+            // de sortie compris) dépasse le reste. Sinon, l'agent serait suspendu avec un quota
+            // affiché bien en dessous de 100 %. Le dépassement possible est borné au coût réel des
+            // appels en cours ; la règle est la même que celle de la reprise (`canProceed`).
             const used = await this.usedInWindow(tx, 'user', input.userId, w.ms);
-            if (used.add(amount).gt(limit)) {
+            if (used.gte(limit)) {
               return { rejected: new QuotaExceededError(w.key, await this.resetsAt(tx, 'user', input.userId, w.ms)), litellmModel: model.litellmModel, coefficientId: coeff.id };
             }
           }

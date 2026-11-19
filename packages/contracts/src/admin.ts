@@ -123,7 +123,10 @@ export const PlatformSettingsSchema = z.object({
   quotas: z
     .object({
       enabled: z.boolean().default(true),
-      /** Estimation de sortie réservée quand `max_tokens` n'est pas fourni. */
+      /**
+       * Tokens de sortie réservés par appel (plafond de l'estimation, même si `max_tokens` est plus
+       * grand) ; l'usage réel est débité à la fin de l'appel.
+       */
       defaultOutputReservation: z.number().int().min(256).max(200_000).default(8192),
       /** Politique si l'usage reste inconnu après réconciliation. */
       unknownUsagePolicy: z.enum(['charge_estimate_input', 'charge_nothing_flag']).default('charge_estimate_input'),

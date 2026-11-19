@@ -31,7 +31,7 @@ const LABELS: Record<string, string> = {
   maxPortsPerWorkspace: t('Ports de preview simultanés par workspace'),
   allowedPorts: t('Ports autorisés pour les previews (un port ou une plage par ligne, ex. 3000-9999)'),
   enabled: t('Activé'),
-  defaultOutputReservation: t('Réservation de sortie par défaut (tokens)'),
+  defaultOutputReservation: t('Tokens de sortie réservés par appel (plafond)'),
   unknownUsagePolicy: t('Usage inconnu après réconciliation'),
   maxFileMb: t('Taille max par fichier (Mo)'),
   maxFilesPerMessage: t('Fichiers par message'),

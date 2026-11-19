@@ -952,7 +952,7 @@ export const en: Record<string, string> = {
   "Exclusions supplémentaires des checkpoints (motifs, un par ligne)": "Additional checkpoint exclusions (patterns, one per line)",
   "Ports de preview simultanés par workspace": "Concurrent preview ports per workspace",
   "Ports autorisés pour les previews (un port ou une plage par ligne, ex. 3000-9999)": "Allowed preview ports (one port or range per line, e.g. 3000-9999)",
-  "Réservation de sortie par défaut (tokens)": "Default output reservation (tokens)",
+  "Tokens de sortie réservés par appel (plafond)": "Output tokens reserved per call (cap)",
   "Usage inconnu après réconciliation": "Unknown usage after reconciliation",
   "Taille max par fichier (Mo)": "Max size per file (MB)",
   "Fichiers par message": "Files per message",

@@ -67,9 +67,20 @@ describe('QuotaService (intégration PostgreSQL)', () => {
   it('quota personnel : un compteur par personne, sans plafond d’équipe', async () => {
     await db.insert(quotaPolicies).values({ scope: 'user', subjectId: userId, limit5h: '3', limit7d: null });
     await svc.reserve(reserveInput());
+    // 2 crédits engagés sur 3 : la fenêtre n'est pas épuisée, l'appel suivant passe…
+    await svc.reserve(reserveInput());
+    // … puis 4 ≥ 3 : refus.
     await expect(svc.reserve(reserveInput())).rejects.toMatchObject({ window: '5h' });
     // Une politique d'équipe active est refusée par la base.
     await expect(db.insert(quotaPolicies).values({ scope: 'team' as never, subjectId: userId, limit5h: '1', limit7d: null })).rejects.toThrow();
+  });
+
+  it('admet un appel dont l’estimation dépasse le reste tant que la fenêtre n’est pas épuisée', async () => {
+    await db.insert(quotaPolicies).values({ scope: 'user', subjectId: userId, limit5h: '10', limit7d: '100' });
+    await svc.adjust({ userId, amount: '2.7', reason: 'test', actorId: userId, idempotencyKey: 't' });
+    // 27 % consommés, appel estimé à 50 crédits : admis (le refus ne dépend que du consommé).
+    await expect(svc.reserve({ ...reserveInput(), estimatedInputTokens: 25_000, estimatedOutputTokens: 25_000 })).resolves.toBeDefined();
+    expect((await svc.canProceed(userId)).ok).toBe(false);
   });
 
   it('respecte exemptions et désactivation', async () => {
