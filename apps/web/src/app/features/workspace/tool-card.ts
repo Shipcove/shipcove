@@ -7,7 +7,7 @@ import { AskForm } from './ask-form';
 import { SharedFiles } from './shared-files';
 import { ApprovalCard } from './approval-card';
 import { ScreenshotStrip } from './screenshot-strip';
-import { SubagentsView, subagentsOf } from './subagents-view';
+import { SubagentsLine, SubagentsView, subagentsOf } from './subagents-view';
 import { t } from '../../core/i18n';
 
 /** Outils de Pi qui créent une demande d'approbation Git (affichée sous l'appel). */
@@ -39,7 +39,7 @@ export function toolSummary(call: ToolCallDto): string {
  */
 @Component({
   selector: 'cap-tool-card',
-  imports: [Icon, CodeBlock, AskForm, SharedFiles, ApprovalCard, ScreenshotStrip, SubagentsView],
+  imports: [Icon, CodeBlock, AskForm, SharedFiles, ApprovalCard, ScreenshotStrip, SubagentsView, SubagentsLine],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (call().toolName === 'ask_user') {
@@ -47,7 +47,8 @@ export function toolSummary(call: ToolCallDto): string {
     } @else if (call().toolName === 'share_files') {
       <cap-shared-files [call]="call()" />
     } @else if (call().toolName === 'subagent') {
-      <cap-subagents-view [call]="call()" />
+      <!-- Volet des sous-agents à côté de la conversation : une ligne ; sinon la carte complète. -->
+      @if (store.subagentDocked()) { <cap-subagents-line [call]="call()" /> } @else { <cap-subagents-view [call]="call()" /> }
     } @else {
     <div class="my-1.5 min-w-0 overflow-hidden rounded-lg border border-stone-200 bg-stone-50 text-sm dark:border-stone-800 dark:bg-stone-900/70">
       <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-stone-100 dark:hover:bg-stone-800/70" (click)="open.set(!open())" [attr.aria-expanded]="open()">
@@ -111,7 +112,7 @@ export class ToolCard {
     // Les fichiers du projet d'abord, l'intérieur de .git ensuite.
     return [...files].sort((a, b) => Number(a.includes('/.git/') || a.startsWith('.git/')) - Number(b.includes('/.git/') || b.startsWith('.git/'))).slice(0, 12);
   });
-  private readonly store = inject(WorkspaceStore);
+  protected readonly store = inject(WorkspaceStore);
   protected readonly images = computed(() => this.call().images ?? []);
   /** Demande d'approbation créée par cet appel (outils `platform_*` Git). */
   protected readonly approval = computed(() => (APPROVAL_TOOLS.has(this.call().toolName) ? (this.store.approvals().find((a) => a.toolCallId === this.call().id) ?? null) : null));

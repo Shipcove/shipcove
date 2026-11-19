@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import type { ToolCallDto } from '@cap/contracts';
 import { Icon } from '../../shared/icon';
 import { CodeBlocksDirective, MarkdownPipe } from '../../shared/pipes';
 import { t } from '../../core/i18n';
+import { WorkspaceStore } from './workspace.store';
 
 export type SubagentStatus = 'queued' | 'running' | 'completed' | 'failed' | 'aborted';
 
@@ -46,6 +47,16 @@ export function subagentsOf(call: ToolCallDto): SubagentView[] {
   return agents.map((a) => (a.status === 'running' || a.status === 'queued' ? { ...a, status: call.status === 'completed' ? 'completed' : 'aborted' } : a));
 }
 
+/** Résumé d'un appel : avancement pendant le travail, nombre de sous-agents ensuite. */
+export function subagentsHeadline(call: ToolCallDto): string {
+  const all = subagentsOf(call);
+  const running = all.filter((a) => a.status === 'running').length;
+  const done = all.filter((a) => a.status !== 'running' && a.status !== 'queued').length;
+  if (call.status === 'running') return t('{done}/{total} terminé(s), {running} en cours', { done, total: all.length, running });
+  const failed = all.filter((a) => a.status === 'failed').length;
+  return failed ? t('{n} sous-agent(s), {failed} en échec', { n: all.length, failed }) : t('{n} sous-agent(s) terminé(s)', { n: all.length });
+}
+
 /**
  * Carte des sous-agents : une ligne par sous-agent (statut, mode, nombre d'actions, durée), ses
  * dernières étapes pendant qu'il travaille et, une fois terminé, son compte rendu en dépliant la ligne.
@@ -55,7 +66,8 @@ export function subagentsOf(call: ToolCallDto): SubagentView[] {
   imports: [Icon, MarkdownPipe, CodeBlocksDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="my-1.5 min-w-0 overflow-hidden rounded-lg border border-stone-200 bg-stone-50 text-sm dark:border-stone-800 dark:bg-stone-900/70">
+    <div class="min-w-0 text-sm" [class]="docked() ? '' : 'my-1.5 overflow-hidden rounded-lg border border-stone-200 bg-stone-50 dark:border-stone-800 dark:bg-stone-900/70'">
+      @if (!docked()) {
       <div class="flex items-center gap-2 px-3 py-1.5">
         <cap-icon name="agents" [size]="14" class="text-stone-500" />
         <span class="font-medium">{{ t('Sous-agents') }}</span>
@@ -64,7 +76,8 @@ export function subagentsOf(call: ToolCallDto): SubagentView[] {
           <span class="ml-auto h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent-500" [attr.aria-label]="t('En cours')"></span>
         }
       </div>
-      <ul class="divide-y divide-stone-200 border-t border-stone-200 dark:divide-stone-800 dark:border-stone-800">
+      }
+      <ul class="divide-y divide-stone-200 border-stone-200 dark:divide-stone-800 dark:border-stone-800" [class.border-t]="!docked()" [class.border-b]="docked()">
         @for (a of agents(); track $index; let i = $index) {
           <li>
             <button
@@ -94,7 +107,7 @@ export function subagentsOf(call: ToolCallDto): SubagentView[] {
             </button>
             @if (a.status === 'running' && a.steps.length && !isOpen(i, a)) {
               <ol class="space-y-0.5 px-3 pb-2 pl-8">
-                @for (s of a.steps.slice(-3); track $index) {
+                @for (s of a.steps.slice(docked() ? -5 : -3); track $index) {
                   <li class="flex min-w-0 items-center gap-1.5 text-xs text-stone-500">
                     <span class="shrink-0 font-medium text-stone-600 dark:text-stone-400">{{ s.tool }}</span>
                     <span class="truncate font-mono">{{ s.summary }}</span>
@@ -136,16 +149,12 @@ export function subagentsOf(call: ToolCallDto): SubagentView[] {
 export class SubagentsView {
   protected readonly t = t;
   readonly call = input.required<ToolCallDto>();
+  /** Affichage dans le volet du panneau latéral (sans cadre ni en-tête, plus d'étapes). */
+  readonly docked = input(false);
   /** Lignes ouvertes ou fermées par l'utilisateur (sinon : ouverte s'il n'y a qu'un sous-agent terminé). */
   private readonly toggled = signal<Record<number, boolean>>({});
   protected readonly agents = computed(() => subagentsOf(this.call()));
-  protected readonly headline = computed(() => {
-    const all = this.agents();
-    const running = all.filter((a) => a.status === 'running').length;
-    const done = all.filter((a) => a.status !== 'running' && a.status !== 'queued').length;
-    if (this.call().status === 'running') return t('{done}/{total} terminé(s), {running} en cours', { done, total: all.length, running });
-    return t('{n} sous-agent(s)', { n: all.length });
-  });
+  protected readonly headline = computed(() => subagentsHeadline(this.call()));
 
   protected expandable(a: SubagentView): boolean {
     return !!(a.output || a.error || a.steps.length);
@@ -167,4 +176,74 @@ export class SubagentsView {
     const ms = a.endedAt - a.startedAt;
     return ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))} s` : `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s`;
   }
+}
+
+/**
+ * Ligne d'un appel `subagent` dans la conversation quand le volet des sous-agents est affiché à
+ * côté : avancement et bouton « Voir », qui ouvre le volet sur cet appel.
+ */
+@Component({
+  selector: 'cap-subagents-line',
+  imports: [Icon],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <div class="my-1.5 flex min-w-0 items-center gap-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm dark:border-stone-800 dark:bg-stone-900/70">
+      <cap-icon name="agents" [size]="14" class="shrink-0 text-stone-500" />
+      <span class="shrink-0 font-medium">{{ t('Sous-agents') }}</span>
+      <span class="truncate text-xs text-stone-500">{{ headline() }}</span>
+      @if (call().status === 'running') { <span class="h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent-500" [attr.aria-label]="t('En cours')"></span> }
+      <button class="btn-ghost ml-auto shrink-0 !px-2 !py-0.5 text-xs" [class.text-accent-700]="shown()" [class.dark:text-accent-400]="shown()" (click)="store.showSubagents(call().id)"
+        [attr.aria-pressed]="shown()">{{ shown() ? t('Affiché') : t('Voir') }}</button>
+    </div>
+  `,
+})
+export class SubagentsLine {
+  protected readonly t = t;
+  protected readonly store = inject(WorkspaceStore);
+  readonly call = input.required<ToolCallDto>();
+  protected readonly headline = computed(() => subagentsHeadline(this.call()));
+  protected readonly shown = computed(() => {
+    const p = this.store.subagentPane();
+    return p?.toolCallId === this.call().id && !p.collapsed;
+  });
+}
+
+/**
+ * Volet « Sous-agents » dans la moitié basse du panneau latéral : il s'ouvre à chaque vague de
+ * sous-agents, reste ouvert une fois leur travail terminé et se replie en barre (▾) ou se ferme (✕).
+ */
+@Component({
+  selector: 'cap-subagents-pane',
+  imports: [Icon, SubagentsView],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { class: 'flex min-h-0 flex-col' },
+  template: `
+    @if (call(); as c) {
+      <div class="flex shrink-0 items-center gap-2 border-b border-stone-200 px-3 py-1.5 text-sm dark:border-stone-800">
+        <button class="flex min-w-0 flex-1 items-center gap-2 text-left" (click)="store.setSubagentsCollapsed(!collapsed())" [attr.aria-expanded]="!collapsed()">
+          <cap-icon name="agents" [size]="14" class="shrink-0 text-stone-500" />
+          <span class="shrink-0 font-medium">{{ t('Sous-agents') }}</span>
+          <span class="truncate text-xs text-stone-500">{{ headline() }}</span>
+          @if (c.status === 'running') { <span class="h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent-500" [attr.aria-label]="t('En cours')"></span> }
+        </button>
+        <button class="btn-ghost shrink-0 !p-1" (click)="store.setSubagentsCollapsed(!collapsed())" [attr.aria-label]="collapsed() ? t('Déplier') : t('Replier')" [title]="collapsed() ? t('Déplier') : t('Replier')">
+          <cap-icon [name]="collapsed() ? 'chevronRight' : 'chevronDown'" [size]="14" />
+        </button>
+        <button class="btn-ghost shrink-0 !p-1" (click)="store.closeSubagents()" [attr.aria-label]="t('Fermer le volet des sous-agents')" [title]="t('Fermer')"><cap-icon name="x" [size]="14" /></button>
+      </div>
+      @if (!collapsed()) {
+        <div class="min-h-0 flex-1 overflow-y-auto"><cap-subagents-view [call]="c" [docked]="true" /></div>
+      }
+    }
+  `,
+})
+export class SubagentsPane {
+  protected readonly t = t;
+  protected readonly store = inject(WorkspaceStore);
+  protected readonly call = this.store.subagentCall;
+  protected readonly collapsed = computed(() => this.store.subagentPane()?.collapsed ?? false);
+  protected readonly headline = computed(() => {
+    const c = this.call();
+    return c ? subagentsHeadline(c) : '';
+  });
 }

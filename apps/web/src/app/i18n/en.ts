@@ -1085,5 +1085,12 @@ export const en: Record<string, string> = {
   "Étapes ({n})": "Steps ({n})",
   "Aucun compte rendu.": "No report.",
   "{done}/{total} terminé(s), {running} en cours": "{done}/{total} done, {running} running",
-  "{n} sous-agent(s)": "{n} sub-agent(s)",
+  "{n} sous-agent(s), {failed} en échec": "{n} sub-agent(s), {failed} failed",
+  "{n} sous-agent(s) terminé(s)": "{n} sub-agent(s) done",
+  "Affiché": "Shown",
+  "Voir": "View",
+  "Déplier": "Expand",
+  "Replier": "Collapse",
+  "Fermer le volet des sous-agents": "Close the sub-agents pane",
+  "Redimensionner le volet des sous-agents": "Resize the sub-agents pane",
 };
