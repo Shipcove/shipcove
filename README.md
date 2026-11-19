@@ -1,327 +1,184 @@
-<p align="center"><img src="docs/brand/shipcove-logo.svg" width="96" height="96" alt="" /></p>
-
 # Shipcove
 
-> *Build in a safe cove. Ship with confidence.*
+<p align="center">
+  <img src="docs/brand/shipcove-logo.svg" alt="Shipcove logo: two sails on a wave" width="120">
+</p>
 
-Plateforme **auto-hébergeable** de coding agents pour équipes et entreprises.
+<p align="center">
+  <a href="https://github.com/Shipcove/shipcove/actions/workflows/ci.yml"><img src="https://github.com/Shipcove/shipcove/actions/workflows/ci.yml/badge.svg" alt="Image build status"></a>
+  <a href="https://github.com/Shipcove/shipcove/tags"><img src="https://img.shields.io/github/v/tag/Shipcove/shipcove?label=version&amp;color=blue&amp;sort=semver" alt="Latest version tag"></a>
+  <a href="https://github.com/orgs/Shipcove/packages"><img src="https://img.shields.io/badge/container-GHCR-2496ED?logo=docker&amp;logoColor=white" alt="Container images on GitHub Container Registry"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-orange" alt="License: AGPL v3"></a>
+</p>
 
-L'agent de code travaille dans une **sandbox éphémère et isolée** :
-il lit, modifie et teste le code. Son état est **sauvegardé en continu sur S3**, et les modèles
-passent par **LiteLLM**. Les secrets sont dans **Vault**. L'agent utilise `git`, `gh` et `glab` en
-autonomie, sans jamais voir le jeton de l'utilisateur. Toucher à la branche par défaut, fusionner ou
-supprimer exige une **approbation humaine**.
+**A self-hosted coding agent platform for your teams.** Shipcove gives every developer an AI agent that works in an isolated, disposable sandbox: it reads, edits and tests the code, pushes its branches and opens pull requests on its own, and asks a human before anything irreversible. Models go through your own LLM gateway, secrets stay in Vault, and every conversation is saved continuously to your S3 bucket.
 
-> Documentation complète (démarrage rapide, guides, exploitation) : `pnpm docs:dev`, puis
-> <http://localhost:5174>. Le site est dans [`apps/docs-site`](apps/docs-site).
+*Build in a safe cove. Ship with confidence.*
 
----
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="docs/images/conversation.png" alt="A Shipcove conversation: the agent's steps, a screenshot it took, an approved Git push, and the git diff of its changes" width="100%"></td>
+    <td width="50%" align="center"><img src="docs/images/admin-models.png" alt="Shipcove administration: models discovered from LiteLLM, with access, default model and credit coefficients" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Conversation: the agent's work, screenshots, approvals and git diff</sub></td>
+    <td align="center"><sub>Administration: models, access and costs</sub></td>
+  </tr>
+</table>
 
-## Sommaire
+## Why Shipcove
 
-- [Fonctionnalités](#fonctionnalités)
-- [Architecture](#architecture)
-- [Démarrage rapide](#démarrage-rapide)
-- [Configuration](#configuration)
-- [Développement](#développement)
-- [Tests](#tests)
-- [Sécurité](#sécurité)
-- [Documentation](#documentation)
-- [État du projet et limites](#état-du-projet-et-limites)
-- [Licence](#licence)
+- **The agent works, your infrastructure stays safe.** Each conversation runs in its own hardened sandbox: unprivileged user, no route to the internet or to the backend, egress only through an allowlist proxy.
+- **Git without handing out tokens.** The agent uses `git`, `gh` and `glab` as usual, but never sees a forge token: the gateway swaps in the user's OAuth token on the fly. Pushing to the default branch, merging or deleting waits for a human to approve the exact operation.
+- **Nothing gets lost.** Sandbox state is checkpointed to S3 after every change. A sandbox can go to sleep or crash; the conversation picks up where it left off, and any message can be rewound.
+- **Your models, your rules.** Any provider behind LiteLLM, with per-user quotas over rolling 5-hour and 7-day windows, allowlists and versioned credit costs.
+- **Fits into your company.** Local accounts with TOTP, OIDC/Keycloak, SAML 2.0, LDAP/Active Directory, audit log, data retention with legal hold, French and English interface.
+- **Runs where you run.** Docker Compose for a single host, a Helm chart for Kubernetes.
 
-## Fonctionnalités
+## Features
 
-**Pour les développeurs**
+| | |
+| --- | --- |
+| **Conversations** | Streamed replies and tool calls, interruption (button or Esc twice), queued messages, model and reasoning effort per conversation, *Plan* mode with read-only tools, run duration, automatic titles. Rewind to the state before any message, and undo the rewind. |
+| **The agent's work** | A live **plan** for complex tasks, questions asked through forms when a decision is yours, **screenshots** of the running app taken on its own, files offered for **download**, previews of web servers on a separate domain. |
+| **Git** | Repositories on GitHub or GitLab (cloud or self-managed), linked through OAuth. Working-branch selector and **git diff** next to the conversation. Branches, pull/merge requests, CI and reviews handled by the agent; protected operations approved **inline in the conversation**. Commits can credit Shipcove as co-author (address set by administrators). |
+| **Sandboxes** | Docker or Kubernetes, CPU/memory/process limits, idle shutdown, a **startup script** set by administrators (private registries, mirrors, tools), and backing **services** (PostgreSQL, Redis, RabbitMQ…) the agent starts on demand from an approved catalog. |
+| **Extensions** | **Skills** in markdown (folders, categories, editor with preview, .zip import and export) and **MCP** servers, both global and personal, with per-tool policies. |
+| **Collaboration** | Read-only sharing with named colleagues, revocable; in-app and email notifications. |
+| **Identity** | Built-in accounts with TOTP MFA and revocable sessions, OIDC/Keycloak, SAML 2.0, LDAP/Active Directory, GitHub and GitLab OAuth. Accounts are never merged by email address. |
+| **Models and quotas** | LiteLLM connection set from the console, automatic model discovery, default model, user allowlists, versioned coefficients, a dedicated model for titles. Personal quotas shown as percentages, with a reservation before each call. |
+| **Administration** | Full web console: users and invitations, identity providers, Git forges, models, quotas, sandboxes and images, services and registry mirrors, skills and MCP, SMTP and email templates, audit export, retention. |
+| **Security** | No forge token in the sandbox, secrets in Vault and redacted from outputs, a Docker guard as the only holder of the Docker socket, server-side sessions with `HttpOnly` cookies and CSRF protection, strict CSP, attachments checked by real type and, when configured, scanned by ClamAV (fail-closed). |
 
-- **Workspaces** sur un dépôt Git (GitHub, GitLab, en SaaS ou auto-hébergé) ou vierges, avec une
-  conversation par workspace.
-- **Conversation avec l'agent** :
-  - réponses et outils en flux continu ;
-  - interruption ;
-  - file d'attente des messages envoyés pendant une génération ;
-  - choix du modèle et de l'effort de raisonnement ;
-  - **mode Plan** (outils en lecture seule).
-- **Panneau « Modifications »** : diff de type Git des fichiers modifiés par l'agent (depuis le début
-  de la conversation, depuis le dernier run ou par rapport à Git), et explorateur de fichiers avec
-  éditeur Monaco.
-- **Revenir en arrière** : restaure les fichiers à l'état d'avant un message, à partir des
-  checkpoints, et peut s'annuler.
-- **Conversations** au centre : l'accueil est une nouvelle conversation, le dépôt Git est
-  facultatif (choisi sous la zone de saisie), le titre est généré automatiquement, la barre latérale
-  regroupe les conversations par dépôt puis par date.
-- **Script de démarrage des sandboxes** : un script unique défini par l'administrateur (registres
-  npm / pip, miroirs, outils), exécuté dans chaque nouvelle sandbox.
-- **Services d'appui à la demande** : l'agent lance lui-même PostgreSQL, Redis, RabbitMQ… sur le
-  `localhost` de sa sandbox, parmi un catalogue approuvé par l'administrateur.
-- **Git** : comptes rattachés par **OAuth**.
-  - L'agent pousse ses branches, ouvre des PR/MR, lit la CI et répond aux revues avec `git`, `gh` et
-    `glab`.
-  - Branche par défaut, branches protégées, fusion et suppression : uniquement après **approbation
-    de l'opération exacte** (commit figé).
-- **Questions de l'agent** : quand une décision vous revient, l'agent pose ses questions dans un formulaire
-  (choix unique ou multiple, réponse libre), y compris en mode Plan (plugin `ask`).
-- **Captures d'écran** : l'agent lance le projet et le photographie avec le Chromium de la sandbox
-  (plugin `browser`). Les captures s'affichent en miniatures dans la conversation et s'agrandissent
-  au clic.
-- **Previews** des applications lancées dans la sandbox, sur un domaine distinct et avec jeton.
-- **Pièces jointes** :
-  - type réel détecté ;
-  - archives inspectées sans être extraites ;
-  - antivirus ClamAV (si configuré), en échec fermé.
-- **Partage** nominatif en lecture seule, révocable.
-- **Notifications** dans l'application et par email.
-- **Skills** en markdown (dossiers, catégories gérées par les administrateurs, import et export .zip,
-  éditeur avec aperçu) et serveurs
-  **MCP**, sur deux portées : globale et personnelle.
+## Try it
 
-**Pour les administrateurs**
-
-- **IAM intégrée** : comptes locaux, MFA TOTP, sessions révocables. Également :
-  - **OIDC / Keycloak**, **SAML 2.0**, **LDAP / Active Directory** ;
-  - **OAuth GitHub / GitLab**, sans jamais fusionner deux comptes par leur email.
-- **LiteLLM** : connexion réglable dans l'administration (proxy existant possible), découverte
-  automatique des modèles, activation, modèle par défaut, liste blanche d'utilisateurs, coefficients
-  versionnés, modèle dédié aux titres automatiques.
-- **Quotas personnels** : fenêtres glissantes de 5 h et 7 j, un compteur par personne pour toutes
-  ses conversations. Ils sont présentés en **pourcentage** aux utilisateurs, et une réservation est faite
-  avant chaque appel.
-- **Forges Git** (applications OAuth), **catalogue d'images** et **catalogue de services**.
-- **Rétention** des données avec gel légal, **audit** exportable, console d'administration complète.
-
-## Architecture
-
-```
-Navigateur ── nginx (web) ──► API NestJS (×N) ──► PostgreSQL (état, files de jobs, LISTEN/NOTIFY)
-                                   │                Vault (secrets)   Garage/S3 (checkpoints, pièces jointes)
-                                   ▼
-                              Worker NestJS ──► sandboxes Docker (agent en RPC, réseau interne isolé)
-                                   │                     │  services d'appui (localhost de la sandbox)
-                                   ▼                     ▼
-                         Gateway (proxy LLM, egress filtré, lecture Git) ──► LiteLLM ──► fournisseurs
-                         Preview gateway (domaine distinct) ──► ports des sandboxes
-```
-
-| Composant | Rôle |
-|---|---|
-| `apps/web` | Interface Angular 22 (signals, zoneless) et Tailwind CSS 4, servie par nginx (CSP stricte). |
-| `apps/api` | API REST `/api/v1` (NestJS 12, OpenAPI), authentification, flux SSE, administration. |
-| `apps/worker` | Orchestration des runs de l'agent, sandboxes, checkpoints, broker Git, tâches de maintenance. |
-| `apps/gateway` | Proxy LLM (réservation et facturation des crédits), proxy de sortie filtré, lecture Git pour les sandboxes. |
-| `apps/preview` | Accès aux ports des sandboxes sur un domaine séparé, avec jeton. |
-| `packages/*` | Contrats Zod partagés, schéma Drizzle, sandbox (Docker / Kubernetes), stockage des checkpoints, secrets (Vault), runtime de l'agent (moteur [Pi](https://github.com/badlogic/pi-mono)), image de sandbox. |
-
-Les décisions structurantes sont décrites dans [`docs/adr`](docs/adr) (ADR 0001 à 0015), et le
-cahier des charges dans [`SPEC.md`](SPEC.md).
-
-## Démarrage rapide
-
-**Prérequis** :
-- Docker 24 ou plus, avec Compose v2 ;
-- `git` et `openssl` ;
-- 4 cœurs, 8 Go de RAM et 30 Go de disque au minimum.
-
-Les images sont publiées sur `ghcr.io/shipcove` (`shipcove-web`, `shipcove-api`, `shipcove-worker`,
-`shipcove-gateway`, `shipcove-preview`, `shipcove-docker-guard`, `shipcove-sandbox`).
-Elles sont construites et publiées par GitHub Actions (`.github/workflows/ci.yml`)
-**uniquement à la création d'un tag de version** : tag `vX.Y.Z` → étiquettes `X.Y.Z`, `X.Y` et
-`latest` (un tag de pré-version `vX.Y.Z-rc.N` ne publie que `X.Y.Z-rc.N`). Les pushes de branche
-et les pull requests ne construisent aucune image.
+The fastest way to see Shipcove is the **interactive demo**: the real interface, in your browser, with sample conversations and a simulated agent. No server needed.
 
 ```bash
-# Publier une version
+pnpm install
+pnpm docs:build:demo
+```
+
+This builds the documentation site with the demo inside (`apps/docs-site/dist`, demo under `demo/`). Serve that folder with any static web server and click **Try the demo**. Nothing is saved: reload to start over.
+
+## Quick start
+
+Requirements: Docker 24+ with Compose v2, `git` and `openssl`, and at least 4 cores, 8 GB of RAM and 30 GB of disk.
+
+The Compose setup below is for a trusted machine (plain HTTP). Before exposing it, read [Going to production](#current-limitations) and the [TLS guide](docs/operations/tls.md).
+
+```bash
+git clone https://github.com/Shipcove/shipcove.git
+cd shipcove/infrastructure/docker
+cp .env.example .env              # set CAP_REGISTRY=ghcr.io/shipcove/, CAP_VERSION, CAP_SANDBOX_IMAGE, CAP_ADMIN_PASSWORD, CAP_DOCKER_GID
+./scripts/init-secrets.sh         # bootstrap secrets in .secrets/ (never committed, back them up)
+docker compose pull
+docker pull ghcr.io/shipcove/shipcove-sandbox:0.1.0
+docker compose --profile dev up -d    # the dev profile adds Mailpit and a mock LLM provider
+```
+
+1. **Sign in.** Open http://localhost:8080 with `CAP_ADMIN_EMAIL` and `CAP_ADMIN_PASSWORD`. Administrators set up TOTP on first sign-in.
+2. **Add a model.** Declare models in LiteLLM (http://localhost:4000/ui, master key in `.secrets/litellm_master_key`) or connect an existing LiteLLM proxy in **Administration → Models**. Click **Reload models**, enable one and make it the default. To try without a provider, use `openai/mock-model` with `api_base` set to `http://mock-llm:4010/v1`.
+3. **Connect Git (optional).** Declare a forge in **Administration → Git forges**, then link your account in **Settings → Git connections**.
+4. **Start a conversation.** Write your request on the home page, and pick a repository under the input box if you want the agent to work on one.
+
+Emails sent in development land in Mailpit at http://localhost:8025.
+
+## How it works
+
+```text
+Browser ── nginx (web) ──► API (NestJS, ×N) ──► PostgreSQL (state, job queues, LISTEN/NOTIFY)
+                                │                Vault (secrets)   S3 / Garage (checkpoints, attachments)
+                                ▼
+                           Worker ──► sandboxes (agent over RPC, isolated internal network)
+                                │            │  backing services on the sandbox's localhost
+                                ▼            ▼
+                      Gateway (LLM proxy, filtered egress, Git access) ──► LiteLLM ──► providers
+                      Preview gateway (separate domain) ──► sandbox ports
+```
+
+- The **worker** starts a sandbox per conversation, restores its last checkpoint from S3, runs the startup script and drives the agent. Changes are checkpointed as they happen.
+- The **gateway** is the sandbox's only way out: LLM calls (with credit reservation and billing), allowlisted egress, and Git traffic, where the run token is replaced by the user's OAuth token.
+- The **API** serves the web app and streams the agent's events over SSE; several replicas can run behind the load balancer.
+- PostgreSQL, Vault and an S3-compatible bucket are required. Back them up together.
+
+| Component | Role |
+| --- | --- |
+| `apps/web` | Angular 22 interface (signals, zoneless) and Tailwind CSS 4, served by nginx with a strict CSP |
+| `apps/api` | REST API `/api/v1` (NestJS, OpenAPI), authentication, SSE, administration |
+| `apps/worker` | Agent runs, sandboxes, checkpoints, Git broker, maintenance jobs |
+| `apps/gateway` | LLM proxy, filtered egress proxy, Git access for sandboxes |
+| `apps/preview` | Token-protected access to sandbox ports on a separate domain |
+| `packages/*` | Shared Zod contracts, Drizzle schema, Docker and Kubernetes sandbox providers, checkpoint storage, Vault client, agent runtime (built on the open-source [Pi](https://github.com/badlogic/pi-mono) engine), sandbox image |
+
+Design decisions are recorded in [`docs/adr`](docs/adr) and the full specification is in [`SPEC.md`](SPEC.md) (both in French).
+
+## Configuration
+
+| Where | What |
+| --- | --- |
+| `infrastructure/docker/.env` | Public URL, ports, preview domain, sandbox image, API replicas, initial administrator |
+| `infrastructure/docker/.secrets/` | Bootstrap secrets (PostgreSQL, S3, LiteLLM, Vault AppRole), generated by `init-secrets.sh` |
+| Vault (`cap/…`) | Application secrets: LLM keys, SMTP, OAuth, MCP, Git tokens |
+| Administration console | Everything else: sign-in and MFA policy, identity providers, Git forges, models, quotas, sandboxes, images, services, skills and MCP, notifications, retention |
+
+Before exposing Shipcove on a network, put it behind TLS (the `tls` Compose profile does it with automatic certificates), set `CAP_COOKIE_SECURE=true`, and protect `.secrets/`, which holds the Vault unseal keys.
+
+## Documentation
+
+| For | Read |
+| --- | --- |
+| Using it | The documentation site in [`apps/docs-site`](apps/docs-site), in English and French: user guide, administration, architecture (`pnpm docs:dev`) |
+| Deploying it | [Docker Compose](docs/operations/docker-compose.md), [Kubernetes](docs/operations/kubernetes.md), [TLS](docs/operations/tls.md), [Vault](docs/operations/vault.md) |
+| Connecting it | [SSO (OIDC, SAML, LDAP)](docs/operations/sso.md), [Git forges](docs/operations/git-forges.md) |
+| Tuning sandboxes | [Startup script](docs/operations/sandbox-startup.md), [Backing services](docs/operations/services.md) |
+| Understanding it | [Architecture decisions](docs/adr), [Specification](SPEC.md), [Implementation plan](IMPLEMENTATION_PLAN.md) |
+
+Publishing the documentation: `pnpm docs:build` produces a static site in `apps/docs-site/dist`, ready for any web host (`DOCS_BASE=/docs/ pnpm docs:build` for a subfolder). `pnpm docs:build:demo` adds the interactive demo.
+
+## Deploying
+
+Images are published to GitHub Container Registry (`ghcr.io/shipcove/shipcove-web`, `-api`, `-worker`, `-gateway`, `-preview`, `-docker-guard`, `-sandbox`) for `linux/amd64`, **only when a version tag is pushed**: `vX.Y.Z` publishes `X.Y.Z`, `X.Y` and `latest`; a pre-release `vX.Y.Z-rc.N` publishes only its own tag.
+
+```bash
 git tag v0.3.0
 git push origin v0.3.0
 ```
 
-```bash
-# 1. Récupération de la pile Compose
-git clone https://github.com/Shipcove/shipcove.git
-cd shipcove/infrastructure/docker
+Pin a version in production. A Helm chart in [`infrastructure/helm/shipcove`](infrastructure/helm/shipcove) deploys the application and an isolated sandbox namespace (one Pod per sandbox and per backing service, NetworkPolicies, least-privilege worker); PostgreSQL, Vault, S3 and LiteLLM stay external. A full local setup on kind is in `infrastructure/kubernetes/dev/up.sh`.
 
-# 2. Configuration (aucun secret dans ce fichier)
-cp .env.example .env
-#    → CAP_REGISTRY=ghcr.io/shipcove/
-#    → CAP_VERSION=0.1.0
-#    → CAP_SANDBOX_IMAGE=ghcr.io/shipcove/shipcove-sandbox:0.1.0
-#    → CAP_ADMIN_PASSWORD : mot de passe de l'administrateur initial
-#    → CAP_DOCKER_GID     : groupe du socket Docker (stat -c %g /var/run/docker.sock)
+## Development
 
-# 3. Secrets d'amorçage (générés localement dans .secrets/, jamais versionnés)
-./scripts/init-secrets.sh
-
-# 4. Images de la plateforme et de la sandbox
-docker compose pull
-docker pull ghcr.io/shipcove/shipcove-sandbox:0.1.0
-
-# 5. Démarrage (le profil « dev » ajoute Mailpit et un fournisseur LLM factice)
-docker compose --profile dev up -d
-```
-
-### Kubernetes
-
-Un chart Helm (`infrastructure/helm/shipcove`) déploie l'application et le namespace isolé des
-sandboxes (un Pod par sandbox et par service d'appui, NetworkPolicies, droits limités du worker).
-PostgreSQL, Vault, S3 et LiteLLM restent externes ; un Job facultatif configure Vault (politiques,
-authentification Kubernetes). Guide : [`docs/operations/kubernetes.md`](docs/operations/kubernetes.md).
-Recette locale complète sur kind : `infrastructure/kubernetes/dev/up.sh`.
-
-**Depuis les sources** : avec Node.js 26 et pnpm 12.18, `pnpm install && pnpm images:build`
-construit les images localement (laisser `CAP_REGISTRY` vide et `CAP_SANDBOX_IMAGE=shipcove-sandbox:0.1.0`).
-
-Ouvrez <http://localhost:8080> et connectez-vous avec `CAP_ADMIN_EMAIL` / `CAP_ADMIN_PASSWORD`. La
-MFA (TOTP) est demandée aux administrateurs dès la première connexion. Ensuite :
-
-1. **Modèles** : déclarez vos modèles dans LiteLLM (interface <http://localhost:4000/ui>, clé maître
-   dans `.secrets/litellm_master_key`), ou branchez un proxy LiteLLM existant dans
-   **Administration → Modèles → Connexion à LiteLLM**. Cliquez sur **Recharger les modèles**, puis
-   activez-en un et choisissez le modèle par défaut. Pour essayer sans fournisseur :
-   `openai/mock-model` avec `api_base` = `http://mock-llm:4010/v1` (profil `dev`).
-2. **Invitations** : invitez vos collègues par email, ou créez leurs comptes dans **Utilisateurs**.
-3. **Accueil** : écrivez votre demande à l'agent. Pour travailler sur un dépôt, configurez une forge dans
-   **Administration → Forges Git**, rattachez votre compte (**Paramètres → Git**), puis choisissez
-   le dépôt sous la zone de saisie.
-
-Mailpit, qui reçoit les emails en développement, est accessible sur <http://localhost:8025>.
-
-## Configuration
-
-| Où | Quoi |
-|---|---|
-| `infrastructure/docker/.env` | URL publique, ports, domaine des previews, image de sandbox, nombre de répliques API, administrateur initial. |
-| `infrastructure/docker/.secrets/` | Secrets d'amorçage (PostgreSQL, Garage, LiteLLM, AppRole Vault), générés par `init-secrets.sh`. |
-| **Vault** (`cap/…`) | Secrets applicatifs : clés LLM, SMTP, OAuth, MCP, secrets de dépôt, jetons Git… |
-| **Console d'administration** | Tout le reste : connexion et MFA, fournisseurs d'identité, forges Git, modèles, quotas, sandboxes, images, services, skills et MCP, notifications, rétention. |
-
-**Avant une exposition sur un réseau** :
-- placez la plateforme derrière TLS et mettez `CAP_COOKIE_SECURE=true` ;
-- protégez `.secrets/`, qui contient les clés de déverrouillage de Vault.
-
-Les points à traiter pour la production sont listés dans
-[État du projet et limites](#état-du-projet-et-limites).
-
-## Développement
+Requires Node.js 26 and pnpm 12.18.
 
 ```bash
-pnpm dev:infra          # PostgreSQL, Vault, Garage, LiteLLM, Mailpit, LLM factice
-pnpm build              # tous les paquets
+pnpm install
+pnpm dev:infra          # PostgreSQL, Vault, Garage, LiteLLM, Mailpit, mock LLM
+pnpm build              # all packages
 pnpm typecheck && pnpm lint
-pnpm db:generate        # migration Drizzle après modification du schéma
-pnpm docs:dev           # site de documentation
+pnpm test               # unit and integration tests (Vitest)
+pnpm images:build       # build every image locally
 ```
 
-Le monorepo pnpm est en TypeScript 6 (ESM). Les contrats de l'API sont partagés entre le front et le
-back (`@cap/contracts`, Zod 4).
+End-to-end tests run against the real Compose stack: `cd tests/e2e && pnpm test`. They cover the stack, the interface (Playwright, strict CSP), Git against a real GitLab, SSO against real Keycloak and OpenLDAP, Kubernetes on kind, and resilience (API, worker, S3, LiteLLM and Vault failures). Optional test providers, from `tests/e2e`: `pnpm sso:up` (Keycloak and OpenLDAP) and `pnpm forge:up` (GitLab CE); without them, the matching suites are skipped.
 
-**Interface multilingue (français, anglais)** : la langue suit celle du navigateur (anglais par
-défaut) et se change dans le pied de la barre latérale. Les textes sont écrits en français dans le
-code avec `t('…')` (`apps/web/src/app/core/i18n.ts`) ; leur traduction anglaise est dans
-`apps/web/src/app/i18n/en.ts`, celle des messages renvoyés par le serveur dans
-`apps/web/src/app/i18n/en-server.ts`. `pnpm lint` échoue si une traduction manque
-(`pnpm --filter web i18n:check` pour ce seul contrôle).
+The interface is translated: write UI text in French with `t('…')` and add its English translation to `apps/web/src/app/i18n/en.ts`. `pnpm lint` fails if a translation is missing. Only dependency versions published more than two weeks ago are accepted, and install scripts are blocked by default.
 
-**Politique de dépendances** : seules les versions publiées depuis plus de deux semaines sont
-acceptées (`minimumReleaseAge`). Les scripts d'installation sont refusés par défaut (`allowBuilds`).
+## Current limitations
 
-## Tests
+The specified feature set is implemented and tested end to end on Docker Compose; the Helm chart is validated on a kind cluster. Before production use, plan for:
 
-```bash
-pnpm test                       # unitaires / intégration (Vitest)
-cd tests/e2e && pnpm test       # bout en bout sur la pile Compose réelle (profil dev)
-```
+- **Internal traffic encryption** for multi-host deployments (TLS to PostgreSQL and Vault). Public TLS is provided by the `tls` profile.
+- **Backup and restore tooling** for PostgreSQL, Vault and S3.
+- **Observability**: metrics, OpenTelemetry tracing, alerting.
+- **Kubernetes in production**: validation on a multi-node cluster with Calico or Cilium and gVisor or Kata, PodDisruptionBudgets.
+- **Sandbox images**: internal registry, compliance checks, dependency caches.
+- **CI, load testing and an external security audit.** An internal review has been done.
 
-La suite de bout en bout compte 41 scénarios :
-- pile ;
-- interface (Playwright, CSP stricte) ;
-- fonctionnels ;
-- Git contre un vrai GitLab ;
-- SSO contre un vrai Keycloak et un vrai OpenLDAP ;
-- résilience : arrêt d'une API, perte du worker, pannes de S3, LiteLLM et Vault.
+## License
 
-Fournisseurs de test optionnels :
-- `pnpm sso:up` (Keycloak + OpenLDAP) ;
-- `pnpm forge:up` (GitLab CE).
+Shipcove is free software under the **GNU Affero General Public License v3** ([`LICENSE`](LICENSE)), with additional terms under section 7 described in [`NOTICE`](NOTICE):
 
-Sans eux, les suites concernées s'ignorent.
-
-## Sécurité
-
-- **Sandboxes** :
-  - utilisateur non privilégié, `cap-drop ALL`, `no-new-privileges` ;
-  - limites de CPU, mémoire et processus ;
-  - réseau interne sans route vers Internet ni vers le backend ;
-  - sortie uniquement par un proxy à liste blanche.
-- **Aucun jeton de forge dans la sandbox** :
-  - `git`, `gh` et `glab` présentent un jeton de run. La gateway intercepte le TLS des seules forges
-    et le remplace par le jeton OAuth ;
-  - garde-fous : pas de push sur la branche par défaut ni sur une branche protégée, pas de fusion,
-    de suppression, de réglage du dépôt, ni de clé ou de jeton durable (approbation requise) ;
-  - écritures et refus audités.
-- **Secrets** :
-  - dans Vault, jamais renvoyés par l'API ;
-  - masqués dans les sorties, le flux temps réel, la base et les requêtes envoyées au fournisseur LLM.
-- **Hôte** :
-  - seul le garde Docker (`docker-guard`, ADR 0014) détient le socket. Il n'accepte que des
-    sandboxes et services durcis, jamais de conteneur privilégié ni de montage de l'hôte ;
-  - Vault est déverrouillé par un service de clés ou par des clés réparties entre opérateurs
-    (chiffrées PGP), et le jeton root est révoqué après l'amorçage (`docs/operations/vault.md`) ;
-  - TLS automatique avec le profil `tls` (`docs/operations/tls.md`).
-- **Navigateur** :
-  - sessions serveur, cookies `HttpOnly`, CSRF par double soumission ;
-  - CSP stricte sans script inline ;
-  - previews sur un domaine distinct.
-- **Confidentialité** : une conversation n'est lisible que par son propriétaire et les personnes avec
-  qui il l'a partagée nommément, administrateurs compris.
-
-## Documentation
-
-- **Site de documentation** : [`apps/docs-site`](apps/docs-site), en français et en anglais (langue
-  choisie d'après le navigateur). `pnpm docs:dev` pour le développer ; `pnpm docs:build` produit un
-  site statique dans `apps/docs-site/dist`, à publier tel quel sur n'importe quel hébergement
-  (`DOCS_BASE=/docs/ pnpm docs:build` pour un sous-dossier).
-- **Démonstration en ligne** : `pnpm docs:build:demo` construit le site de documentation avec une
-  démo de l'application, publiée dans `demo/` et accessible par le bouton « Essayer la démo ».
-  Elle fonctionne sans serveur : l'API est simulée dans le navigateur (conversations d'exemple,
-  réponses de l'agent simulées, administration en lecture seule) et rien n'est enregistré. La démo
-  seule : `pnpm --filter web build:demo` (dans `apps/web/dist/demo`, publiable dans n'importe
-  quel dossier). Son code (`apps/web/src/app/demo`) n'entre pas dans la version normale.
-- **Guides d'exploitation** : [`docs/operations`](docs/operations)
-  - Docker Compose ;
-  - Kubernetes (chart Helm) ;
-  - SSO ;
-  - forges Git ;
-  - démarrage des sandboxes ;
-  - services.
-- **Décisions d'architecture** : [`docs/adr`](docs/adr).
-- **Avancement** : [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md).
-
-## État du projet et limites
-
-Le périmètre fonctionnel du cahier des charges est implémenté et testé de bout en bout sur Docker
-Compose ; le déploiement Kubernetes (chart Helm) est validé sur un cluster kind, services d'appui et
-isolation réseau compris (`tests/e2e/kubernetes.test.mjs`). Restent à faire **avant une mise en
-production** :
-
-- **Chiffrement du trafic interne** pour un déploiement multi-hôte (TLS de PostgreSQL et de Vault).
-  Le point d'entrée TLS public est fourni (profil `tls`).
-- **Sauvegarde et restauration** outillées : PostgreSQL, Vault, S3.
-- **Observabilité** : métriques, OpenTelemetry, alertes.
-- **Kubernetes** : validation sur un cluster de production (Calico ou Cilium, plusieurs nœuds,
-  RuntimeClass gVisor / Kata) ; PodDisruptionBudget et répartition des sandboxes.
-- **Images de sandbox** : registre interne, vérification de conformité, caches de dépendances.
-- **CI**, tests de charge, audit de sécurité externe (une revue interne a été faite, voir le journal
-  d'`IMPLEMENTATION_PLAN.md`).
-
-## Licence
-
-Shipcove est un logiciel libre, publié sous licence **GNU Affero General Public License v3**
-([`LICENSE`](LICENSE)), avec les conditions additionnelles de sa section 7 décrites dans
-[`NOTICE`](NOTICE) :
-
-- **Attribution** : toute version modifiée doit afficher dans son interface la mention
-  « Basé sur Shipcove — https://github.com/Shipcove/shipcove ».
-- **Code source** : quiconque propose une version modifiée à des utilisateurs par le réseau doit
-  leur donner accès à son code source (section 13 de l'AGPL).
-- **Marque** : la licence n'accorde aucun droit sur le nom « Shipcove » ni sur le logo ; une
-  version modifiée distribuée ou hébergée pour d'autres doit porter un autre nom. Voir la
-  [politique de marque](TRADEMARKS.md).
+- **Attribution**: a modified version must show “Based on Shipcove — https://github.com/Shipcove/shipcove” in its interface.
+- **Source code**: anyone offering a modified version to users over a network must give them access to its source code (AGPL section 13).
+- **Trademark**: the license grants no rights to the Shipcove name or logo; a modified version distributed or hosted for others must use another name. See the [trademark policy](TRADEMARKS.md).
