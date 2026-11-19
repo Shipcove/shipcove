@@ -7,6 +7,8 @@ import type {
   EventEnvelope,
   FileChangeDto,
   FileEntryDto,
+  McpDiscoveryResult,
+  McpServerDto,
   MessageDto,
   SessionInfo,
   SkillDto,
@@ -51,6 +53,7 @@ export class DemoServer {
   private readonly eventIds = new Map<string, number>();
   private loggedIn = true;
   private skills: SkillDto[] = D.SKILLS.map((s) => ({ ...s }));
+  private mcp: McpServerDto[] = structuredClone(D.MCP);
   private notifications = D.NOTIFICATIONS.map((n) => ({ ...n }));
   private counter = 0;
   readonly pi = new PiSimulator(this);
@@ -214,7 +217,7 @@ export class DemoServer {
       return { skill: s, files: D.skillFiles(s) };
     }
     if (path === '/skill-categories' || path === '/admin/skill-categories') return D.CATEGORIES;
-    if (path === '/mcp-servers') return D.MCP;
+    if (path === '/mcp-servers') return this.mcp;
     if (path.startsWith('/admin/')) return this.admin(path);
     return [];
   }
@@ -331,10 +334,60 @@ export class DemoServer {
       if (s) s.enabledForMe = !!b['enabled'];
       return {};
     }
+    if (path.startsWith('/mcp-servers')) return this.mcpWrite(method, path, b);
     if ((m = path.match(/^\/skills\/([^/]+)$/)) && method === 'PATCH') {
       const s = this.skills.find((x) => x.id === m![1]);
       if (s && 'categoryId' in b) s.categoryId = (b['categoryId'] as string | null) ?? null;
       return s ?? {};
+    }
+    throw new DemoError(403, 'forbidden', UNAVAILABLE);
+  }
+
+  /* ------------------------------- MCP ------------------------------- */
+
+  /** Serveurs MCP simulés : test, ajout, modification, sélection d'outils (rien n'est appelé). */
+  private mcpWrite(method: string, path: string, b: Record<string, unknown>): unknown {
+    const ok = (): McpDiscoveryResult => ({ ok: true, server: 'mcp-atlassian 0.11.9', tools: D.JIRA_TOOLS });
+    if (path === '/mcp-servers/test') return ok();
+    if (path === '/mcp-servers' && method === 'POST') {
+      const id = this.newId('mcp');
+      const http = b['transport'] === 'streamable_http';
+      const headers = (b['headers'] as Record<string, string>) ?? {};
+      const secret = Object.keys((b['secretHeaders'] as Record<string, string>) ?? {}).map((k) => `header:${k}`);
+      this.mcp.push({
+        id, name: String(b['name']), description: String(b['description'] ?? ''), scope: (b['scope'] as McpServerDto['scope']) ?? 'personal', ownerId: D.ME.id,
+        transport: http ? 'streamable_http' : 'stdio', url: (b['url'] as string) ?? null, command: (b['command'] as string) ?? null, args: (b['args'] as string[]) ?? [],
+        headers, secretKeys: [...secret, ...Object.keys((b['secretEnv'] as Record<string, string>) ?? {})], version: http ? '0.11.9' : null, enabled: true,
+        health: http ? 'healthy' : 'unknown', healthDetail: http ? 'mcp-atlassian 0.11.9' : null, lastHealthAt: http ? new Date().toISOString() : null,
+        tools: http ? D.JIRA_TOOLS.map((x, i) => ({ id: `${id}-${i}`, ...x, effective: 'allowed', lockedByAdmin: false })) : [],
+      });
+      return { id, discovery: http ? ok() : null };
+    }
+    const m = path.match(/^\/mcp-servers\/([^/]+)(?:\/(\w+))?$/);
+    const s = m && this.mcp.find((x) => x.id === m[1]);
+    if (!s) throw new DemoError(404, 'not_found', D.L('Serveur introuvable', 'Server not found'));
+    if (m[2] === 'selection') {
+      const denied = new Set((b['denied'] as string[]) ?? []);
+      for (const tool of s.tools) {
+        if (b['scope'] === 'global') tool.lockedByAdmin = denied.has(tool.name);
+        tool.effective = denied.has(tool.name) || tool.lockedByAdmin ? 'denied' : 'allowed';
+      }
+      return { ok: true };
+    }
+    if (m[2] === 'discover') return { ...ok(), tools: s.tools.map((x) => ({ name: x.name, description: x.description })) };
+    if (method === 'DELETE') {
+      this.mcp = this.mcp.filter((x) => x !== s);
+      return {};
+    }
+    if (method === 'PATCH') {
+      if (typeof b['enabled'] === 'boolean') s.enabled = b['enabled'];
+      if (typeof b['description'] === 'string') s.description = b['description'];
+      if (typeof b['url'] === 'string') s.url = b['url'];
+      if (b['headers']) s.headers = b['headers'] as Record<string, string>;
+      const removed = new Set((b['removeSecrets'] as string[]) ?? []);
+      const added = Object.keys((b['secretHeaders'] as Record<string, string>) ?? {}).map((k) => `header:${k}`);
+      s.secretKeys = [...new Set([...s.secretKeys.filter((k) => !removed.has(k)), ...added])];
+      return { ok: true, discovery: b['url'] || b['headers'] ? ok() : null };
     }
     throw new DemoError(403, 'forbidden', UNAVAILABLE);
   }

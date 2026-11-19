@@ -407,16 +407,35 @@ export function skillFiles(s: SkillDto): Array<{ path: string; size: number; con
   ];
 }
 
+/** Outils d'un serveur Jira (démo), avec leur description. */
+export const JIRA_TOOLS: Array<{ name: string; description: string }> = [
+  { name: 'jira_search', description: L('Recherche de tickets en JQL', 'Search issues with JQL') },
+  { name: 'jira_get_issue', description: L('Détail d’un ticket (champs, commentaires)', 'Issue details (fields, comments)') },
+  { name: 'jira_create_issue', description: L('Créer un ticket', 'Create an issue') },
+  { name: 'jira_update_issue', description: L('Modifier un ticket', 'Update an issue') },
+  { name: 'jira_add_comment', description: L('Ajouter un commentaire', 'Add a comment') },
+  { name: 'jira_transition_issue', description: L('Changer le statut d’un ticket', 'Change an issue status') },
+  { name: 'jira_get_project_issues', description: L('Tickets d’un projet', 'Issues of a project') },
+  { name: 'jira_get_sprints', description: L('Sprints d’un tableau', 'Sprints of a board') },
+  { name: 'jira_link_issues', description: L('Lier deux tickets', 'Link two issues') },
+  { name: 'jira_delete_issue', description: L('Supprimer un ticket', 'Delete an issue') },
+];
+
 export const MCP: McpServerDto[] = [
   {
-    id: 'mcp-linear', name: 'linear', description: L('Tickets Linear de l’équipe', 'Team Linear tickets'), scope: 'global', ownerId: null, transport: 'streamable_http', url: 'https://mcp.linear.app/mcp', command: null, args: [], secretKeys: ['Authorization'], version: '1.2.0', enabled: true, health: 'healthy', lastHealthAt: ago(3),
+    id: 'mcp-linear', name: 'linear', description: L('Tickets Linear de l’équipe', 'Team Linear tickets'), scope: 'global', ownerId: null, transport: 'streamable_http', url: 'https://mcp.linear.app/mcp', command: null, args: [], headers: {}, secretKeys: ['header:Authorization'], version: '1.2.0', enabled: true, health: 'healthy', healthDetail: 'linear-mcp 1.2.0', lastHealthAt: ago(3),
     tools: [
-      { id: 'mt-1', name: 'list_issues', description: '', effective: 'allowed' },
-      { id: 'mt-2', name: 'create_issue', description: '', effective: 'allowed' },
-      { id: 'mt-3', name: 'delete_issue', description: '', effective: 'denied' },
+      { id: 'mt-1', name: 'list_issues', description: L('Lister les tickets', 'List issues'), effective: 'allowed', lockedByAdmin: false },
+      { id: 'mt-2', name: 'create_issue', description: L('Créer un ticket', 'Create an issue'), effective: 'allowed', lockedByAdmin: false },
+      { id: 'mt-3', name: 'delete_issue', description: L('Supprimer un ticket', 'Delete an issue'), effective: 'denied', lockedByAdmin: true },
     ],
   },
-  { id: 'mcp-pw', name: 'playwright', description: L('Navigateur dans la sandbox', 'Browser in the sandbox'), scope: 'personal', ownerId: ME.id, transport: 'stdio', url: null, command: 'npx', args: ['@playwright/mcp'], secretKeys: [], version: null, enabled: true, health: 'unknown', lastHealthAt: null, tools: [{ id: 'mt-4', name: 'browser_navigate', description: '', effective: 'allowed' }] },
+  {
+    id: 'mcp-jira', name: 'jira', description: L('Tickets Jira du projet', 'Project Jira issues'), scope: 'personal', ownerId: ME.id, transport: 'streamable_http', url: 'http://mcp-jira:8000/mcp', command: null, args: [],
+    headers: { 'X-Atlassian-Jira-Url': 'https://jira.example.com' }, secretKeys: ['header:X-Atlassian-Jira-Personal-Token'], version: '0.11.9', enabled: true, health: 'healthy', healthDetail: 'mcp-atlassian 0.11.9', lastHealthAt: ago(12),
+    tools: JIRA_TOOLS.map((x, i) => ({ id: `mj-${i}`, ...x, effective: x.name === 'jira_delete_issue' ? 'denied' : 'allowed', lockedByAdmin: false })),
+  },
+  { id: 'mcp-pw', name: 'playwright', description: L('Navigateur dans la sandbox', 'Browser in the sandbox'), scope: 'personal', ownerId: ME.id, transport: 'stdio', url: null, command: 'npx', args: ['@playwright/mcp'], headers: {}, secretKeys: [], version: null, enabled: true, health: 'unknown', healthDetail: null, lastHealthAt: null, tools: [{ id: 'mt-4', name: 'browser_navigate', description: L('Ouvrir une page', 'Open a page'), effective: 'allowed', lockedByAdmin: false }] },
 ];
 
 export const NOTIFICATIONS: NotificationDto[] = [

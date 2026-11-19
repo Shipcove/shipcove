@@ -1,19 +1,22 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import type { McpServerDto, SkillCategoryDto, SkillDto } from '@cap/contracts';
+import type { McpDiscoveryResult, McpServerDto, SkillCategoryDto, SkillDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
 import { AuthStore } from '../../core/auth.store';
 import { ConfirmService } from '../../core/confirm.service';
 import { ToastService } from '../../core/toast.service';
 import { Icon } from '../../shared/icon';
 import { SkillScopeService } from './skill-scope.service';
+import { MultiSelect } from '../../shared/multi-select';
+import { McpServerDialog, selectionOf, toolOptionsFor } from './mcp-server-dialog';
 import { t } from '../../core/i18n';
 
 /** Skills et serveurs MCP visibles par l'utilisateur (global, personnel). */
 @Component({
   selector: 'cap-extensions',
-  imports: [FormsModule, RouterLink, Icon],
+  imports: [FormsModule, RouterLink, Icon, DatePipe, MultiSelect, McpServerDialog],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="h-full overflow-y-auto"><div class="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-8">
@@ -106,41 +109,61 @@ import { t } from '../../core/i18n';
         }
       </section>
 
-      <h2 class="mt-8 mb-2 text-sm font-semibold text-stone-500 uppercase">{{ t('Serveurs MCP') }}</h2>
+      <div class="mt-8 mb-2 flex items-center">
+        <h2 class="text-sm font-semibold text-stone-500 uppercase">{{ t('Serveurs MCP') }}</h2>
+        <button class="btn-primary ml-auto !py-1 text-sm" (click)="editing.set('new')"><cap-icon name="plus" [size]="14" /> {{ t('Ajouter un serveur MCP') }}</button>
+      </div>
       <div class="space-y-3">
         @for (m of servers(); track m.id) {
           <div class="card p-4 text-sm">
-            <div class="flex items-center gap-2">
-              <span class="font-mono font-medium">{{ m.name }}</span><span class="badge bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300">{{ m.scope }}</span>
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-mono font-medium">{{ m.name }}</span><span class="badge bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300">{{ m.scope === 'global' ? 'Global' : t('Personnel') }}</span>
               <span class="badge bg-stone-100 text-stone-600 dark:bg-stone-800">{{ m.transport === 'stdio' ? t('stdio (dans la sandbox)') : 'Streamable HTTP' }}</span>
-              <span class="badge" [class]="m.health === 'healthy' ? 'bg-emerald-100 text-emerald-800' : m.health === 'unhealthy' ? 'bg-red-100 text-red-800' : 'bg-stone-100 text-stone-600'">{{ m.health }}</span>
+              <span class="badge" [class]="m.health === 'healthy' ? 'bg-emerald-100 text-emerald-800' : m.health === 'unhealthy' ? 'bg-red-100 text-red-800' : 'bg-stone-100 text-stone-600'"
+                [title]="m.lastHealthAt ? t('Dernier contrôle : {date}', { date: (m.lastHealthAt | date: 'short') ?? '' }) : ''">
+                {{ m.health === 'healthy' ? t('connecté') : m.health === 'unhealthy' ? t('injoignable') : t('non vérifié') }}
+              </span>
               @if (!m.enabled) { <span class="badge bg-stone-300 text-stone-700">{{ t('désactivé') }}</span> }
               @if (canManage(m)) {
                 <span class="ml-auto flex gap-1">
-                  @if (m.transport === 'streamable_http') { <button class="btn-ghost !py-0.5 text-xs" (click)="discover(m)">{{ t('Découvrir les outils') }}</button> }
+                  @if (m.transport === 'streamable_http') { <button class="btn-ghost !py-0.5 text-xs" (click)="discover(m)" [title]="t('Recharger la liste des outils')"><cap-icon name="refresh" [size]="12" /> {{ t('Actualiser') }}</button> }
+                  <button class="btn-ghost !py-0.5 text-xs" (click)="editing.set(m)"><cap-icon name="edit" [size]="12" /> {{ t('Modifier') }}</button>
                   <button class="btn-ghost !py-0.5 text-xs" (click)="toggleServer(m)">{{ m.enabled ? t('Désactiver') : t('Activer') }}</button>
                   <button class="btn-ghost !py-0.5 text-xs text-red-600" (click)="removeServer(m)">{{ t('Supprimer') }}</button>
                 </span>
               }
             </div>
-            <div class="mt-1 text-xs text-stone-500">{{ m.description }} {{ m.url ?? m.command }}</div>
-            <div class="mt-2 flex flex-wrap gap-1">
-              @for (tool of m.tools; track tool.id) {
-                <button class="badge font-mono" [class]="tool.effective === 'allowed' ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700 line-through'" (click)="toggleTool(m, tool.name, tool.effective)" [title]="tool.effective === 'allowed' ? t('Cliquer pour refuser pour moi') : t('Cliquer pour autoriser pour moi')">{{ tool.name }}</button>
-              } @empty { <span class="text-xs text-stone-500">{{ t('Aucun outil connu.') }}</span> }
-            </div>
+            <div class="mt-1 text-xs break-all text-stone-500">{{ m.description }} {{ m.url ?? m.command }}</div>
+            @if (m.health === 'unhealthy' && m.healthDetail) {
+              <div class="mt-2 flex items-start gap-2 rounded-md bg-red-50 px-2 py-1.5 text-xs text-red-800 dark:bg-red-950/40 dark:text-red-300">
+                <cap-icon name="alert" [size]="13" class="mt-0.5 shrink-0" /><span class="break-words">{{ m.healthDetail }}</span>
+                @if (canManage(m) && m.transport === 'streamable_http') { <button class="ml-auto shrink-0 underline" (click)="discover(m)">{{ t('Réessayer') }}</button> }
+              </div>
+            }
+            @if (m.tools.length) {
+              <div class="mt-3">
+                <div class="mb-1 flex items-center text-xs text-stone-500">
+                  <span>{{ adminGlobal(m) ? t('Outils proposés à tous (règle globale)') : t('Outils proposés à l’agent') }}</span>
+                  <span class="ml-2">{{ t('{n}/{total}', { n: (draft()[m.id] ?? selectionFor(m)).length, total: m.tools.length }) }}</span>
+                </div>
+                <cap-multi-select [options]="optionsFor(m)" [value]="draft()[m.id] ?? selectionFor(m)" (valueChange)="setDraft(m, $event)"
+                  [ariaLabel]="t('Outils de {name}', { name: m.name })" [placeholder]="t('Aucun outil sélectionné')" />
+                @if (draft()[m.id]) {
+                  <div class="mt-2 flex justify-end gap-2">
+                    <button class="btn-secondary !py-1 text-xs" (click)="cancelDraft(m)">{{ t('Annuler') }}</button>
+                    <button class="btn-primary !py-1 text-xs" (click)="saveSelection(m)">{{ t('Enregistrer la sélection') }}</button>
+                  </div>
+                }
+              </div>
+            } @else {
+              <p class="mt-2 text-xs text-stone-500">{{ m.transport === 'stdio' ? t('Outils découverts au premier lancement dans une sandbox.') : t('Aucun outil connu : actualisez une fois le serveur joignable.') }}</p>
+            }
           </div>
         } @empty { <p class="text-sm text-stone-500">{{ t('Aucun serveur MCP.') }}</p> }
       </div>
-      <form class="card mt-3 grid gap-2 p-4 md:grid-cols-3" (ngSubmit)="createServer()">
-        <div class="font-medium md:col-span-3">{{ t('Ajouter un serveur MCP') }}</div>
-        <input class="input" name="mn" placeholder="nom" [(ngModel)]="mcp.name" required />
-        <select class="input" name="mt" [(ngModel)]="mcp.transport"><option value="streamable_http">Streamable HTTP</option><option value="stdio">stdio</option></select>
-        <select class="input" name="ms" [(ngModel)]="mcp.scope"><option value="personal">{{ t('Personnel') }}</option>@if (auth.isAdmin()) { <option value="global">Global</option> }</select>
-        @if (mcp.transport === 'streamable_http') { <input class="input md:col-span-2" name="mu" placeholder="https://mcp.exemple.com/mcp" [(ngModel)]="mcp.url" /> <input class="input" type="password" name="mauth" [placeholder]="t('Authorization (facultatif, stocké dans Vault)')" [(ngModel)]="mcp.auth" /> }
-        @else { <input class="input md:col-span-2" name="mc" [placeholder]="t('commande (ex. npx)')" [(ngModel)]="mcp.command" /> <input class="input" name="ma" [placeholder]="t('arguments séparés par des espaces')" [(ngModel)]="mcp.args" /> }
-        <button class="btn-primary md:col-span-3 md:w-fit">{{ t('Ajouter') }}</button>
-      </form>
+      @if (editing(); as e) {
+        <cap-mcp-server-dialog [server]="e === 'new' ? null : e" [isAdmin]="auth.isAdmin()" (closed)="editing.set(null)" (saved)="reloadServers()" />
+      }
     </div></div>
   `,
   host: { class: 'block h-full' },
@@ -202,7 +225,10 @@ export class ExtensionsPage implements OnInit {
       .filter((s) => !q || s.name.includes(q) || s.description.toLowerCase().includes(q))
       .sort((a, b) => (order.get(a.id) ?? 1e9) - (order.get(b.id) ?? 1e9) || a.name.localeCompare(b.name));
   });
-  protected mcp = { name: '', transport: 'streamable_http', scope: 'personal', url: '', auth: '', command: '', args: '' };
+  /** Serveur ouvert dans la fenêtre d'ajout / de modification. */
+  protected readonly editing = signal<McpServerDto | 'new' | null>(null);
+  /** Sélections d'outils modifiées, pas encore enregistrées (par serveur). */
+  protected readonly draft = signal<Record<string, string[]>>({});
 
   async ngOnInit() {
     const [s, m, c] = await Promise.all([
@@ -285,24 +311,49 @@ export class ExtensionsPage implements OnInit {
     }
   }
 
-  protected createServer() {
-    const m = this.mcp;
-    return this.act(
-      () =>
-        this.api.post('/mcp-servers', {
-          name: m.name,
-          transport: m.transport,
-          scope: m.scope,
-          url: m.transport === 'streamable_http' ? m.url : undefined,
-          command: m.transport === 'stdio' ? m.command : undefined,
-          args: m.transport === 'stdio' && m.args ? m.args.split(/\s+/) : [],
-          headers: m.auth ? { Authorization: m.auth } : {},
-        }),
-      t('Serveur ajouté'),
-    );
+  /** Un administrateur règle la portée globale d'un serveur global ; sinon, chacun règle la sienne. */
+  protected adminGlobal(m: McpServerDto) {
+    return m.scope === 'global' && this.auth.isAdmin();
   }
-  protected discover(m: McpServerDto) {
-    return this.act(() => this.api.post(`/mcp-servers/${m.id}/discover`), t('Découverte terminée'));
+
+  protected optionsFor(m: McpServerDto) {
+    return toolOptionsFor(m, this.adminGlobal(m));
+  }
+
+  /** Sélection enregistrée : outils autorisés (pour un administrateur, au niveau global). */
+  protected selectionFor(m: McpServerDto) {
+    return this.adminGlobal(m) ? m.tools.filter((x) => !x.lockedByAdmin).map((x) => x.name) : selectionOf(m);
+  }
+
+  protected setDraft(m: McpServerDto, value: string[]) {
+    this.draft.update((d) => ({ ...d, [m.id]: value }));
+  }
+
+  protected cancelDraft(m: McpServerDto) {
+    this.draft.update((d) => Object.fromEntries(Object.entries(d).filter(([id]) => id !== m.id)));
+  }
+
+  /** Enregistre la sélection en une fois : les outils décochés deviennent des refus de la portée. */
+  protected async saveSelection(m: McpServerDto) {
+    const on = new Set(this.draft()[m.id] ?? []);
+    const denied = m.tools.filter((x) => !on.has(x.name) && (this.adminGlobal(m) || !x.lockedByAdmin)).map((x) => x.name);
+    await this.act(() => this.api.put(`/mcp-servers/${m.id}/selection`, { scope: this.adminGlobal(m) ? 'global' : 'personal', denied }), t('Sélection enregistrée'));
+    this.cancelDraft(m);
+  }
+
+  protected async reloadServers() {
+    this.servers.set(await this.api.get<McpServerDto[]>('/mcp-servers'));
+  }
+
+  protected async discover(m: McpServerDto) {
+    try {
+      const r = await this.api.post<McpDiscoveryResult>(`/mcp-servers/${m.id}/discover`);
+      if (r.ok) this.toast.show(t('{n} outil(s) trouvé(s)', { n: r.tools?.length ?? 0 }), 'success');
+      else this.toast.show(t('Serveur injoignable : {error}', { error: r.detail ?? '' }), 'error');
+    } catch (e) {
+      this.toast.error(e);
+    }
+    await this.reloadServers();
   }
   protected toggleServer(m: McpServerDto) {
     return this.act(() => this.api.patch(`/mcp-servers/${m.id}`, { enabled: !m.enabled }));
@@ -311,7 +362,5 @@ export class ExtensionsPage implements OnInit {
     if (!confirm(t('Supprimer {name} ?', { name: m.name }))) return;
     return this.act(() => this.api.delete(`/mcp-servers/${m.id}`));
   }
-  protected toggleTool(m: McpServerDto, tool: string, current: 'allowed' | 'denied') {
-    return this.act(() => this.api.put(`/mcp-servers/${m.id}/permissions`, { toolName: tool, scope: 'personal', effect: current === 'allowed' ? 'deny' : 'allow' }));
-  }
+
 }

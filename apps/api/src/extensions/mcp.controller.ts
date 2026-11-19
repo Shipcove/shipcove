@@ -1,8 +1,19 @@
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Put } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
-import { CreateMcpServerSchema, McpPermissionSchema, type CreateMcpServer, type McpServerDto } from '@cap/contracts';
+import {
+  CreateMcpServerSchema,
+  McpPermissionSchema,
+  McpSelectionSchema,
+  TestMcpServerSchema,
+  UpdateMcpServerSchema,
+  type CreateMcpServer,
+  type McpDiscoveryResult,
+  type McpServerDto,
+  type TestMcpServer,
+  type UpdateMcpServer,
+} from '@cap/contracts';
 import type { SecretProvider } from '@cap/secrets';
 import { mcpPermissions, mcpServers, mcpTools, type Database } from '@cap/database';
 import { AppError, AuditService, DB, McpHttpClient, SECRETS, SettingsService, effectiveToolPermission, scopeVisible, type PermissionRule } from '@cap/server-core';
@@ -10,6 +21,7 @@ import { isUniqueViolation } from '@cap/server-core';
 import { CurrentUser, ReqCtx, type RequestContext } from '../common/decorators.js';
 import type { AuthUser } from '../common/request.js';
 import { AccessService } from '../access/access.service.js';
+import { mergeSecrets, selectionRules, splitHeaders } from './mcp-config.js';
 
 const uuid = { schema: z.uuid() };
 
@@ -17,8 +29,6 @@ const uuid = { schema: z.uuid() };
  * Serveurs MCP à deux portées (globale, personnelle), permissions par outil avec héritage :
  * une politique globale ne peut pas être contournée par une portée inférieure.
  */
-/** En-têtes considérés comme secrets (stockés dans Vault, jamais renvoyés). */
-const SENSITIVE_HEADER = /auth|token|key|secret|pass|pwd|cookie|credential|session|signature/i;
 
 const hideConfig = (s: { scope: string }, user: AuthUser) => s.scope === 'global' && user.platformRole !== 'platform_admin';
 
@@ -66,16 +76,20 @@ export class McpController {
         url: hideConfig(s, user) ? null : s.url,
         command: hideConfig(s, user) ? null : s.command,
         args: hideConfig(s, user) ? [] : s.args,
+        headers: hideConfig(s, user) ? {} : s.headers,
         secretKeys: hideConfig(s, user) ? [] : s.secretKeys,
         version: s.version,
         enabled: s.enabled,
         health: s.health,
+        healthDetail: hideConfig(s, user) && s.health !== 'healthy' ? null : s.healthDetail,
         lastHealthAt: s.lastHealthAt?.toISOString() ?? null,
         tools: tools.map((t) => ({
           id: t.id,
           name: t.name,
           description: t.description,
           effective: scopeVisible(s.scope, s.ownerId, { userId: user.id }) ? effectiveToolPermission(s.id, t.name, rules, { userId: user.id }) : 'denied',
+          // Refus global : le choix personnel ne peut pas le lever (un administrateur règle la portée globale).
+          lockedByAdmin: effectiveToolPermission(s.id, t.name, rules.filter((r) => r.scope === 'global'), { userId: user.id }) === 'denied',
         })),
       });
     }
@@ -88,10 +102,7 @@ export class McpController {
     if (body.scope === 'personal' && !cfg.personalServersAllowed) throw new AppError('forbidden', 'Les serveurs MCP personnels sont désactivés');
     if (body.transport === 'streamable_http' && !body.url) throw new AppError('validation_failed', 'URL requise');
     if (body.transport === 'stdio' && !body.command) throw new AppError('validation_failed', 'Commande requise');
-    if (body.transport === 'streamable_http' && body.scope !== 'global') {
-      const host = new URL(body.url!).hostname;
-      if (!cfg.allowedRemoteHosts.includes(host)) throw new AppError('forbidden', `Hôte ${host} non autorisé pour les serveurs non globaux (administration > MCP)`);
-    }
+    if (body.transport === 'streamable_http') this.assertHostAllowed(body.scope, body.url!, cfg.allowedRemoteHosts);
     const meta = { scope: body.scope, ownerId: body.scope === 'personal' ? user.id : null };
     await this.assertManage(user, meta);
     // Un serveur stdio s'exécute dans la sandbox de l'utilisateur, avec ses droits : des variables
@@ -99,9 +110,9 @@ export class McpController {
     if (body.transport === 'stdio' && body.scope === 'global' && Object.keys(body.secretEnv ?? {}).length > 0) {
       throw new AppError('validation_failed', 'Serveur MCP global en stdio : pas de variable secrète (elle serait lisible dans chaque sandbox). Utilisez un serveur Streamable HTTP, dont les secrets restent côté plateforme.');
     }
+    const { pub: publicHeaders, secret } = splitHeaders(body.headers, body.secretHeaders);
     const secretData: Record<string, string> = { ...body.secretEnv };
-    for (const [k, v] of Object.entries(body.headers)) if (SENSITIVE_HEADER.test(k)) secretData[`header:${k}`] = v;
-    const publicHeaders = Object.fromEntries(Object.entries(body.headers).filter(([k]) => !SENSITIVE_HEADER.test(k)));
+    for (const [k, v] of Object.entries(secret)) secretData[`header:${k}`] = v;
     const [s] = await this.db
       .insert(mcpServers)
       .values({
@@ -126,31 +137,65 @@ export class McpController {
       await this.db.update(mcpServers).set({ secretRef: ref }).where(eq(mcpServers.id, s.id));
     }
     await this.audit.record({ actorId: user.id, action: 'mcp.create', targetType: 'mcp_server', targetId: s.id, ip: ctx.ip, metadata: { scope: body.scope, transport: body.transport } });
-    return { id: s.id };
+    // Découverte immédiate : outils et état de santé visibles dès l'ajout.
+    const discovery = body.transport === 'streamable_http' ? await this.runDiscovery(s.id) : null;
+    return { id: s.id, discovery };
+  }
+
+  /** Hôte d'un serveur non global : liste blanche de l'administrateur (Administration → MCP). */
+  private assertHostAllowed(scope: string, url: string, allowed: string[]) {
+    if (scope === 'global') return;
+    const host = new URL(url).hostname;
+    if (!allowed.includes(host)) throw new AppError('forbidden', `Hôte ${host} non autorisé pour les serveurs personnels : un administrateur doit l’ajouter (Administration → MCP)`);
+  }
+
+  /** Teste une configuration sans l'enregistrer : connexion, version annoncée, outils. */
+  @Post('test')
+  @HttpCode(200)
+  async test(@Body({ schema: TestMcpServerSchema }) body: TestMcpServer, @CurrentUser() user: AuthUser): Promise<McpDiscoveryResult> {
+    const cfg = await this.settings.section('mcp');
+    if (body.scope === 'personal' && !cfg.personalServersAllowed) throw new AppError('forbidden', 'Les serveurs MCP personnels sont désactivés');
+    if (body.scope === 'global' && user.platformRole !== 'platform_admin') throw new AppError('forbidden', 'Réservé aux administrateurs plateforme');
+    this.assertHostAllowed(body.scope, body.url, cfg.allowedRemoteHosts);
+    const { pub, secret } = splitHeaders(body.headers, body.secretHeaders);
+    const headers: Record<string, string> = { ...pub };
+    // Modification en cours : les secrets enregistrés complètent ceux qui n'ont pas été remplacés.
+    if (body.serverId) {
+      const [s] = await this.db.select().from(mcpServers).where(eq(mcpServers.id, body.serverId));
+      if (!s) throw new AppError('not_found', 'Serveur introuvable');
+      await this.assertManage(user, s);
+      const stored = s.secretRef ? await this.secrets.read(s.secretRef) : {};
+      for (const [k, v] of Object.entries(stored)) if (k.startsWith('header:')) headers[k.slice(7)] = v;
+    }
+    Object.assign(headers, secret);
+    return probe(body.url, headers);
   }
 
   /** Découverte des outils (Streamable HTTP) et contrôle de santé. */
   @Post(':serverId/discover')
   @HttpCode(200)
-  async discover(@Param('serverId', uuid) id: string, @CurrentUser() user: AuthUser) {
+  async discover(@Param('serverId', uuid) id: string, @CurrentUser() user: AuthUser): Promise<McpDiscoveryResult> {
     const [s] = await this.db.select().from(mcpServers).where(eq(mcpServers.id, id));
     if (!s) throw new AppError('not_found', 'Serveur introuvable');
     await this.assertManage(user, s);
     if (s.transport !== 'streamable_http') throw new AppError('conflict', 'Serveur stdio : déclarez ses outils (exécution uniquement dans les sandboxes)');
+    return this.runDiscovery(id);
+  }
+
+  /** Interroge le serveur enregistré, met à jour ses outils et son état de santé. */
+  private async runDiscovery(id: string): Promise<McpDiscoveryResult> {
+    const [s] = await this.db.select().from(mcpServers).where(eq(mcpServers.id, id));
     const secrets = s.secretRef ? await this.secrets.read(s.secretRef) : {};
     const headers: Record<string, string> = { ...s.headers };
     for (const [k, v] of Object.entries(secrets)) if (k.startsWith('header:')) headers[k.slice(7)] = v;
-    try {
-      const client = new McpHttpClient(s.url!, headers, 20_000);
-      const info = await client.initialize();
-      const tools = await client.listTools();
-      await this.upsertTools(id, tools);
-      await this.db.update(mcpServers).set({ health: 'healthy', healthDetail: info.serverInfo ? `${info.serverInfo.name} ${info.serverInfo.version}` : null, lastHealthAt: new Date(), version: info.serverInfo?.version ?? s.version }).where(eq(mcpServers.id, id));
-      return { ok: true, tools: tools.length };
-    } catch (err) {
-      await this.db.update(mcpServers).set({ health: 'unhealthy', healthDetail: (err as Error).message.slice(0, 300), lastHealthAt: new Date() }).where(eq(mcpServers.id, id));
-      return { ok: false, detail: (err as Error).message };
+    const r = await probe(s.url!, headers);
+    if (r.ok) {
+      await this.upsertTools(id, r.tools ?? []);
+      await this.db.update(mcpServers).set({ health: 'healthy', healthDetail: r.server ?? null, lastHealthAt: new Date(), version: r.server?.split(' ').at(-1) ?? s.version }).where(eq(mcpServers.id, id));
+    } else {
+      await this.db.update(mcpServers).set({ health: 'unhealthy', healthDetail: (r.detail ?? '').slice(0, 300), lastHealthAt: new Date() }).where(eq(mcpServers.id, id));
     }
+    return r;
   }
 
   /** Déclaration manuelle des outils (serveurs stdio). */
@@ -190,6 +235,27 @@ export class McpController {
     return { ok: true };
   }
 
+  /**
+   * Sélection des outils en une fois : les outils décochés deviennent des refus de la portée, qui
+   * remplacent toutes ses règles pour ce serveur. Jamais de liste blanche : un outil ajouté plus tard
+   * au serveur est proposé par défaut, et un refus global reste prioritaire sur le choix personnel.
+   */
+  @Put(':serverId/selection')
+  async setSelection(@Param('serverId', uuid) id: string, @Body({ schema: McpSelectionSchema }) body: z.infer<typeof McpSelectionSchema>, @CurrentUser() user: AuthUser) {
+    await this.visibleServer(user, id);
+    if (body.scope === 'global' && user.platformRole !== 'platform_admin') throw new AppError('forbidden', 'Réservé aux administrateurs');
+    const subjectId = body.scope === 'global' ? null : user.id;
+    const rules = selectionRules(id, body.scope, subjectId, body.denied);
+    await this.db.transaction(async (tx) => {
+      await tx
+        .delete(mcpPermissions)
+        .where(and(eq(mcpPermissions.serverId, id), eq(mcpPermissions.scope, body.scope), subjectId ? eq(mcpPermissions.subjectId, subjectId) : isNull(mcpPermissions.subjectId)));
+      if (rules.length) await tx.insert(mcpPermissions).values(rules.map((r) => ({ ...r, createdBy: user.id })));
+    });
+    await this.audit.record({ actorId: user.id, action: 'mcp.selection', targetType: 'mcp_server', targetId: id, metadata: { scope: body.scope, denied: rules.length } });
+    return { ok: true };
+  }
+
   /** Règles du serveur : globales et les siennes (tout pour un admin plateforme). */
   @Get(':serverId/permissions')
   async permissions(@Param('serverId', uuid) id: string, @CurrentUser() user: AuthUser) {
@@ -199,14 +265,52 @@ export class McpController {
     return rows.filter((r) => r.scope === 'global' || (r.scope === 'personal' && r.subjectId === user.id));
   }
 
+  /** Modification : activation, adresse, en-têtes, secrets (posés, remplacés ou retirés). */
   @Patch(':serverId')
-  async toggle(@Param('serverId', uuid) id: string, @Body({ schema: z.object({ enabled: z.boolean() }) }) body: { enabled: boolean }, @CurrentUser() user: AuthUser) {
+  async update(@Param('serverId', uuid) id: string, @Body({ schema: UpdateMcpServerSchema }) body: UpdateMcpServer, @CurrentUser() user: AuthUser) {
     const [s] = await this.db.select().from(mcpServers).where(eq(mcpServers.id, id));
     if (!s) throw new AppError('not_found', 'Serveur introuvable');
     await this.assertManage(user, s);
-    await this.db.update(mcpServers).set({ enabled: body.enabled, updatedAt: new Date() }).where(eq(mcpServers.id, id));
-    await this.audit.record({ actorId: user.id, action: body.enabled ? 'mcp.enable' : 'mcp.disable', targetType: 'mcp_server', targetId: id });
-    return { ok: true };
+    if (body.url !== undefined) {
+      if (s.transport !== 'streamable_http') throw new AppError('validation_failed', 'URL réservée aux serveurs Streamable HTTP');
+      this.assertHostAllowed(s.scope, body.url, (await this.settings.section('mcp')).allowedRemoteHosts);
+    }
+    if (body.command !== undefined && s.transport !== 'stdio') throw new AppError('validation_failed', 'Commande réservée aux serveurs stdio');
+    const { pub, secret } = splitHeaders(body.headers ?? s.headers, body.secretHeaders ?? {});
+    const stored = s.secretRef ? await this.secrets.read(s.secretRef) : {};
+    const next = mergeSecrets(stored, { publicHeaders: pub, secretHeaders: secret, secretEnv: body.secretEnv ?? {}, remove: body.removeSecrets ?? [] });
+    if (s.transport === 'stdio' && s.scope === 'global' && Object.keys(next).some((k) => !k.startsWith('header:'))) {
+      throw new AppError('validation_failed', 'Serveur MCP global en stdio : pas de variable secrète (elle serait lisible dans chaque sandbox).');
+    }
+    const secretsChanged = JSON.stringify(Object.entries(next).sort()) !== JSON.stringify(Object.entries(stored).sort());
+    let secretRef = s.secretRef;
+    if (secretsChanged) {
+      if (Object.keys(next).length) secretRef = await this.secrets.write(`mcp/${s.id}`, next);
+      else {
+        if (s.secretRef) await this.secrets.revoke(s.secretRef).catch(() => undefined);
+        secretRef = null;
+      }
+    }
+    await this.db
+      .update(mcpServers)
+      .set({
+        ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
+        ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.url !== undefined ? { url: body.url } : {}),
+        ...(body.command !== undefined ? { command: body.command } : {}),
+        ...(body.args !== undefined ? { args: body.args } : {}),
+        headers: pub,
+        secretKeys: Object.keys(next),
+        secretRef,
+        updatedAt: new Date(),
+      })
+      .where(eq(mcpServers.id, id));
+    const configChanged = body.url !== undefined || body.headers !== undefined || secretsChanged;
+    const action = body.enabled === undefined || configChanged ? 'mcp.update' : body.enabled ? 'mcp.enable' : 'mcp.disable';
+    await this.audit.record({ actorId: user.id, action, targetType: 'mcp_server', targetId: id, metadata: { fields: Object.keys(body) } });
+    // Configuration modifiée : nouvelle découverte (outils, santé).
+    const discovery = configChanged && s.transport === 'streamable_http' ? await this.runDiscovery(id) : null;
+    return { ok: true, discovery };
   }
 
   @Delete(':serverId')
@@ -218,5 +322,21 @@ export class McpController {
     if (s.secretRef) await this.secrets.revoke(s.secretRef).catch(() => undefined);
     await this.db.delete(mcpServers).where(eq(mcpServers.id, id));
     await this.audit.record({ actorId: user.id, action: 'mcp.delete', targetType: 'mcp_server', targetId: id });
+  }
+}
+
+/** Connexion à un serveur Streamable HTTP : version annoncée et outils, ou l'erreur telle quelle. */
+async function probe(url: string, headers: Record<string, string>): Promise<McpDiscoveryResult> {
+  try {
+    const client = new McpHttpClient(url, headers, 20_000);
+    const info = await client.initialize();
+    const tools = await client.listTools();
+    return {
+      ok: true,
+      server: info.serverInfo ? `${info.serverInfo.name} ${info.serverInfo.version}` : null,
+      tools: tools.map((t) => ({ name: t.name, description: t.description ?? '', inputSchema: t.inputSchema })),
+    };
+  } catch (err) {
+    return { ok: false, detail: (err as Error).message.slice(0, 500) };
   }
 }
