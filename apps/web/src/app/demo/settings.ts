@@ -82,7 +82,8 @@ export const SETTINGS: PlatformSettings = {
     "timeoutMinutes": 20
   },
   "conversations": {
-    "titleModelId": "m-qwen"
+    "titleModelId": "m-qwen",
+    "titleMaxLength": 60
   },
   "notifications": {
     "emailEnabled": true,
