@@ -134,6 +134,13 @@
       "when": 1795001173522,
       "tag": "0018_agent_shared_files",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795089040179,
+      "tag": "0019_tool_call_details",
+      "breakpoints": true
     }
   ]
 }

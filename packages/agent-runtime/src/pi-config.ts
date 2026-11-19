@@ -87,6 +87,26 @@ export const PLAN_MODE_PROMPT =
 export const BROWSER_PLUGIN = '/opt/cap/pi-extension/browser.ts';
 /** Plugin de plan de tâches (outil `update_plan`, volet « Plan » de la conversation). */
 export const PLAN_PLUGIN = '/opt/cap/pi-extension/plan.ts';
+/** Plugin de sous-agents (outil `subagent`) : tâches confiées à des processus Pi au contexte isolé. */
+export const SUBAGENT_PLUGIN = '/opt/cap/pi-extension/subagent.ts';
+/** Réglages des sous-agents (paramètres de la plateforme), transmis au plugin par l'environnement. */
+export interface SubagentLimits {
+  maxTasks: number;
+  maxParallel: number;
+  timeoutMinutes: number;
+}
+
+export function subagentEnv(limits: SubagentLimits, readOnly: boolean): Record<string, string> {
+  return {
+    CAP_SUBAGENT_MAX_TASKS: String(limits.maxTasks),
+    CAP_SUBAGENT_MAX_PARALLEL: String(limits.maxParallel),
+    CAP_SUBAGENT_TIMEOUT_MINUTES: String(limits.timeoutMinutes),
+    ...(readOnly ? { CAP_SUBAGENT_READONLY: '1' } : {}),
+  };
+}
+
+/** Outils dont les détails structurés (`details`) sont transmis à l'interface et enregistrés. */
+export const TOOLS_WITH_DETAILS = new Set(['subagent']);
 
 /**
  * Consigne de la plateforme quand le plugin de captures est disponible : Pi montre lui-même le
@@ -101,7 +121,7 @@ export const SCREENSHOT_PROMPT =
 
 /** Ligne de commande de Pi en mode RPC dans la sandbox. */
 /** Plugins Pi livrés dans l'image de sandbox, chargés s'ils sont présents (images plus anciennes). */
-export const PI_PLUGINS = [BROWSER_PLUGIN, '/opt/cap/pi-extension/ask.ts', PLAN_PLUGIN] as const;
+export const PI_PLUGINS = [BROWSER_PLUGIN, '/opt/cap/pi-extension/ask.ts', PLAN_PLUGIN, SUBAGENT_PLUGIN] as const;
 
 export function piCommand(opts: { sessionFile: string | null; skillDirs: string[]; tools?: readonly string[]; appendSystemPrompt?: string; plugins?: readonly string[] }): string[] {
   return [

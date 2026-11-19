@@ -268,7 +268,7 @@ export class PiAgentRuntime implements AgentRuntime {
         this.emit({ type: 'tool_start', toolCallId: String(msg.toolCallId), toolName: String(msg.toolName), args: msg.args });
         return;
       case 'tool_execution_update':
-        this.emit({ type: 'tool_update', toolCallId: String(msg.toolCallId), output: limit(contentText(msg.partialResult)) });
+        this.emit({ type: 'tool_update', toolCallId: String(msg.toolCallId), output: limit(contentText(msg.partialResult)), details: (msg.partialResult as { details?: unknown } | undefined)?.details ?? null });
         return;
       case 'tool_execution_end': {
         const result = msg.result as Record<string, unknown> | undefined;

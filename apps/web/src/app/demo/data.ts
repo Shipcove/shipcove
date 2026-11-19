@@ -109,7 +109,29 @@ export function message(conversationId: string, role: MessageDto['role'], text: 
 }
 
 export function tool(runId: string, toolName: string, args: unknown, output: string, at: string, extra: Partial<ToolCallDto> = {}): ToolCallDto {
-  return { id: id('tool'), runId, messageId: null, toolName, args, status: 'completed', output, outputTruncated: false, isError: false, filesTouched: [], images: [], files: [], startedAt: at, completedAt: at, durationMs: 1800, ...extra };
+  return { id: id('tool'), runId, messageId: null, toolName, args, status: 'completed', output, outputTruncated: false, isError: false, filesTouched: [], images: [], files: [], details: null, startedAt: at, completedAt: at, durationMs: 1800, ...extra };
+}
+
+/** Appel `subagent` terminé (sous-agents d'exploration), avec ses détails pour l'interface. */
+function subagents(runId: string, at: string, agents: Array<{ title: string; steps: Array<[string, string]>; output: string }>): ToolCallDto {
+  const end = Date.parse(at);
+  const details = {
+    kind: 'subagents',
+    agents: agents.map((a, i) => ({
+      title: a.title,
+      mode: 'explore',
+      status: 'completed',
+      steps: a.steps.map(([tool, summary]) => ({ tool, summary, status: 'completed' })),
+      toolCount: a.steps.length,
+      output: a.output,
+      error: null,
+      startedAt: end - 38_000 - i * 9_000,
+      endedAt: end - i * 4_000,
+      tokens: 14_000 + i * 3_000,
+    })),
+  };
+  const tasks = agents.map((a) => ({ title: a.title, prompt: a.title, mode: 'explore' }));
+  return tool(runId, 'subagent', { tasks }, agents.map((a, i) => `## Sous-agent ${i + 1} — ${a.title}\n\n${a.output}`).join('\n\n'), at, { details, durationMs: 38_000 });
 }
 
 export function run(workspaceId: string, runId: string, startedAt: string, endedAt: string): RunDto {
@@ -281,6 +303,24 @@ function shopApi(): DemoWorkspace {
     runId: r1,
     stopReason: 'tool_use',
     toolCalls: [
+      subagents(r1, ago(t0 - 1.5), [
+        {
+          title: L('Repérer les dépendances au temps', 'Find time dependencies'),
+          steps: [['grep', 'new Date\\(|Date.now'], ['read', 'src/pricing.ts'], ['grep', 'getHours']],
+          output: L(
+            "`src/pricing.ts` : `discount()` lit `new Date()` et applique 10 % de remise quand `getHours() === 18`. Aucun test ne fige l'horloge. Autres usages de la date : `src/orders.ts` (horodatage seulement, sans effet sur les totaux).",
+            '`src/pricing.ts`: `discount()` reads `new Date()` and applies a 10% discount when `getHours() === 18`. No test freezes the clock. Other date uses: `src/orders.ts` (timestamps only, no effect on totals).',
+          ),
+        },
+        {
+          title: L('Lire le test et la config CI', 'Read the test and CI config'),
+          steps: [['read', 'tests/checkout.test.ts'], ['find', '.github/workflows'], ['read', '.github/workflows/ci.yml']],
+          output: L(
+            "`checkout.test.ts` attend un total de 90 pour [50, 40], sans remise. La CI tourne sur des runners en UTC, sans `TZ` ni retry : un échec dans la tranche 18 h–19 h UTC fait échouer le job.",
+            '`checkout.test.ts` expects a total of 90 for [50, 40], without discount. CI runs on UTC runners, without `TZ` or retries: a failure in the 6–7 pm UTC window fails the job.',
+          ),
+        },
+      ]),
       tool(r1, 'bash', { command: 'npx vitest run checkout --repeat 50' }, ' ✓ checkout.test.ts (49)\n ✗ checkout.test.ts > applies the right total (1)\n   AssertionError: expected 81 to be 90', ago(t0 - 2), { isError: true, status: 'failed' }),
       tool(r1, 'read', { path: 'src/pricing.ts' }, 'export function discount(now = new Date()) {\n  return now.getHours() === 18 ? 0.1 : 0;\n}', ago(t0 - 3)),
       tool(r1, 'edit', { path: 'tests/checkout.test.ts' }, L('1 remplacement', '1 replacement'), ago(t0 - 5), { filesTouched: ['tests/checkout.test.ts'] }),

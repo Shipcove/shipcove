@@ -1073,4 +1073,28 @@ export const en: Record<string, string> = {
 
   // Agent
   "Agent": "Agent",
+
+  // Sous-agents
+  "Sous-agents": "Sub-agents",
+  "Terminé": "Done",
+  "Interrompu": "Stopped",
+  "Peut modifier des fichiers et lancer des commandes": "Can edit files and run commands",
+  "travail": "work",
+  "exploration": "explore",
+  "{n} action(s)": "{n} action(s)",
+  "Étapes ({n})": "Steps ({n})",
+  "Aucun compte rendu.": "No report.",
+  "{done}/{total} terminé(s), {running} en cours": "{done}/{total} done, {running} running",
+  "{n} sous-agent(s), {failed} en échec": "{n} sub-agent(s), {failed} failed",
+  "{n} sous-agent(s) terminé(s)": "{n} sub-agent(s) done",
+  "Affiché": "Shown",
+  "Voir": "View",
+  "Déplier": "Expand",
+  "Replier": "Collapse",
+  "Fermer le volet des sous-agents": "Close the sub-agents pane",
+  "Redimensionner le volet des sous-agents": "Resize the sub-agents pane",
+  "Sous-agents de l’agent": "Agent sub-agents",
+  "Sous-agents par appel (max.)": "Sub-agents per call (max.)",
+  "Sous-agents d’exploration en même temps (max.)": "Explore sub-agents at the same time (max.)",
+  "Durée max. d’un sous-agent (min)": "Max. duration of a sub-agent (min)",
 };

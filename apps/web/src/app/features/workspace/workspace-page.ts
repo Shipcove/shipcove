@@ -13,6 +13,7 @@ import { FilesPane } from './files-pane';
 import { GitPanel } from './git-panel';
 import { PlanPane } from './plan-pane';
 import { PreviewsPanel } from './previews-panel';
+import { SubagentsPane } from './subagents-view';
 import { ShareDialog } from './share-dialog';
 import { WorkspaceStore } from './workspace.store';
 import { t, tk, locale } from '../../core/i18n';
@@ -27,7 +28,7 @@ type RightPane = 'panel' | 'files' | 'plan' | null;
  */
 @Component({
   selector: 'cap-workspace-page',
-  imports: [FormsModule, Icon, Conversation, Composer, FilesPane, GitPanel, PreviewsPanel, ShareDialog, PlanPane],
+  imports: [FormsModule, Icon, Conversation, Composer, FilesPane, GitPanel, PreviewsPanel, ShareDialog, PlanPane, SubagentsPane],
   providers: [WorkspaceStore],
   host: { class: 'block h-full', '(document:keydown.escape)': 'closeOverlay()' },
   styles: `
@@ -119,7 +120,7 @@ type RightPane = 'panel' | 'files' | 'plan' | null;
             </aside>
           }
           @if (pane() === 'panel') {
-            <aside class="flex flex-col bg-white dark:bg-stone-900" [attr.aria-label]="t('Panneau latéral')"
+            <aside #sidePanel class="flex flex-col bg-white dark:bg-stone-900" [attr.aria-label]="t('Panneau latéral')"
               [class]="layout.wide() ? 'w-[44%] max-w-[900px] min-w-[360px] shrink-0 border-l border-stone-200 dark:border-stone-800' : 'cap-pane fixed inset-0 z-40 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] md:absolute md:inset-y-0 md:right-0 md:left-auto md:w-[min(100%,560px)] md:border-l md:border-stone-200 md:shadow-2xl md:dark:border-stone-800'">
               <div class="flex items-end border-b border-stone-200 dark:border-stone-800">
               <nav class="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto px-2 pt-1.5" role="tablist">
@@ -141,6 +142,19 @@ type RightPane = 'panel' | 'files' | 'plan' | null;
                   @case ('previews') { <cap-previews-panel /> }
                 }
               </div>
+              <!-- Sous-agents : moitié basse du panneau (séparateur déplaçable), ou barre une fois repliés. -->
+              @if (showSubagentPane()) {
+                @if (!store.subagentPane()?.collapsed) {
+                  <div class="group flex h-2 shrink-0 cursor-row-resize touch-none items-center justify-center border-t border-stone-200 hover:bg-stone-100 dark:border-stone-800 dark:hover:bg-stone-800"
+                    role="separator" aria-orientation="horizontal" [attr.aria-label]="t('Redimensionner le volet des sous-agents')" tabindex="0"
+                    [attr.aria-valuenow]="Math.round(split() * 100)" aria-valuemin="20" aria-valuemax="80"
+                    (pointerdown)="startResize($event)" (keydown.arrowUp)="nudgeSplit(0.05)" (keydown.arrowDown)="nudgeSplit(-0.05)">
+                    <span class="h-0.5 w-8 rounded bg-stone-300 group-hover:bg-stone-400 dark:bg-stone-700"></span>
+                  </div>
+                }
+                <cap-subagents-pane class="shrink-0" [class.border-t]="!!store.subagentPane()?.collapsed" [class.border-stone-200]="true" [class.dark:border-stone-800]="true"
+                  [style.height.%]="store.subagentPane()?.collapsed ? null : split() * 100" />
+              }
             </aside>
           }
         </div>
@@ -175,6 +189,12 @@ export class WorkspacePage implements OnDestroy {
   private readonly conversations = inject(ConversationsService);
   private readonly confirm = inject(ConfirmService);
   private readonly titleInput = viewChild<ElementRef<HTMLInputElement>>('title');
+  private readonly sidePanel = viewChild<ElementRef<HTMLElement>>('sidePanel');
+  protected readonly Math = Math;
+  /** Part du panneau latéral occupée par le volet des sous-agents (mémorisée). */
+  protected readonly split = signal(readSplit());
+  /** Volet des sous-agents dans le panneau latéral (écran large, panneau ouvert). */
+  protected readonly showSubagentPane = computed(() => this.layout.wide() && this.pane() === 'panel' && !!this.store.subagentCall());
 
   protected readonly tabs = computed(() => {
     const owner = this.store.isOwner();
@@ -210,6 +230,17 @@ export class WorkspacePage implements OnDestroy {
       const id = this.workspaceId();
       untracked(() => void this.store.open(id).catch((err) => this.error.set(err?.message ?? t('Conversation introuvable'))));
     });
+    // Conversation sur une ligne par appel de sous-agents quand le volet est à côté d'elle.
+    effect(() => this.store.subagentDocked.set(this.layout.wide() && this.pane() === 'panel'));
+    // Nouvelle vague de sous-agents : panneau ouvert s'il n'y en a aucun ; « Voir » l'ouvre toujours.
+    effect(() => {
+      const req = this.store.subagentPane();
+      if (!req) return;
+      untracked(() => {
+        if (req.explicit) this.toggleTo('panel');
+        else if (this.layout.wide() && this.pane() === null) this.pane.set('panel');
+      });
+    });
     // Lien de notification « approbation requise » : la demande est dans la conversation, sous
     // l'appel d'outil de Pi ; on y fait défiler une fois les demandes chargées.
     let scrolledTo: string | null = null;
@@ -236,6 +267,35 @@ export class WorkspacePage implements OnDestroy {
   /** Échap ferme le volet affiché par-dessus la conversation (petits écrans). */
   protected closeOverlay(): void {
     if (!this.layout.wide() && this.pane() && !this.sharing()) this.pane.set(null);
+  }
+
+  private toggleTo(p: Exclude<RightPane, null>): void {
+    if (this.pane() !== p) this.toggle(p);
+  }
+
+  /** Redimensionnement du volet des sous-agents (glisser le séparateur). */
+  protected startResize(ev: PointerEvent): void {
+    const panel = this.sidePanel()?.nativeElement;
+    if (!panel) return;
+    ev.preventDefault();
+    const rect = panel.getBoundingClientRect();
+    const move = (e: PointerEvent) => this.setSplit((rect.bottom - e.clientY) / rect.height);
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      saveSplit(this.split());
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  protected nudgeSplit(delta: number): void {
+    this.setSplit(this.split() + delta);
+    saveSplit(this.split());
+  }
+
+  private setSplit(v: number): void {
+    this.split.set(Math.min(0.8, Math.max(0.2, v)));
   }
 
   protected toggle(p: Exclude<RightPane, null>): void {
@@ -286,5 +346,24 @@ export class WorkspacePage implements OnDestroy {
   }
   protected async stop() {
     await this.store.stop().catch((e) => this.toast.error(e));
+  }
+}
+
+const SPLIT_KEY = 'cap.subagentSplit';
+
+function readSplit(): number {
+  try {
+    const v = Number(localStorage.getItem(SPLIT_KEY));
+    return v >= 0.2 && v <= 0.8 ? v : 0.5;
+  } catch {
+    return 0.5;
+  }
+}
+
+function saveSplit(v: number): void {
+  try {
+    localStorage.setItem(SPLIT_KEY, String(v));
+  } catch {
+    /* préférence non conservée */
   }
 }

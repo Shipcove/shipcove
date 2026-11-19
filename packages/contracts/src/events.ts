@@ -41,7 +41,7 @@ export interface AgentEventDataMap {
   };
   'tool.started': { toolCallId: string; messageId: string | null; toolName: string; args: unknown };
   /** `output` = sortie accumulée tronquée (remplace l'affichage précédent). */
-  'tool.output': { toolCallId: string; output: string; truncated: boolean };
+  'tool.output': { toolCallId: string; output: string; truncated: boolean; details?: Record<string, unknown> | null };
   'tool.completed': {
     toolCallId: string;
     isError: boolean;
@@ -51,6 +51,7 @@ export interface AgentEventDataMap {
     filesTouched: string[];
     images?: ToolImageDto[];
     files?: ToolFileDto[];
+    details?: Record<string, unknown> | null;
   };
   'file.changed': { paths: string[]; generation: number };
   'checkpoint.started': { generation: number };

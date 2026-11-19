@@ -6,6 +6,7 @@
   "scripts": {
     "image:build": "docker build -t shipcove-sandbox:0.1.0 -t shipcove-sandbox:latest .",
     "image:test": "./test-image.sh shipcove-sandbox:0.1.0",
-    "lint": "node --check bin/cap-snapshot"
+    "lint": "node --check bin/cap-snapshot",
+    "test": "node --test --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON pi-extension/subagent-core.test.ts"
   }
 }

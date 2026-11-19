@@ -204,6 +204,8 @@ export const toolCalls = pgTable(
     images: jsonb().$type<Array<{ attachmentId: string; fileName: string; width: number | null; height: number | null }>>().notNull().default([]),
     /** Fichiers proposés au téléchargement par Pi (outil `share_files`, pièces jointes `source = agent`). */
     files: jsonb().$type<Array<{ attachmentId: string; fileName: string; path: string; size: number; kind: 'image' | 'text' | 'archive' | 'binary' }>>().notNull().default([]),
+    /** Données structurées de certains outils (ex. progression des sous-agents), pour l'interface. */
+    details: jsonb().$type<Record<string, unknown>>(),
     startedAt: ts().notNull().defaultNow(),
     completedAt: ts(),
     durationMs: integer(),

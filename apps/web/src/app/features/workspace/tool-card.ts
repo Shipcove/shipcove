@@ -7,17 +7,18 @@ import { AskForm } from './ask-form';
 import { SharedFiles } from './shared-files';
 import { ApprovalCard } from './approval-card';
 import { ScreenshotStrip } from './screenshot-strip';
+import { SubagentsLine, SubagentsView, subagentsOf } from './subagents-view';
 import { t } from '../../core/i18n';
 
 /** Outils de Pi qui créent une demande d'approbation Git (affichée sous l'appel). */
 export const APPROVAL_TOOLS = new Set(['platform_git_push', 'platform_create_pull_request', 'platform_merge_pull_request', 'platform_delete_remote_branch']);
 
 export function toolIcon(name: string): string {
-  return ({ bash: 'terminal', read: 'eye', write: 'file', edit: 'edit', browser_screenshot: 'image', share_files: 'download', update_plan: 'checklist' } as Record<string, string>)[name] ?? (name.startsWith('platform_') ? 'git' : name.startsWith('mcp__') ? 'puzzle' : 'cpu');
+  return ({ bash: 'terminal', read: 'eye', write: 'file', edit: 'edit', browser_screenshot: 'image', share_files: 'download', update_plan: 'checklist', subagent: 'agents' } as Record<string, string>)[name] ?? (name.startsWith('platform_') ? 'git' : name.startsWith('mcp__') ? 'puzzle' : 'cpu');
 }
 
 export function toolLabel(name: string): string {
-  return ({ bash: t('Commande'), read: t('Lecture'), write: t('Écriture'), edit: t('Modification'), browser_screenshot: t('Capture d’écran'), share_files: t('Fichiers à télécharger'), update_plan: t('Plan'), platform_git_push: t('Push (approbation)'), platform_create_pull_request: t('Pull request (approbation)'), platform_merge_pull_request: t('Fusion (approbation)'), platform_delete_remote_branch: t('Suppression de branche (approbation)') } as Record<string, string>)[name] ?? name;
+  return ({ bash: t('Commande'), read: t('Lecture'), write: t('Écriture'), edit: t('Modification'), browser_screenshot: t('Capture d’écran'), share_files: t('Fichiers à télécharger'), update_plan: t('Plan'), subagent: t('Sous-agents'), platform_git_push: t('Push (approbation)'), platform_create_pull_request: t('Pull request (approbation)'), platform_merge_pull_request: t('Fusion (approbation)'), platform_delete_remote_branch: t('Suppression de branche (approbation)') } as Record<string, string>)[name] ?? name;
 }
 
 /** Argument principal d'un appel (commande, chemin, URL…), sur une ligne. */
@@ -26,6 +27,7 @@ export function toolSummary(call: ToolCallDto): string {
     const items = parsePlan(call.args) ?? [];
     return t('{done}/{total} tâches terminées', { done: items.filter((i) => i.status === 'completed').length, total: items.length });
   }
+  if (call.toolName === 'subagent') return subagentsOf(call).map((a) => a.title).join(' · ').slice(0, 120);
   const a = (call.args ?? {}) as Record<string, unknown>;
   return String(a['command'] ?? a['path'] ?? a['file_path'] ?? a['url'] ?? a['local_branch'] ?? a['title'] ?? '').split('\n')[0].slice(0, 120);
 }
@@ -37,13 +39,16 @@ export function toolSummary(call: ToolCallDto): string {
  */
 @Component({
   selector: 'cap-tool-card',
-  imports: [Icon, CodeBlock, AskForm, SharedFiles, ApprovalCard, ScreenshotStrip],
+  imports: [Icon, CodeBlock, AskForm, SharedFiles, ApprovalCard, ScreenshotStrip, SubagentsView, SubagentsLine],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (call().toolName === 'ask_user') {
       <cap-ask-form [call]="call()" />
     } @else if (call().toolName === 'share_files') {
       <cap-shared-files [call]="call()" />
+    } @else if (call().toolName === 'subagent') {
+      <!-- Volet des sous-agents à côté de la conversation : une ligne ; sinon la carte complète. -->
+      @if (store.subagentDocked()) { <cap-subagents-line [call]="call()" /> } @else { <cap-subagents-view [call]="call()" /> }
     } @else {
     <div class="my-1.5 min-w-0 overflow-hidden rounded-lg border border-stone-200 bg-stone-50 text-sm dark:border-stone-800 dark:bg-stone-900/70">
       <button class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-stone-100 dark:hover:bg-stone-800/70" (click)="open.set(!open())" [attr.aria-expanded]="open()">
@@ -107,7 +112,7 @@ export class ToolCard {
     // Les fichiers du projet d'abord, l'intérieur de .git ensuite.
     return [...files].sort((a, b) => Number(a.includes('/.git/') || a.startsWith('.git/')) - Number(b.includes('/.git/') || b.startsWith('.git/'))).slice(0, 12);
   });
-  private readonly store = inject(WorkspaceStore);
+  protected readonly store = inject(WorkspaceStore);
   protected readonly images = computed(() => this.call().images ?? []);
   /** Demande d'approbation créée par cet appel (outils `platform_*` Git). */
   protected readonly approval = computed(() => (APPROVAL_TOOLS.has(this.call().toolName) ? (this.store.approvals().find((a) => a.toolCallId === this.call().id) ?? null) : null));

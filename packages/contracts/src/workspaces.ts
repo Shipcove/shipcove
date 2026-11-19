@@ -149,6 +149,8 @@ export interface ToolCallDto {
   filesTouched: string[];
   images: ToolImageDto[];
   files: ToolFileDto[];
+  /** Données structurées de l'outil pour l'interface (ex. sous-agents), sinon `null`. */
+  details: Record<string, unknown> | null;
   startedAt: string;
   completedAt: string | null;
   durationMs: number | null;

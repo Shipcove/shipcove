@@ -96,7 +96,8 @@ export class PiSimulator {
     await planTool(0);
     if (!(await step(500))) return;
     const listing = Object.keys(w.files).sort().join('\n') || D.L('(dossier vide)', '(empty folder)');
-    await this.tool(r, wsId, 'bash', { command: hasRepo ? 'git ls-files' : 'ls -A' }, listing, 900);
+    if (hasRepo) await this.subagents(r, wsId, Object.keys(w.files).sort());
+    else await this.tool(r, wsId, 'bash', { command: 'ls -A' }, listing, 900);
     if (!(await step(400))) return;
 
     await planTool(1);
@@ -144,6 +145,50 @@ export class PiSimulator {
     emit(wsId, 'usage.updated', { contextPercent: Math.min(90, 12 + w.messages.length * 3) });
     emit(wsId, 'run.completed', { runId: r.id });
     this.active.delete(wsId);
+  }
+
+  /** Deux sous-agents d'exploration en parallèle, avec leur progression en direct. */
+  private async subagents(r: Run, wsId: string, files: string[]): Promise<void> {
+    if (r.cancelled) return;
+    const toolCallId = this.server.newId('tool');
+    const plans: Array<{ title: string; steps: Array<[string, string]>; output: string }> = [
+      {
+        title: D.L('Cartographier le projet', 'Map the project'),
+        steps: [['ls', '.'], ['find', '**/*'], ['read', files[0] ?? 'README.md']],
+        output: D.L(`Le dépôt contient ${files.length} fichier(s) : ${files.map((f) => `\`${f}\``).join(', ')}.`, `The repository holds ${files.length} file(s): ${files.map((f) => `\`${f}\``).join(', ')}.`),
+      },
+      {
+        title: D.L('Repérer les tests', 'Find the tests'),
+        steps: [['grep', 'describe\\(|test\\('], ['read', 'package.json']],
+        output: D.L('Les tests se lancent avec `npm test` (Vitest).', 'Tests run with `npm test` (Vitest).'),
+      },
+    ];
+    const started = Date.now();
+    const agents = plans.map((p) => ({ title: p.title, mode: 'explore', status: 'running', steps: [] as Array<{ tool: string; summary: string; status: string }>, toolCount: 0, output: '', error: null, startedAt: started, endedAt: null as number | null, tokens: 0 }));
+    const details = () => ({ kind: 'subagents', agents: agents.map((a) => ({ ...a, steps: a.steps.map((x) => ({ ...x })) })) });
+    const tasks = plans.map((p) => ({ title: p.title, prompt: p.title, mode: 'explore' }));
+    this.server.emit(wsId, 'tool.started', { toolCallId, messageId: r.messageId, toolName: 'subagent', args: { tasks } }, r.id);
+    const rounds = Math.max(...plans.map((p) => p.steps.length));
+    for (let k = 0; k <= rounds; k++) {
+      await sleep(700);
+      if (r.cancelled) return;
+      agents.forEach((a, i) => {
+        a.steps.forEach((x) => (x.status = 'completed'));
+        const next = plans[i].steps[k];
+        if (next) {
+          a.steps.push({ tool: next[0], summary: next[1], status: 'running' });
+          a.toolCount++;
+          a.tokens += 3_000;
+        } else if (a.status === 'running') {
+          a.status = 'completed';
+          a.output = plans[i].output;
+          a.endedAt = Date.now();
+        }
+      });
+      this.server.emit(wsId, 'tool.output', { toolCallId, output: '', truncated: false, details: details() }, r.id);
+    }
+    const output = plans.map((p, i) => `## Sous-agent ${i + 1} — ${p.title}\n\n${p.output}`).join('\n\n');
+    this.server.emit(wsId, 'tool.completed', { toolCallId, isError: false, output, truncated: false, durationMs: Date.now() - started, filesTouched: [], images: [], files: [], details: details() }, r.id);
   }
 
   private async tool(r: Run, wsId: string, toolName: string, args: unknown, output: string, ms: number, extra: { filesTouched?: string[]; images?: ToolImageDto[]; files?: ToolFileDto[] } = {}): Promise<void> {

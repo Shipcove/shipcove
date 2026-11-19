@@ -11,8 +11,8 @@ import {
   workspaces,
   type Database,
 } from '@cap/database';
-import { BROWSER_PLUGIN, PI_KEEP_RECENT_TOKENS, PI_PROVIDER, PLAN_PLUGIN, SCREENSHOT_PROMPT, PI_RESERVE_TOKENS, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
-import { DB, ENV, EnvironmentService, EventsService, NotificationService, modelAllowedFor, ObjectStorage, PgNotifier, QuotaService, RunQueueService, StreamScrubber, redactString, scrubDeep, scrubSecrets, type NewEvent } from '@cap/server-core';
+import { BROWSER_PLUGIN, PI_KEEP_RECENT_TOKENS, PI_PROVIDER, PLAN_PLUGIN, SUBAGENT_PLUGIN, TOOLS_WITH_DETAILS, subagentEnv, SCREENSHOT_PROMPT, PI_RESERVE_TOKENS, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
+import { DB, ENV, EnvironmentService, EventsService, NotificationService, modelAllowedFor, ObjectStorage, PgNotifier, QuotaService, RunQueueService, SettingsService, StreamScrubber, redactString, scrubDeep, scrubSecrets, type NewEvent } from '@cap/server-core';
 import { contextPercent, type ToolFileDto } from '@cap/contracts';
 import { toUserPath } from '@cap/storage';
 import { execCollect } from '@cap/sandbox';
@@ -34,6 +34,8 @@ import { BridgeRpcService } from './bridge-rpc.service.js';
 const RUN_LEASE_MS = 60_000;
 const FLUSH_MS = 100;
 const TOOL_OUTPUT_SSE_LIMIT = 20_000;
+/** Taille maximale des détails structurés d'un outil (JSON), au-delà ils sont ignorés. */
+const TOOL_DETAILS_LIMIT = 200_000;
 
 interface RunContext {
   runId: string;
@@ -47,6 +49,8 @@ interface RunContext {
   texts: Map<string, string>;
   lastAssistantMessageId: string | null;
   toolStarts: Map<string, number>;
+  /** Appels d'outils dont les détails structurés vont à l'interface (ex. sous-agents). */
+  toolDetailNames: Set<string>;
   toolFiles: Map<string, string[]>;
   /** Fichiers proposés au téléchargement par appel d'outil (`share_files`, via le bridge). */
   sharedFiles: Map<string, ToolFileDto[]>;
@@ -124,6 +128,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     private readonly repoAttach: RepositoryAttachService,
     private readonly screenshots: ScreenshotsService,
     private readonly services: ServicesService,
+    private readonly settings: SettingsService,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -233,9 +238,13 @@ export class RunOrchestrator implements OnApplicationBootstrap {
 
     // Un seul Pi par workspace : on termine d'éventuels processus orphelins (worker disparu).
     await this.sandboxes.provider.exec(sandbox.handle, ['pkill', '-f', 'pi --mode rpc']).then((p) => p.wait()).catch(() => undefined);
+    // … et leurs sous-agents (`pi --mode json`), qui leur auraient survécu.
+    await this.sandboxes.provider.exec(sandbox.handle, ['pkill', '-f', 'pi --mode json']).then((p) => p.wait()).catch(() => undefined);
     // Mode Plan : liste blanche d'outils en lecture seule appliquée par Pi lui-même.
     const planMode = run.agentMode === 'plan';
-    const plugins = await this.sandboxes.availablePlugins(sandbox);
+    const subagentSettings = await this.settings.section('subagents');
+    // Sous-agents désactivés par l'administrateur : le plugin n'est pas chargé, l'outil n'existe pas.
+    const plugins = (await this.sandboxes.availablePlugins(sandbox)).filter((p) => p !== SUBAGENT_PLUGIN || subagentSettings.enabled);
     // Captures d'écran sans demande de l'utilisateur dès qu'une interface web change (hors mode Plan).
     const screenshots = !planMode && plugins.includes(BROWSER_PLUGIN) ? SCREENSHOT_PROMPT : null;
     const command = piCommand({
@@ -243,7 +252,10 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       skillDirs: [],
       plugins,
       // Mode Plan : lecture seule, questions et, si le plugin est dans l'image, le plan de tâches.
-      ...(planMode ? { tools: plugins.includes(PLAN_PLUGIN) ? [...PLAN_MODE_TOOLS, 'update_plan'] : PLAN_MODE_TOOLS } : {}),
+      // Les sous-agents y restent disponibles, en exploration seule (CAP_SUBAGENT_READONLY).
+      ...(planMode
+        ? { tools: [...PLAN_MODE_TOOLS, ...(plugins.includes(PLAN_PLUGIN) ? ['update_plan'] : []), ...(plugins.includes(SUBAGENT_PLUGIN) ? ['subagent'] : [])] }
+        : {}),
       appendSystemPrompt:
         [planMode ? PLAN_MODE_PROMPT : null, ws.repositoryId ? null : NO_REPOSITORY_PROMPT, screenshots, coAuthorPrompt(await this.sandboxes.commitTrailer().catch(() => null))]
           .filter(Boolean)
@@ -254,7 +266,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     const environment = await this.environment.forWorkspace(ws.id, { fresh: true });
     const proc = await this.sandboxes.provider.exec(sandbox.handle, command, {
       interactive: true,
-      env: { ...environment.vars, ...this.sandboxes.forgeEnv(sandbox), [PI_TOKEN_ENV]: sandbox.runToken, HOME: '/home/agent', PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1' },
+      env: { ...environment.vars, ...this.sandboxes.forgeEnv(sandbox), [PI_TOKEN_ENV]: sandbox.runToken, HOME: '/home/agent', PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1', ...subagentEnv(subagentSettings, planMode) },
       workdir: '/workspace',
     });
     const runtime = new PiAgentRuntime({ stdin: proc.stdin!, stdout: proc.stdout, stderr: proc.stderr, wait: () => proc.wait(), kill: () => proc.kill() });
@@ -271,6 +283,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       texts: new Map(),
       lastAssistantMessageId: null,
       toolStarts: new Map(),
+      toolDetailNames: new Set(),
       toolFiles: new Map(),
       sharedFiles: new Map(),
       pending: [],
@@ -560,6 +573,16 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     await this.events.emit(workspaceId, 'message.created', { messageId: m.id, role: 'system', text, attachmentIds: [], meta }, runId);
   }
 
+  /**
+   * Détails structurés d'un outil autorisé (liste blanche), sans secret et de taille bornée ;
+   * `null` pour les autres outils.
+   */
+  private toolDetails(ctx: RunContext, toolCallId: string, details: unknown): Record<string, unknown> | null {
+    if (!ctx.toolDetailNames.has(toolCallId) || !details || typeof details !== 'object' || Array.isArray(details)) return null;
+    const clean = scrubDeep(details, ctx.secretValues) as Record<string, unknown>;
+    return JSON.stringify(clean).length > TOOL_DETAILS_LIMIT ? null : clean;
+  }
+
   private scrubber(ctx: RunContext, key: string): StreamScrubber {
     let sc = ctx.scrubbers.get(key);
     if (!sc) ctx.scrubbers.set(key, (sc = new StreamScrubber(ctx.secretValues)));
@@ -655,6 +678,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
         }
         case 'tool_start': {
           ctx.toolStarts.set(e.toolCallId, Date.now());
+          if (TOOLS_WITH_DETAILS.has(e.toolName)) ctx.toolDetailNames.add(e.toolCallId);
           if (e.toolName === 'bash' && CLONE_RE.test(String((e.args as { command?: unknown } | null)?.command ?? ''))) (ctx.cloneCalls ??= new Set()).add(e.toolCallId);
           await this.db
             .insert(toolCalls)
@@ -670,7 +694,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           ctx.lastToolOutputAt.set(e.toolCallId, Date.now());
           const full = scrubSecrets(e.output, ctx.secretValues);
           const out = full.length > TOOL_OUTPUT_SSE_LIMIT ? full.slice(-TOOL_OUTPUT_SSE_LIMIT) : full;
-          this.push(ctx, { type: 'tool.output', runId: ctx.runId, data: { toolCallId: e.toolCallId, output: out, truncated: out.length < full.length } });
+          const details = this.toolDetails(ctx, e.toolCallId, e.details);
+          this.push(ctx, { type: 'tool.output', runId: ctx.runId, data: { toolCallId: e.toolCallId, output: out, truncated: out.length < full.length, ...(details ? { details } : {}) } });
           break;
         }
         case 'tool_end': {
@@ -695,6 +720,8 @@ export class RunOrchestrator implements OnApplicationBootstrap {
             : [];
           const sharedFiles = ctx.sharedFiles.get(e.toolCallId) ?? [];
           ctx.sharedFiles.delete(e.toolCallId);
+          const details = TOOLS_WITH_DETAILS.has(e.toolName) ? this.toolDetails(ctx, e.toolCallId, e.details) : null;
+          ctx.toolDetailNames.delete(e.toolCallId);
           await this.db
             .update(toolCalls)
             .set({
@@ -705,6 +732,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
               filesTouched: files,
               images,
               files: sharedFiles,
+              details,
               completedAt: new Date(),
               durationMs,
             })
@@ -713,7 +741,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           this.push(ctx, {
             type: 'tool.completed',
             runId: ctx.runId,
-            data: { toolCallId: e.toolCallId, isError: e.isError, output: out, truncated: out.length < output.length, durationMs, filesTouched: files, images, files: sharedFiles },
+            data: { toolCallId: e.toolCallId, isError: e.isError, output: out, truncated: out.length < output.length, durationMs, filesTouched: files, images, files: sharedFiles, details },
           });
           await this.sandboxes.touch(ctx.workspaceId);
           break;

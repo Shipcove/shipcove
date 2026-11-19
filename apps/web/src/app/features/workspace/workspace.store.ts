@@ -100,6 +100,7 @@ export class WorkspaceStore {
   }
 
   close(): void {
+    this.subagentPane.set(null);
     this.handle?.close();
     this.handle = null;
     this.streamState.set('closed');
@@ -137,6 +138,36 @@ export class WorkspaceStore {
 
   /** Demandes de retour en bas de la conversation (envoi d'un message), suivies par la vue. */
   readonly scrollToBottomRequests = signal(0);
+
+  /* ---------------------- Volet des sous-agents ---------------------- */
+
+  /**
+   * Volet « Sous-agents » (moitié basse du panneau latéral) : appel affiché, replié en barre ou
+   * non. `request` augmente à chaque demande d'affichage (nouvelle vague ou bouton « Voir »),
+   * `explicit` distingue le clic de l'utilisateur de l'ouverture automatique.
+   */
+  readonly subagentPane = signal<{ toolCallId: string; collapsed: boolean; request: number; explicit: boolean } | null>(null);
+  /** Le volet est visible à côté de la conversation : elle n'affiche alors qu'une ligne par appel. */
+  readonly subagentDocked = signal(false);
+  /** Appel `subagent` affiché dans le volet. */
+  readonly subagentCall = computed(() => {
+    const id = this.subagentPane()?.toolCallId;
+    if (!id) return null;
+    for (const m of this.messages()) for (const c of m.toolCalls) if (c.id === id) return c;
+    return null;
+  });
+
+  showSubagents(toolCallId: string, explicit = true): void {
+    this.subagentPane.update((p) => ({ toolCallId, collapsed: false, request: (p?.request ?? 0) + 1, explicit }));
+  }
+
+  setSubagentsCollapsed(collapsed: boolean): void {
+    this.subagentPane.update((p) => (p ? { ...p, collapsed } : p));
+  }
+
+  closeSubagents(): void {
+    this.subagentPane.set(null);
+  }
 
   async send(text: string, attachmentIds: string[], delivery: 'new_run' | 'steer' | 'follow_up' = 'new_run', answersTo?: string, command?: 'compact'): Promise<void> {
     const ws = this.workspace()!;
@@ -273,16 +304,24 @@ export class WorkspaceStore {
           filesTouched: [],
           images: [],
           files: [],
+          details: null,
           startedAt: e.ts,
           completedAt: null,
           durationMs: null,
         };
         const target = call.messageId ?? this.messages().filter((m) => m.role === 'assistant').at(-1)?.id;
         if (target) this.patchMessage(target, (m) => (m.toolCalls.some((t) => t.id === call.id) ? m : { ...m, toolCalls: [...m.toolCalls, call] }));
+        // Nouvelle vague de sous-agents : le volet s'ouvre (ou se rouvre) sur elle.
+        if (call.toolName === 'subagent') this.showSubagents(call.id, false);
         return;
       }
       case 'tool.output':
-        this.patchTool(d['toolCallId'] as string, (t) => ({ ...t, output: d['output'] as string, outputTruncated: d['truncated'] as boolean }));
+        this.patchTool(d['toolCallId'] as string, (t) => ({
+          ...t,
+          output: d['output'] as string,
+          outputTruncated: d['truncated'] as boolean,
+          details: (d['details'] as ToolCallDto['details'] | undefined) ?? t.details ?? null,
+        }));
         return;
       case 'tool.completed':
         this.patchTool(d['toolCallId'] as string, (t) => ({
@@ -295,6 +334,7 @@ export class WorkspaceStore {
           filesTouched: d['filesTouched'] as string[],
           images: (d['images'] as ToolCallDto['images'] | undefined) ?? t.images ?? [],
           files: (d['files'] as ToolCallDto['files'] | undefined) ?? t.files ?? [],
+          details: (d['details'] as ToolCallDto['details'] | undefined) ?? t.details ?? null,
           completedAt: e.ts,
         }));
         return;

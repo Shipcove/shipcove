@@ -75,6 +75,12 @@ export const SETTINGS: PlatformSettings = {
     "allowPersonalTokens": false,
     "coAuthorEmail": "shipcove@example.com"
   },
+  "subagents": {
+    "enabled": true,
+    "maxTasks": 4,
+    "maxParallel": 4,
+    "timeoutMinutes": 20
+  },
   "conversations": {
     "titleModelId": "m-qwen"
   },

@@ -40,6 +40,7 @@
         <li><strong>startup script</strong>: a single bash script run in every new sandbox (npm / pip registries, mirrors, common tools) and its maximum duration — see <a href="environnement.html">Environment and services</a>;</li>
         <li><strong>sandbox images</strong>: addition (reference + digest), activation as default image, deprecation;</li>
         <li><strong>services started by the agent</strong>: see <a href="environnement.html#services-started-by-the-agent">Environment and services</a>;</li>
+        <li><strong>agent sub-agents</strong>: platform-wide switch, maximum number of sub-agents per call (4 by default, up to 8), number of explore sub-agents running at the same time (4 by default) and maximum duration of a sub-agent (20 min by default). Each sub-agent spends tokens from the user's quotas and runs a process in the sandbox: lower the parallelism for small sandboxes. Settings apply from the next run; a sandbox image without the plugin offers none — see <a href="guide.html#sub-agents">Sub-agents</a>;</li>
         <li>previews: number of simultaneous ports per conversation;</li>
         <li>running instances, with forced stop.</li>
       </ul>
