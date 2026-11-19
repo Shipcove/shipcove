@@ -60,6 +60,16 @@
         <li>Limites : 300 fichiers, 1 Mo par fichier, 5 Mo au total. Les archives contenant des chemins dangereux (<code>..</code>, chemins absolus) ou des liens symboliques sont refusées.</li>
       </ul>
 
+      <h2>Serveurs MCP</h2>
+      <p>Un serveur MCP donne des outils supplémentaires à l’agent (tickets Jira, base de connaissances, API interne…). Dans <strong>Skills &amp; MCP</strong>, <em>Ajouter un serveur MCP</em> ouvre une fenêtre :</p>
+      <ul>
+        <li><strong>Formulaire</strong> : nom, portée (personnelle ; globale pour un administrateur), transport <em>Streamable HTTP</em> (URL) ou <em>stdio</em> (commande lancée dans la sandbox), et autant d’<strong>en-têtes HTTP</strong> que nécessaire. La case <em>Secret</em> envoie la valeur dans Vault : elle n’est plus jamais affichée. Elle est cochée d’office pour les noms sensibles (<code>token</code>, <code>authorization</code>, <code>key</code>…).</li>
+        <li><strong>Coller une config JSON</strong> : le bloc <code>mcpServers</code> fourni par la documentation du serveur (format Claude Desktop, Cursor…) remplit le formulaire.</li>
+        <li><strong>Tester la connexion</strong> interroge le serveur sans rien enregistrer et affiche le résultat tel quel (version et nombre d’outils, ou l’erreur : jeton refusé, hôte non autorisé…). L’ajout découvre ensuite les outils et propose de les choisir.</li>
+      </ul>
+      <p>Pour un serveur personnel en HTTP, son hôte doit être autorisé par un administrateur (Administration → MCP). <em>Modifier</em> change l’URL ou les en-têtes et remplace un secret sans supprimer le serveur (un secret laissé vide est conservé). En cas d’échec, la raison s’affiche sous le serveur, avec <em>Réessayer</em>.</p>
+      <p><strong>Choix des outils</strong> : le sélecteur de chaque serveur liste ses outils (recherche, <em>Tout sélectionner</em> / <em>Aucun</em>, puces retirables) ; <em>Enregistrer la sélection</em> l’applique en une fois. Les outils décochés ne sont pas proposés à l’agent ; un outil ajouté plus tard au serveur l’est par défaut. Un outil refusé par l’administrateur apparaît avec un cadenas : il ne peut pas être activé. Sur un serveur global, l’administrateur règle avec le même sélecteur les outils proposés à tous.</p>
+
       <h2>Pièces jointes</h2>
       <p>Glissez-déposez, collez ou ajoutez des fichiers (20 Mo et 10 fichiers par message par défaut). Les images sont transmises au modèle s’il les accepte ; les autres fichiers sont déposés dans la sandbox (<code>/workspace/.cap/attachments/…</code>, hors Git). Les exécutables, les archives dangereuses ou trop volumineuses une fois décompressées et les types incohérents sont refusés.</p>
 

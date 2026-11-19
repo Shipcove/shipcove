@@ -150,9 +150,61 @@ export const CreateMcpServerSchema = z.object({
   /** Variables / en-têtes sensibles : stockés dans Vault. */
   secretEnv: z.record(z.string().regex(/^[A-Z_][A-Z0-9_]*$/), z.string().max(4000)).default({}),
   headers: z.record(z.string().max(200), z.string().max(4000)).default({}),
+  /** En-têtes marqués secrets dans le formulaire : stockés dans Vault (en plus des noms sensibles de `headers`). */
+  secretHeaders: z.record(z.string().max(200), z.string().max(4000)).default({}),
   version: z.string().max(100).optional(),
 });
 export type CreateMcpServer = z.infer<typeof CreateMcpServerSchema>;
+
+/**
+ * Modification d'un serveur. `headers` remplace tous les en-têtes publics ; `secretHeaders` /
+ * `secretEnv` posent ou remplacent des secrets (les autres sont conservés) ; `removeSecrets` en retire
+ * (noms tels que dans `secretKeys` : `header:Nom` ou `VARIABLE`).
+ */
+export const UpdateMcpServerSchema = z.object({
+  enabled: z.boolean().optional(),
+  description: z.string().max(1000).optional(),
+  url: z.url().max(2000).optional(),
+  command: z.string().max(500).optional(),
+  args: z.array(z.string().max(500)).max(50).optional(),
+  headers: z.record(z.string().max(200), z.string().max(4000)).optional(),
+  secretHeaders: z.record(z.string().max(200), z.string().max(4000)).optional(),
+  secretEnv: z.record(z.string().regex(/^[A-Z_][A-Z0-9_]*$/), z.string().max(4000)).optional(),
+  removeSecrets: z.array(z.string().max(210)).max(100).optional(),
+});
+export type UpdateMcpServer = z.infer<typeof UpdateMcpServerSchema>;
+
+/**
+ * Test d'une configuration Streamable HTTP sans l'enregistrer. `serverId` : serveur en cours de
+ * modification, dont les secrets enregistrés complètent ceux du formulaire.
+ */
+export const TestMcpServerSchema = z.object({
+  scope: McpScopeSchema,
+  url: z.url().max(2000),
+  headers: z.record(z.string().max(200), z.string().max(4000)).default({}),
+  secretHeaders: z.record(z.string().max(200), z.string().max(4000)).default({}),
+  serverId: z.uuid().optional(),
+});
+export type TestMcpServer = z.infer<typeof TestMcpServerSchema>;
+
+/** Résultat d'un test ou d'une découverte. */
+export interface McpDiscoveryResult {
+  ok: boolean;
+  /** Nom et version annoncés par le serveur. */
+  server?: string | null;
+  tools?: Array<{ name: string; description: string; inputSchema?: Record<string, unknown> }>;
+  detail?: string;
+}
+
+/**
+ * Outils décochés d'un serveur, enregistrés en une fois : ils deviennent des refus de la portée
+ * (personnelle : pour soi ; globale : pour tous, administrateurs). Les autres règles de la portée
+ * sont remplacées.
+ */
+export const McpSelectionSchema = z.object({
+  scope: McpScopeSchema,
+  denied: z.array(z.string().min(1).max(200)).max(500),
+});
 
 export interface McpServerDto {
   id: string;
@@ -164,10 +216,14 @@ export interface McpServerDto {
   url: string | null;
   command: string | null;
   args: string[];
+  /** En-têtes publics (non secrets), pour la modification ; masqués comme le reste de la configuration. */
+  headers: Record<string, string>;
   secretKeys: string[];
   version: string | null;
   enabled: boolean;
   health: 'unknown' | 'healthy' | 'unhealthy';
+  /** Détail du dernier contrôle (version annoncée, ou erreur). */
+  healthDetail: string | null;
   lastHealthAt: string | null;
   tools: McpToolDto[];
 }
@@ -178,6 +234,8 @@ export interface McpToolDto {
   description: string;
   /** Résultat effectif après héritage des politiques (global > personnel). */
   effective: 'allowed' | 'denied';
+  /** Refusé par une règle globale : l'utilisateur ne peut pas l'autoriser pour lui. */
+  lockedByAdmin: boolean;
 }
 
 export const McpPermissionSchema = z.object({
