@@ -22,7 +22,9 @@ export class UsersDirectoryController {
     return this.db
       .select({ id: users.id, username: users.username, displayName: users.displayName })
       .from(users)
-      .where(and(eq(users.status, 'active'), ne(users.id, user.id), or(ilike(users.username, pattern), ilike(users.displayName, pattern), ilike(users.email, pattern))))
+      // L'email ne se cherche qu'en entier : une recherche partielle permettrait de deviner les
+      // adresses des autres utilisateurs.
+      .where(and(eq(users.status, 'active'), ne(users.id, user.id), or(ilike(users.username, pattern), ilike(users.displayName, pattern), sql`lower(${users.email}) = ${q.trim().toLowerCase()}`)))
       .orderBy(users.displayName)
       .limit(20);
   }

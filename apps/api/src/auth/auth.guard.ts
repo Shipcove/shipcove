@@ -48,6 +48,13 @@ export class AuthGuard implements CanActivate {
       }
     }
 
+    // Requêtes publiques sans session (connexion, inscription…) : le jeton CSRF n'existe pas
+    // encore. On exige qu'elles viennent de l'application elle-même, sinon un formulaire caché
+    // sur un autre site (ou une preview) connecterait la victime au compte de l'attaquant.
+    if (!SAFE_METHODS.has(req.method) && !session && !this.reflector.getAllAndOverride<boolean>(SKIP_CSRF, handlers) && !isSameOrigin(req)) {
+      throw new AppError('csrf_invalid', 'Requête refusée : elle ne vient pas de l’application');
+    }
+
     if (isPublic) return true;
     if (!session) throw new AppError('unauthenticated', 'Authentification requise');
     if (session.state !== 'active') {
@@ -58,5 +65,26 @@ export class AuthGuard implements CanActivate {
       throw new AppError('forbidden', 'Réservé aux administrateurs plateforme');
     }
     return true;
+  }
+}
+
+/**
+ * Requête émise par l'application : `Sec-Fetch-Site` (navigateurs récents) vaut `same-origin` ou
+ * `none` ; à défaut, l'en-tête `Origin` désigne le même hôte. Sans aucun des deux (client non
+ * navigateur), la requête est acceptée : un navigateur envoie toujours `Origin` en cross-site.
+ */
+export function isSameOrigin(req: { headers: Record<string, string | string[] | undefined> }): boolean {
+  const site = req.headers['sec-fetch-site'];
+  if (typeof site === 'string') return site === 'same-origin' || site === 'none';
+  const origin = req.headers['origin'];
+  if (typeof origin !== 'string') return true;
+  if (origin === 'null') return false;
+  const fwd = req.headers['x-forwarded-host'];
+  const host = (typeof fwd === 'string' ? fwd.split(',')[0].trim() : undefined) ?? req.headers['host'];
+  try {
+    // Noms d'hôte comparés sans le port : nginx transmet `Host` sans lui (`$host`).
+    return typeof host === 'string' && new URL(origin).hostname.toLowerCase() === host.replace(/:\d+$/, '').replace(/^\[|\]$/g, '').toLowerCase();
+  } catch {
+    return false;
   }
 }

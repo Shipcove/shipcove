@@ -17,6 +17,11 @@ const uuid = { schema: z.uuid() };
  * Serveurs MCP à deux portées (globale, personnelle), permissions par outil avec héritage :
  * une politique globale ne peut pas être contournée par une portée inférieure.
  */
+/** En-têtes considérés comme secrets (stockés dans Vault, jamais renvoyés). */
+const SENSITIVE_HEADER = /auth|token|key|secret|pass|pwd|cookie|credential|session|signature/i;
+
+const hideConfig = (s: { scope: string }, user: AuthUser) => s.scope === 'global' && user.platformRole !== 'platform_admin';
+
 @ApiTags('mcp')
 @Controller('mcp-servers')
 export class McpController {
@@ -56,10 +61,12 @@ export class McpController {
         scope: s.scope,
         ownerId: s.ownerId,
         transport: s.transport,
-        url: s.url,
-        command: s.command,
-        args: s.args,
-        secretKeys: s.secretKeys,
+        // Configuration d'un serveur global (adresse interne, commande, noms des secrets) : réservée
+        // aux administrateurs ; les autres voient le serveur et ses outils.
+        url: hideConfig(s, user) ? null : s.url,
+        command: hideConfig(s, user) ? null : s.command,
+        args: hideConfig(s, user) ? [] : s.args,
+        secretKeys: hideConfig(s, user) ? [] : s.secretKeys,
         version: s.version,
         enabled: s.enabled,
         health: s.health,
@@ -87,9 +94,14 @@ export class McpController {
     }
     const meta = { scope: body.scope, ownerId: body.scope === 'personal' ? user.id : null };
     await this.assertManage(user, meta);
+    // Un serveur stdio s'exécute dans la sandbox de l'utilisateur, avec ses droits : des variables
+    // secrètes posées par l'administrateur y seraient lisibles par l'agent de chacun.
+    if (body.transport === 'stdio' && body.scope === 'global' && Object.keys(body.secretEnv ?? {}).length > 0) {
+      throw new AppError('validation_failed', 'Serveur MCP global en stdio : pas de variable secrète (elle serait lisible dans chaque sandbox). Utilisez un serveur Streamable HTTP, dont les secrets restent côté plateforme.');
+    }
     const secretData: Record<string, string> = { ...body.secretEnv };
-    for (const [k, v] of Object.entries(body.headers)) if (/authorization|token|key|secret/i.test(k)) secretData[`header:${k}`] = v;
-    const publicHeaders = Object.fromEntries(Object.entries(body.headers).filter(([k]) => !/authorization|token|key|secret/i.test(k)));
+    for (const [k, v] of Object.entries(body.headers)) if (SENSITIVE_HEADER.test(k)) secretData[`header:${k}`] = v;
+    const publicHeaders = Object.fromEntries(Object.entries(body.headers).filter(([k]) => !SENSITIVE_HEADER.test(k)));
     const [s] = await this.db
       .insert(mcpServers)
       .values({

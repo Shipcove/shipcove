@@ -21,5 +21,11 @@ describe('politique d’egress', () => {
       expect(isPrivateAddress(ip)).toBe(true);
     }
     expect(isPrivateAddress('104.16.1.1')).toBe(false);
+    expect(isPrivateAddress('2606:4700::1111')).toBe(false);
+  });
+  it('refuse toutes les écritures IPv6 d’une adresse IPv4 (mappée, hexadécimale, NAT64)', () => {
+    for (const ip of ['::ffff:127.0.0.1', '::ffff:7f00:1', '::ffff:a9fe:a9fe', '64:ff9b::a9fe:a9fe', '::127.0.0.1', 'fe80::1', 'fd00::1', '::1']) {
+      expect(isPrivateAddress(ip), ip).toBe(true);
+    }
   });
 });

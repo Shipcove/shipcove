@@ -1,5 +1,6 @@
 import http from 'node:http';
 import net from 'node:net';
+import { MAX_CLIENT_HELLO, readSni } from './tls-sni.js';
 import { lookup } from 'node:dns/promises';
 import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
@@ -91,15 +92,52 @@ export class EgressProxyService implements OnModuleInit, OnModuleDestroy {
       client.end(`HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain; charset=utf-8\r\nX-Cap-Egress-Denied: 1\r\n\r\nAccès refusé par la plateforme : ${verdict.reason}\r\n`);
       return;
     }
+    // Le tunnel ne s'ouvre qu'après lecture du ClientHello : son SNI doit être l'hôte autorisé
+    // (sinon un autre site hébergé sur la même adresse, CDN mutualisé, deviendrait joignable).
+    client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+    const hello = await this.readClientHello(client, head);
+    const sni = hello ? readSni(hello) : null;
+    if (!sni || sni.kind !== 'sni' || sni.name !== host.toLowerCase().replace(/\.$/, '')) {
+      this.deny(`${host}:${port}`, !sni ? 'ClientHello absent' : sni.kind === 'sni' ? `SNI ${sni.name} différent de l'hôte demandé` : sni.kind === 'no-sni' ? 'SNI absent' : 'flux non TLS');
+      client.destroy();
+      return;
+    }
     const upstream = net.connect(port, verdict.address, () => {
-      client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
-      if (head.length) upstream.write(head);
+      upstream.write(hello!);
       upstream.pipe(client);
       client.pipe(upstream);
     });
     upstream.setTimeout(600_000, () => upstream.destroy());
     upstream.on('error', () => client.destroy());
     client.on('error', () => upstream.destroy());
+  }
+
+  /** Premiers octets du client jusqu'à un ClientHello complet (ou `null` : délai, fin, trop long). */
+  private readClientHello(client: net.Socket, head: Buffer): Promise<Buffer | null> {
+    return new Promise((resolve) => {
+      let buf = head;
+      const finish = (v: Buffer | null) => {
+        clearTimeout(timer);
+        client.off('data', onData);
+        client.off('end', onEnd);
+        client.pause();
+        resolve(v);
+      };
+      const check = () => {
+        const r = readSni(buf);
+        if (r.kind !== 'incomplete') finish(buf);
+        else if (buf.length >= MAX_CLIENT_HELLO) finish(null);
+      };
+      const onData = (c: Buffer) => {
+        buf = Buffer.concat([buf, c]);
+        check();
+      };
+      const onEnd = () => finish(null);
+      const timer = setTimeout(() => finish(null), 10_000);
+      client.on('data', onData);
+      client.on('end', onEnd);
+      if (buf.length) check();
+    });
   }
 
   private async handleHttp(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {

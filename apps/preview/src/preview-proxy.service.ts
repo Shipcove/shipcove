@@ -20,6 +20,9 @@ interface Target {
  * principale, accès réservé au propriétaire du workspace, destination limitée à la sandbox du
  * workspace et au port explicitement ouvert (pas de SSRF).
  */
+/** Durée de validité d'une autorisation de preview vérifiée en base. */
+const CACHE_MS = 2_000;
+
 @Injectable()
 export class PreviewProxyService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('Preview');
@@ -78,7 +81,8 @@ export class PreviewProxyService implements OnModuleInit, OnModuleDestroy {
     if (!claims || claims.ws !== parsed.workspaceId || claims.port !== parsed.port) return { status: 401, message: 'Accès à la preview non autorisé : ouvrez-la depuis le workspace' };
     const cacheKey = `${parsed.workspaceId}:${parsed.port}:${claims.uid}`;
     const hit = this.cache.get(cacheKey);
-    if (hit && Date.now() - hit.at < 10_000) return { target: hit, ws: parsed.workspaceId, port: parsed.port };
+    // Cache court : un accès révoqué (port fermé, compte suspendu, sandbox détruite) cesse vite d'être relayé.
+    if (hit && Date.now() - hit.at < CACHE_MS) return { target: hit, ws: parsed.workspaceId, port: parsed.port };
     const [row] = await this.db
       .select({ ownerId: workspaces.ownerId, host: sandboxInstances.internalHost, status: users.status })
       .from(previewPorts)

@@ -94,7 +94,9 @@ export class ForgeProxyService {
   private async selfHosted(): Promise<Map<string, { family: ForgeFamily; connHost: string }>> {
     if (this.hosts && Date.now() - this.hosts.at < 30_000) return this.hosts.map;
     const res = await this.db.execute<{ host: string; provider: string }>(
-      sql`select host, provider from git_forges union select host, provider from git_connections where revoked_at is null union select host, provider from repositories`,
+      // Forges déclarées par l'administrateur uniquement : un hôte ajouté par un utilisateur (jeton
+      // personnel) ne doit pas être intercepté, et donc ouvert, pour toutes les sandboxes.
+      sql`select host, provider from git_forges where enabled`,
     );
     const map = new Map<string, { family: ForgeFamily; connHost: string }>();
     for (const r of res.rows) {

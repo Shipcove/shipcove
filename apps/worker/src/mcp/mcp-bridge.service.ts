@@ -44,7 +44,12 @@ export class McpBridgeService {
       const r = await client.callTool(toolName, args);
       return r.isError ? `Erreur de l’outil : ${r.text}` : r.text;
     }
-    // stdio : processus éphémère dans la sandbox.
+    // stdio : processus éphémère dans la sandbox, avec les droits de l'agent. Les secrets d'un
+    // serveur global (posés par l'administrateur) y seraient lisibles : refus (configuration
+    // antérieure au contrôle de l'API).
+    if (srv.scope === 'global' && Object.keys(secretValues).some((k) => !k.startsWith('header:'))) {
+      throw new AppError('forbidden', `Serveur MCP ${serverName} : un serveur global en stdio ne peut pas recevoir de secrets ; à reconfigurer en Streamable HTTP par l’administrateur`);
+    }
     const env: Record<string, string> = {};
     for (const [k, v] of Object.entries(secretValues)) if (!k.startsWith('header:')) env[k] = v;
     const proc = await this.sandboxes.provider.exec(ctx.sandbox.handle, [srv.command!, ...srv.args], { interactive: true, env, timeoutMs: 120_000 });

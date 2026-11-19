@@ -192,6 +192,9 @@ services:
       VAULT_SECRET_ID_FILE: /secrets/approle/worker/secret_id
       SANDBOX_PROVIDER: docker
       SANDBOX_NETWORK: cap-sandbox
+      # Un réseau privé par sandbox (sous-réseaux /28 de cette plage) : aucune sandbox ne peut en
+      # joindre une autre. Vide : ancien réseau partagé cap-sandbox.
+      SANDBOX_SUBNET_POOL: ${CAP_SANDBOX_SUBNET_POOL-10.231.0.0/16}
       SANDBOX_IMAGE: ${CAP_SANDBOX_IMAGE:-shipcove-sandbox:0.1.0}
       GATEWAY_INTERNAL_URL: http://gateway:8081
       EGRESS_PROXY_URL: http://gateway:3128
@@ -215,7 +218,10 @@ services:
     environment:
       GUARD_TOKEN_FILE: /run/secrets/docker_guard_token
       SANDBOX_NETWORK: cap-sandbox
+      SANDBOX_SUBNET_POOL: ${CAP_SANDBOX_SUBNET_POOL-10.231.0.0/16}
       GUARD_ALLOWED_RUNTIMES: ${CAP_SANDBOX_RUNTIMES:-}
+      # Préfixes d'images autorisés au téléchargement, séparés par des virgules (vide : tous).
+      GUARD_PULL_ALLOWLIST: ${CAP_GUARD_PULL_ALLOWLIST:-}
     secrets: [docker_guard_token]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -226,6 +232,9 @@ services:
 
   gateway:
     image: ${CAP_REGISTRY:-}shipcove-gateway:${CAP_VERSION:-0.1.0}
+    # Branché par la garde Docker sur le réseau privé de chaque sandbox (alias DNS « gateway »).
+    labels:
+      cap.sandbox-peer: gateway
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -243,6 +252,9 @@ services:
 
   preview:
     image: ${CAP_REGISTRY:-}shipcove-preview:${CAP_VERSION:-0.1.0}
+    # Branché par la garde Docker sur le réseau privé de chaque sandbox (alias DNS « preview »).
+    labels:
+      cap.sandbox-peer: preview
     restart: unless-stopped
     environment:
       <<: *app-env

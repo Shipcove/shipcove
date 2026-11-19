@@ -251,13 +251,17 @@ rl.on('line', (l) => {
   send({ jsonrpc: '2.0', id: m.id, error: { code: -32601, message: 'inconnu' } });
 });`;
 
-test('MCP : outil stdio exécuté dans la sandbox, secret injecté depuis Vault, permissions globale et personnelle, cloisonnement', async () => {
+test('MCP : outil stdio exécuté dans la sandbox, aucun secret dans un serveur global stdio, permissions globale et personnelle, cloisonnement', async () => {
   const ws = await workspace(ctx.dev, 'MCP');
   // Script du serveur déposé dans le workspace (les arguments sont limités à 500 caractères).
   const b64 = Buffer.from(ECHO_SERVER).toString('base64');
   await bashViaPi(ctx.dev, ws.id, `echo ${b64} | base64 -d > /workspace/mcp-echo.cjs && node --check /workspace/mcp-echo.cjs && echo pret`);
   const name = `echo_${uid().toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-  const created = await ctx.admin.post('/mcp-servers', { name, description: 'écho de test', scope: 'global', transport: 'stdio', command: 'node', args: ['/workspace/mcp-echo.cjs'], secretEnv: { ECHO_SECRET: 'valeur-secrete-mcp' } });
+  // Un serveur global stdio tourne dans la sandbox de chaque utilisateur : ses secrets y seraient
+  // lisibles par l'agent, ils sont donc refusés.
+  const refused = await ctx.admin.post('/mcp-servers', { name, description: 'écho de test', scope: 'global', transport: 'stdio', command: 'node', args: ['/workspace/mcp-echo.cjs'], secretEnv: { ECHO_SECRET: 'valeur-secrete-mcp' } });
+  assert.equal(refused.status, 400, JSON.stringify(refused.body));
+  const created = await ctx.admin.post('/mcp-servers', { name, description: 'écho de test', scope: 'global', transport: 'stdio', command: 'node', args: ['/workspace/mcp-echo.cjs'] });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   const srv = created.body.id;
   assert.equal((await ctx.admin.put(`/mcp-servers/${srv}/tools`, { tools: [{ name: 'echo', description: 'Écho', inputSchema: { type: 'object', properties: { text: { type: 'string' } } } }] })).status, 200);
@@ -277,7 +281,7 @@ test('MCP : outil stdio exécuté dans la sandbox, secret injecté depuis Vault,
   };
   let done = await callEcho();
   assert.equal(done.data.isError, false, JSON.stringify(done.data));
-  assert.match(done.data.output, /echo:bonjour:secret-ok/);
+  assert.match(done.data.output, /echo:bonjour:secret-absent/);
 
   const effective = async () => (await ctx.dev.get('/mcp-servers')).body.find((s) => s.id === srv).tools[0].effective;
   // Interdiction personnelle : l'outil n'est plus proposé à Pi et l'appel est refusé.

@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnApplica
 import { and, eq, sql } from 'drizzle-orm';
 import type { SecretProvider } from '@cap/secrets';
 import { agentRuns, sandboxInstances, serviceInstances, workspaces, type Database } from '@cap/database';
-import { DB, ENV, LiteLlmClient, QuotaService, SECRETS, SettingsService, sha256Hex, type NormalizedUsage } from '@cap/server-core';
+import { DB, ENV, LiteLlmClient, QuotaService, SECRETS, SettingsService, sha256Hex, type NormalizedUsage, fetchSameOrigin } from '@cap/server-core';
 import type { WorkerEnv } from '../env.js';
 import { SandboxManager } from '../sandbox/sandbox-manager.service.js';
 import { CheckpointService } from '../sandbox/checkpoint.service.js';
@@ -160,7 +160,7 @@ export class MaintenanceService implements OnApplicationBootstrap, OnApplication
       let cost: string | null = null;
       if (key && r.litellmCallId) {
         try {
-          const res = await fetch(`${conn!.url}/spend/logs?request_id=${encodeURIComponent(r.litellmCallId)}`, {
+          const res = await fetchSameOrigin(`${conn!.url}/spend/logs?request_id=${encodeURIComponent(r.litellmCallId)}`, {
             headers: { Authorization: `Bearer ${key}` },
             signal: AbortSignal.timeout(10_000),
           });

@@ -185,6 +185,11 @@ export const enServer: Record<string, string> = {
   "Démonstration : l’administration est en lecture seule.": "Demo: administration is read-only.",
   "Démonstration : cette action n’est pas disponible.": "Demo: this action is not available.",
   "L’agent est en train de travailler : changez de branche une fois sa réponse terminée.": "The agent is working: switch branches once its reply is finished.",
+  "désactivé (CLAMAV_HOST non défini)": "disabled (CLAMAV_HOST not set)",
+  "Requête refusée : elle ne vient pas de l’application": "Request refused: it does not come from the application",
+  "Forge non déclarée par l’administrateur : demandez-lui de l’ajouter (Administration → Forges Git)": "Forge not declared by the administrator: ask them to add it (Administration → Git forges)",
+  "Serveur MCP global en stdio : pas de variable secrète (elle serait lisible dans chaque sandbox). Utilisez un serveur Streamable HTTP, dont les secrets restent côté plateforme.": "Global stdio MCP server: no secret variables (they would be readable in every sandbox). Use a Streamable HTTP server, whose secrets stay on the platform side.",
+  "Redirection de la forge vers un autre hôte refusée": "Forge redirect to another host refused",
 };
 
 export const enPatterns: Array<[RegExp, string]> = [
@@ -228,4 +233,5 @@ export const enPatterns: Array<[RegExp, string]> = [
   [/^Modèle (.+) indisponible pour l’agent : (.*)$/, "Model $1 unavailable to the agent: $2"],
   [/^L’agent s’est arrêté \(code (.+?)\) : (.*)$/, "The agent stopped (code $1): $2"],
   [/^Le nom du frontmatter \(« (.+) »\) devrait être « (.+) » : l’agent s’appuie sur le nom du dossier$/, "The frontmatter name (“$1”) should be “$2”: the agent relies on the folder name"],
+  [/^Serveur MCP (.+) : un serveur global en stdio ne peut pas recevoir de secrets ; à reconfigurer en Streamable HTTP par l’administrateur$/, "MCP server $1: a global stdio server cannot receive secrets; the administrator must reconfigure it as Streamable HTTP"],
 ];

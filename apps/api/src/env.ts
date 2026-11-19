@@ -14,6 +14,8 @@ export const ApiEnvSchema = BaseEnvSchema.extend({
   /** Compte administrateur initial (créé si aucun admin n'existe). */
   BOOTSTRAP_ADMIN_EMAIL: z.string().optional(),
   BOOTSTRAP_ADMIN_PASSWORD: z.string().optional(),
+  /** Documentation OpenAPI (`/api/docs`, `/api/v1/openapi.json`) : par défaut hors production. */
+  API_DOCS: z.enum(['true', 'false']).optional(),
 });
 export type ApiEnv = z.infer<typeof ApiEnvSchema>;
 

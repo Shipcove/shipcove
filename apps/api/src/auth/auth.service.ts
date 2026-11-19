@@ -1,3 +1,4 @@
+import { PasswordSchema } from '@cap/contracts';
 import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { and, count, eq, gt, isNull, or, sql } from 'drizzle-orm';
 import type { LoginResult, MeResponse, RegisterRequest } from '@cap/contracts';
@@ -54,6 +55,10 @@ export class AuthService implements OnApplicationBootstrap {
   async onApplicationBootstrap(): Promise<void> {
     const { BOOTSTRAP_ADMIN_EMAIL: email, BOOTSTRAP_ADMIN_PASSWORD: password } = this.env;
     if (!email || !password) return;
+    // Même politique que pour tout mot de passe : un administrateur initial faible est refusé
+    // (l'API ne démarre pas, l'erreur dit pourquoi).
+    const policy = PasswordSchema.safeParse(password);
+    if (!policy.success) throw new Error(`BOOTSTRAP_ADMIN_PASSWORD refusé : ${policy.error.issues[0]?.message ?? 'politique de mot de passe'}`);
     await this.db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(7212024002)`);
       const [{ n }] = await tx.select({ n: count() }).from(users).where(eq(users.platformRole, 'platform_admin'));

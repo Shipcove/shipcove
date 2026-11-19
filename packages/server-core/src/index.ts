@@ -4,6 +4,7 @@ export * from './core.module.js';
 export * from './common/crypto.js';
 export * from './common/errors.js';
 export * from './common/redact.js';
+export * from './common/safe-fetch.js';
 export * from './audit/audit.service.js';
 export * from './settings/settings.service.js';
 export * from './jobs/jobs.service.js';

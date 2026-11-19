@@ -6,6 +6,7 @@ import { gitConnections, gitForges, repositories, type Database, type DbOrTx } f
 import { DB, SECRETS } from '../tokens.js';
 import { AppError } from '../common/errors.js';
 import { SettingsService } from '../settings/settings.service.js';
+import { fetchSameOrigin } from '../common/safe-fetch.js';
 
 export interface RepoMetadata {
   provider: GitProviderKind;
@@ -212,7 +213,7 @@ export class GitProviderClient {
     headers['User-Agent'] = 'shipcove';
     let res: Response;
     try {
-      res = await fetch(`${await this.apiBase(conn.provider, conn.host)}${path}`, {
+      res = await fetchSameOrigin(`${await this.apiBase(conn.provider, conn.host)}${path}`, {
         method,
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -240,7 +241,7 @@ export class GitProviderClient {
   /** Identité du compte (validation d'un jeton lors du rattachement). */
   async whoAmI(provider: GitProviderKind, host: string, token: string): Promise<{ id: string; login: string; name: string | null; scopes: string[] }> {
     const isGh = isGitHub(provider);
-    const res = await fetch(`${await this.apiBase(provider, host)}/user`, {
+    const res = await fetchSameOrigin(`${await this.apiBase(provider, host)}/user`, {
       headers: isGh ? { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'shipcove' } : { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15_000),
     }).catch((err: Error) => {
@@ -488,11 +489,17 @@ export class GitProviderClient {
   }
 
   /** URL HTTPS avec identifiants, **uniquement** pour usage interne côté serveur (jamais journalisée). */
-  async authenticatedCloneUrl(conn: Conn, cloneUrl: string): Promise<string> {
+  /**
+   * Accès Git authentifié sans mettre le jeton dans l'URL (visible dans la liste des processus) :
+   * URL vérifiée et en-tête `Authorization`, à passer à `git` par l'environnement.
+   */
+  async authenticatedRemote(conn: Conn, cloneUrl: string): Promise<{ url: string; env: Record<string, string> }> {
     const token = await this.token(conn);
     const u = await this.assertTransport(cloneUrl);
-    u.username = isGitHub(conn.provider) ? 'x-access-token' : 'oauth2';
-    u.password = token;
-    return u.toString();
+    const user = isGitHub(conn.provider) ? 'x-access-token' : 'oauth2';
+    return {
+      url: u.toString(),
+      env: { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'http.extraHeader', GIT_CONFIG_VALUE_0: `Authorization: Basic ${Buffer.from(`${user}:${token}`).toString('base64')}` },
+    };
   }
 }

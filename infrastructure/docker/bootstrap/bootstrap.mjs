@@ -243,6 +243,13 @@ async function bootstrapVault() {
       await writeSecretFile(`${dir}/role_id`, rid.data.role_id);
       await writeSecretFile(`${dir}/secret_id`, sid.data.secret_id);
       log(`AppRole cap-${svc} créé`);
+    } else if (process.env.ROTATE_APPROLE === '1') {
+      // Rotation : nouvel identifiant écrit, puis l'ancien révoqué dans Vault (services à redémarrer).
+      const old = (await readFile(`${dir}/secret_id`, 'utf8')).trim();
+      const { json: sid } = await http('POST', `${VAULT}/v1/auth/approle/role/cap-${svc}/secret-id`, { token, body: {} });
+      await writeSecretFile(`${dir}/secret_id`, sid.data.secret_id);
+      await http('POST', `${VAULT}/v1/auth/approle/role/cap-${svc}/secret-id/destroy`, { token, body: { secret_id: old }, okStatuses: [204] });
+      log(`AppRole cap-${svc} : identifiant renouvelé, ancien révoqué`);
     }
   }
   return { token, ephemeral };

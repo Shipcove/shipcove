@@ -110,6 +110,8 @@ export class AdminController {
         storage: { status: s3.ok ? 'up' : 'down' },
         litellm: { status: (await this.litellm.health()) ? 'up' : 'down' },
         workers: { status: workers.n > 0 ? 'up' : 'down', detail: `${workers.n} instance(s)` },
+        // Sans clamd configuré, les pièces jointes ne sont pas analysées : à rendre visible.
+        antivirus: process.env.CLAMAV_HOST ? { status: 'up', detail: 'ClamAV' } : { status: 'degraded', detail: 'désactivé (CLAMAV_HOST non défini)' },
       },
     };
   }

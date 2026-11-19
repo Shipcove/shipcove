@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@ang
 import type { AdminOverviewDto } from '@cap/contracts';
 import { Api } from '../../core/api.service';
 import { CreditsPipe } from '../../shared/pipes';
-import { t } from '../../core/i18n';
+import { t, tr } from '../../core/i18n';
 
 @Component({
   selector: 'cap-admin-overview',
@@ -24,7 +24,7 @@ import { t } from '../../core/i18n';
       <h2 class="mt-6 mb-2 text-sm font-semibold text-stone-500 uppercase">{{ t('Santé') }}</h2>
       <div class="card divide-y divide-stone-100 dark:divide-stone-800">
         @for (h of health(); track h.name) {
-          <div class="flex items-center gap-2 px-4 py-2 text-sm"><span class="h-2 w-2 rounded-full" [class]="h.status === 'up' ? 'bg-emerald-500' : 'bg-red-500'"></span><span class="font-medium">{{ h.name }}</span><span class="text-stone-500">{{ h.detail }}</span></div>
+          <div class="flex items-center gap-2 px-4 py-2 text-sm"><span class="h-2 w-2 rounded-full" [class]="h.status === 'up' ? 'bg-emerald-500' : h.status === 'degraded' ? 'bg-amber-500' : 'bg-red-500'"></span><span class="font-medium">{{ h.name }}</span><span class="text-stone-500">{{ tr(h.detail) }}</span></div>
         }
       </div>
     }
@@ -32,6 +32,7 @@ import { t } from '../../core/i18n';
 })
 export class AdminOverview implements OnInit {
   protected readonly t = t;
+  protected readonly tr = tr;
   private readonly api = inject(Api);
   protected readonly o = signal<AdminOverviewDto | null>(null);
   protected readonly health = signal<Array<{ name: string; status: string; detail?: string }>>([]);
