@@ -3,7 +3,7 @@ import { Controller, Get, Inject, Logger, Param, Post, Req, Res } from '@nestjs/
 import type { Request, Response } from 'express';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { gitConnections, repositories, workspaces, type Database } from '@cap/database';
-import { DB, GitProviderClient, redactString } from '@cap/server-core';
+import { DB, GitProviderClient, redactString, fetchSameOrigin, RedirectRefusedError } from '@cap/server-core';
 import { RunTokenService } from '../run-token.service.js';
 
 const PUSH_DENIED =
@@ -89,12 +89,13 @@ export class GitReadProxyController {
     }
     if (auth) headers.Authorization = auth;
     try {
-      const upstream = await fetch(url, {
+      // Redirections suivies seulement vers la même forge : sinon une forge malveillante
+      // ferait lire à la sandbox un service interne (Vault, métadonnées du cloud…).
+      const upstream = await fetchSameOrigin(url, {
         method,
         headers,
         body: method === 'POST' ? (Readable.toWeb(req) as ReadableStream) : undefined,
         duplex: method === 'POST' ? 'half' : undefined,
-        redirect: 'follow',
       } as RequestInit & { duplex?: 'half' });
       res.status(upstream.status);
       for (const h of ['content-type', 'cache-control']) {
@@ -109,7 +110,7 @@ export class GitReadProxyController {
       else res.end();
     } catch (err) {
       this.logger.warn(`Proxy Git : ${redactString((err as Error).message)}`);
-      if (!res.headersSent) res.status(502).send('Forge injoignable');
+      if (!res.headersSent) res.status(502).send(err instanceof RedirectRefusedError ? 'Redirection de la forge vers un autre hôte refusée' : 'Forge injoignable');
       else res.end();
     }
   }

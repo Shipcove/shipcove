@@ -18,7 +18,17 @@ export interface GuardConfig {
   maxMemoryMb: number;
   maxCpus: number;
   maxPids: number;
+  /**
+   * Plage d'adresses des réseaux privés de sandbox (ex. `10.231.0.0/16`), découpée en `/28`.
+   * Absente : seul le réseau partagé `sandboxNetwork` est autorisé.
+   */
+  sandboxSubnetPool?: string;
+  /** Préfixes d'images autorisés au téléchargement (vide : tout registre). */
+  pullAllowlist?: string[];
 }
+
+/** Réseau privé d'une sandbox (un par sandbox : pas de trafic entre sandboxes). */
+export const SANDBOX_NET_RE = /^cap-sbx-net-[a-z0-9-]{8,64}$/;
 
 export type Route =
   | { kind: 'ping' }
@@ -28,7 +38,9 @@ export type Route =
   | { kind: 'exec-create'; id: string }
   | { kind: 'exec'; id: string; action: string }
   | { kind: 'image-inspect' }
-  | { kind: 'image-pull' };
+  | { kind: 'image-pull' }
+  | { kind: 'network-create' }
+  | { kind: 'network-remove'; id: string };
 
 export class Refused extends Error {}
 
@@ -62,7 +74,7 @@ export function route(method: string, rawPath: string): Route {
   if ((r = new RegExp(`^/containers/(${ID})/(json|start|stop|kill|wait|logs)$`).exec(path))) {
     const allowed: Record<string, string> = { json: 'GET', start: 'POST', stop: 'POST', kill: 'POST', wait: 'POST', logs: 'GET' };
     if (allowed[r[2]] !== m) throw new Refused(`${m} ${r[2]} non autorisé`);
-    if (r[2] === 'logs' && /(^|&)follow=(1|true)/.test(query)) throw new Refused('journaux en continu non autorisés');
+    if (r[2] === 'logs' && /(^|&)follow=(1|true)(&|$)/i.test(query)) throw new Refused('journaux en continu non autorisés');
     return { kind: 'container', id: r[1], action: r[2], method: m };
   }
   if ((r = new RegExp(`^/containers/(${ID})$`).exec(path)) && m === 'DELETE') return { kind: 'container', id: r[1], action: 'remove', method: m };
@@ -77,6 +89,8 @@ export function route(method: string, rawPath: string): Route {
     if (!q.get('fromImage') || q.get('fromSrc')) throw new Refused('seul le téléchargement depuis un registre est autorisé');
     return { kind: 'image-pull' };
   }
+  if (m === 'POST' && path === '/networks/create') return { kind: 'network-create' };
+  if ((r = new RegExp(`^/networks/(${ID})$`).exec(path)) && m === 'DELETE') return { kind: 'network-remove', id: r[1] };
   throw new Refused(`appel Docker non autorisé : ${m} ${path}`);
 }
 
@@ -151,7 +165,10 @@ export function validateCreate(body: unknown, cfg: GuardConfig): { type: 'sandbo
       'HostConfig',
     );
     req(body['User'] === cfg.sandboxUser, `utilisateur ${cfg.sandboxUser} obligatoire`);
-    req(h['NetworkMode'] === cfg.sandboxNetwork, `réseau ${cfg.sandboxNetwork} obligatoire`);
+    req(
+      h['NetworkMode'] === cfg.sandboxNetwork || (!!cfg.sandboxSubnetPool && SANDBOX_NET_RE.test(String(h['NetworkMode']))),
+      `réseau ${cfg.sandboxNetwork}${cfg.sandboxSubnetPool ? ' ou réseau privé cap-sbx-net-*' : ''} obligatoire`,
+    );
     req(h['ReadonlyRootfs'] === true, 'système de fichiers racine en lecture seule obligatoire');
     req(h['CapDrop'] && !('CapAdd' in h), 'aucune capacité ajoutée');
     commonHost(h, cfg);
@@ -203,11 +220,70 @@ export function validateCreate(body: unknown, cfg: GuardConfig): { type: 'sandbo
   throw new Refused('conteneur non géré par la plateforme (étiquette cap.sandbox ou cap.service attendue)');
 }
 
-/** Valide le corps de `POST /containers/{id}/exec`. */
-export function validateExec(body: unknown): void {
+/**
+ * Valide le corps de `POST /containers/{id}/exec`. Jamais en root : dans une sandbox, l'utilisateur
+ * imposé ; dans un service, celui de son image (champ vide ou absent).
+ */
+export function validateExec(body: unknown, kind: 'sandbox' | 'service', cfg: Pick<GuardConfig, 'sandboxUser'>): void {
   req(isObj(body), 'corps invalide');
   onlyKeys(body, ['Cmd', 'User', 'WorkingDir', 'Env', 'AttachStdin', 'AttachStdout', 'AttachStderr', 'Tty'], 'Exec');
   req(Array.isArray(body['Cmd']) && body['Cmd'].length > 0, 'commande obligatoire');
+  const user = body['User'] === undefined || body['User'] === null ? '' : String(body['User']);
+  if (kind === 'sandbox') req(user === '' || user === cfg.sandboxUser, `exec : utilisateur ${cfg.sandboxUser} obligatoire`);
+  else req(user === '', 'exec : utilisateur imposé par l’image du service');
+}
+
+/** Image autorisée au téléchargement (liste de préfixes ; vide : tout registre). */
+export function validatePull(fromImage: string, tag: string | null, cfg: Pick<GuardConfig, 'pullAllowlist'>): void {
+  const list = cfg.pullAllowlist ?? [];
+  if (!list.length) return;
+  const ref = tag && !fromImage.includes('@') && !/:[^/]+$/.test(fromImage) ? `${fromImage}:${tag}` : fromImage;
+  req(list.some((p) => ref === p || ref.startsWith(p)), `image ${ref} hors de la liste autorisée`);
+}
+
+/**
+ * Valide le corps de `POST /networks/create` : réseau privé de sandbox, interne (aucune route),
+ * étiqueté, sur un sous-réseau `/28` de la plage configurée.
+ */
+export function validateNetworkCreate(body: unknown, cfg: GuardConfig): { name: string } {
+  req(cfg.sandboxSubnetPool, 'réseaux privés de sandbox non activés');
+  req(isObj(body), 'corps invalide');
+  onlyKeys(body, ['Name', 'Driver', 'Internal', 'Labels', 'IPAM', 'CheckDuplicate', 'Attachable', 'EnableIPv6'], 'Network');
+  const name = String(body['Name'] ?? '');
+  req(SANDBOX_NET_RE.test(name), 'nom de réseau hors de l’espace cap-sbx-net-*');
+  req(body['Driver'] === undefined || body['Driver'] === 'bridge', 'pilote de réseau non autorisé');
+  req(body['Internal'] === true, 'réseau interne obligatoire (aucune route vers l’extérieur)');
+  req(body['Attachable'] === undefined || body['Attachable'] === false, 'réseau attachable interdit');
+  req(body['EnableIPv6'] === undefined || body['EnableIPv6'] === false, 'IPv6 interdit');
+  req(isObj(body['Labels']) && body['Labels']['cap.sandbox-net'] === 'true', 'étiquette cap.sandbox-net obligatoire');
+  const ipam = body['IPAM'];
+  req(isObj(ipam), 'IPAM obligatoire');
+  onlyKeys(ipam, ['Driver', 'Config'], 'IPAM');
+  req(ipam['Driver'] === undefined || ipam['Driver'] === 'default', 'pilote IPAM non autorisé');
+  const conf = ipam['Config'];
+  req(Array.isArray(conf) && conf.length === 1 && isObj(conf[0]), 'un seul sous-réseau');
+  onlyKeys(conf[0] as Obj, ['Subnet'], 'IPAM.Config');
+  const subnet = String((conf[0] as Obj)['Subnet'] ?? '');
+  req(subnetWithin(subnet, cfg.sandboxSubnetPool, 28), `sous-réseau ${subnet} hors de la plage ${cfg.sandboxSubnetPool}`);
+  return { name };
+}
+
+/** `a.b.c.d/len` est-il un sous-réseau de `pool` de longueur exacte `len` ? */
+export function subnetWithin(subnet: string, pool: string, len: number): boolean {
+  const parse = (cidr: string) => {
+    const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(cidr);
+    if (!m) return null;
+    const oct = m.slice(1, 5).map(Number);
+    if (oct.some((o) => o > 255)) return null;
+    const bits = Number(m[5]);
+    if (bits > 32) return null;
+    return { ip: ((oct[0] << 24) | (oct[1] << 16) | (oct[2] << 8) | oct[3]) >>> 0, bits };
+  };
+  const s = parse(subnet);
+  const p = parse(pool);
+  if (!s || !p || s.bits !== len || p.bits > len) return false;
+  const mask = (b: number) => (b === 0 ? 0 : (0xffffffff << (32 - b)) >>> 0);
+  return (s.ip & mask(s.bits)) >>> 0 === s.ip && (s.ip & mask(p.bits)) >>> 0 === (p.ip & mask(p.bits)) >>> 0;
 }
 
 /** Un conteneur est géré par la plateforme si ses étiquettes le disent. */

@@ -12,8 +12,8 @@
       <h2>Sandboxes</h2>
       <ul>
         <li>Unprivileged user, <code>cap-drop ALL</code>, <code>no-new-privileges</code>, CPU, memory, process and disk limits.</li>
-        <li>Internal network <strong>without a route</strong> to the Internet or to the backend (PostgreSQL, Vault, S3…).</li>
-        <li>Outbound traffic only through the gateway proxy, with an <strong>allowlist</strong> of domains (package registries…). Traffic to Git forges is intercepted (see below).</li>
+        <li>Internal network <strong>without a route</strong> to the Internet or to the backend (PostgreSQL, Vault, S3…), and <strong>private to each sandbox</strong>: two sandboxes cannot reach each other (Docker Compose: one <code>/28</code> subnet per sandbox, from <code>CAP_SANDBOX_SUBNET_POOL</code>; Kubernetes: default-deny NetworkPolicy).</li>
+        <li>Outbound traffic only through the gateway proxy, with an <strong>allowlist</strong> of domains (package registries…). The name presented in TLS (SNI) must be the allowed domain, and a redirect to another host is never followed. Traffic to the Git forges declared by the administrator is intercepted (see below).</li>
         <li>Support services: same hardening, no extra network access.</li>
       </ul>
 
@@ -60,7 +60,11 @@
       <div class="callout danger">
         <ul>
           <li><strong>Vault mode</strong>: the default mode (<code>file</code>) keeps keys and root token on disk; choose <code>manual</code> or <code>auto</code> <em>before</em> the first installation.</li>
-          <li><strong>Docker guard</strong>: it remains a trusted component (effective root access); dedicate the host to the platform.</li>
+          <li><strong>Docker guard</strong>: it remains a trusted component (effective root access); dedicate the host to the platform. It trusts the worker to know which sandbox belongs to whom: a compromised worker could act on every sandbox (never as root, never outside the hardened model). Restrict the images it may pull if needed (<code>CAP_GUARD_PULL_ALLOWLIST</code>).</li>
+          <li><strong>Worker</strong>: it reads every user's Git tokens from Vault to run approved operations; it is the most sensitive component, update it first.</li>
+          <li><strong>Egress allowlist</strong>: on a CDN that tolerates domain fronting, an allowed domain can front another site on the same CDN. Allow only the domains you need.</li>
+          <li><strong>Forge authority</strong>: sandboxes trust it for any name, but the gateway only signs for declared forges; its key, in Vault, must be protected like a root key.</li>
+          <li><strong>Antivirus</strong>: without <code>CLAMAV_HOST</code>, attachments are not scanned (shown in the administration overview).</li>
           <li><strong>Internal traffic</strong>: links between Compose services are not encrypted (same host); encrypt them for a multi-host deployment.</li>
           <li><strong>Startup script</strong>: stored in clear text and run in every sandbox, where the agent can read what it writes (<code>~/.npmrc</code>…); only put read-only credentials in it.</li>
           <li><strong>Forges</strong>: during a run, the agent acts on <em>all</em> the repositories available to the user (pushing branches, opening PRs, commenting). A prompt injection can push it to do so; it can neither merge, nor touch the default branch, nor take the token away.</li>

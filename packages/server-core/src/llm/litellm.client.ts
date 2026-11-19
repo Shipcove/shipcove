@@ -6,6 +6,7 @@ import { ENV, type BaseEnv } from '../config/config.js';
 import { DB, SECRETS } from '../tokens.js';
 import { AppError } from '../common/errors.js';
 import { redactString } from '../common/redact.js';
+import { fetchSameOrigin } from '../common/safe-fetch.js';
 
 /** Unité de compte : 1 crédit = 0,001 USD (préremplissage des coefficients depuis les prix LiteLLM). */
 export const USD_PER_CREDIT = 0.001;
@@ -92,7 +93,7 @@ export class LiteLlmClient {
     const c = conn ?? (await this.connection());
     let res: Response;
     try {
-      res = await fetch(`${c.url}${path}`, {
+      res = await fetchSameOrigin(`${c.url}${path}`, {
         method,
         headers: { ...(c.key ? { Authorization: `Bearer ${c.key}` } : {}), 'Content-Type': 'application/json' },
         body: body ? JSON.stringify(body) : undefined,
@@ -113,7 +114,7 @@ export class LiteLlmClient {
   async health(): Promise<boolean> {
     const c = await this.connection();
     try {
-      const res = await fetch(`${c.url}/health/liveliness`, { signal: AbortSignal.timeout(5000) });
+      const res = await fetchSameOrigin(`${c.url}/health/liveliness`, { signal: AbortSignal.timeout(5000) });
       return res.ok;
     } catch {
       return false;

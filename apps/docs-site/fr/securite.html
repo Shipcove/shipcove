@@ -12,8 +12,8 @@
       <h2>Sandboxes</h2>
       <ul>
         <li>Utilisateur non privilégié, <code>cap-drop ALL</code>, <code>no-new-privileges</code>, limites de CPU, mémoire, processus et disque.</li>
-        <li>Réseau interne <strong>sans route</strong> vers Internet ni vers le backend (PostgreSQL, Vault, S3…).</li>
-        <li>Sortie uniquement via le proxy de la gateway, avec une <strong>liste blanche</strong> de domaines (registres de paquets…). Le trafic vers les forges Git est intercepté (voir ci-dessous).</li>
+        <li>Réseau interne <strong>sans route</strong> vers Internet ni vers le backend (PostgreSQL, Vault, S3…), et <strong>propre à chaque sandbox</strong> : deux sandboxes ne peuvent pas se joindre (Docker Compose : un sous-réseau <code>/28</code> par sandbox, plage <code>CAP_SANDBOX_SUBNET_POOL</code> ; Kubernetes : NetworkPolicy par défaut en refus).</li>
+        <li>Sortie uniquement via le proxy de la gateway, avec une <strong>liste blanche</strong> de domaines (registres de paquets…). Le nom présenté en TLS (SNI) doit être celui du domaine autorisé, et une redirection vers un autre hôte n’est jamais suivie. Le trafic vers les forges Git déclarées par l’administrateur est intercepté (voir ci-dessous).</li>
         <li>Services d’appui : mêmes durcissements, aucun accès réseau supplémentaire.</li>
       </ul>
 
@@ -60,7 +60,11 @@
       <div class="callout danger">
         <ul>
           <li><strong>Mode de Vault</strong> : le mode par défaut (<code>file</code>) garde clés et jeton root sur disque ; choisissez <code>manual</code> ou <code>auto</code> <em>avant</em> la première installation.</li>
-          <li><strong>Garde Docker</strong> : il reste un composant de confiance (accès root effectif) ; dédiez l’hôte à la plateforme.</li>
+          <li><strong>Garde Docker</strong> : il reste un composant de confiance (accès root effectif) ; dédiez l’hôte à la plateforme. Il fait confiance au worker pour savoir quelle sandbox appartient à qui : un worker compromis pourrait agir sur toutes les sandboxes (jamais en root, jamais hors du modèle durci). Restreignez au besoin les images téléchargeables (<code>CAP_GUARD_PULL_ALLOWLIST</code>).</li>
+          <li><strong>Worker</strong> : il lit dans Vault les jetons Git de tous les utilisateurs pour exécuter les opérations approuvées ; c’est le composant le plus sensible, à mettre à jour en priorité.</li>
+          <li><strong>Liste blanche de sortie</strong> : sur un CDN qui tolère le « domain fronting », un domaine autorisé peut servir de façade à un autre site du même CDN. N’autorisez que les domaines nécessaires.</li>
+          <li><strong>Autorité des forges</strong> : elle est reconnue par les sandboxes pour tout nom, mais la gateway ne signe que pour les forges déclarées ; sa clé, dans Vault, est à protéger comme une clé racine.</li>
+          <li><strong>Antivirus</strong> : sans <code>CLAMAV_HOST</code>, les pièces jointes ne sont pas analysées (signalé dans la vue d’ensemble de l’administration).</li>
           <li><strong>Trafic interne</strong> : les liaisons entre services Compose ne sont pas chiffrées (même hôte) ; à chiffrer pour un déploiement multi-hôte.</li>
           <li><strong>Script de démarrage</strong> : stocké en clair et exécuté dans chaque sandbox, où l’agent peut lire ce qu’il écrit (<code>~/.npmrc</code>…) ; n’y mettez que des identifiants en lecture seule.</li>
           <li><strong>Forges</strong> : pendant un run, l’agent agit sur <em>tous</em> les dépôts accessibles à l’utilisateur (pousser des branches, ouvrir des PR, commenter). Une injection de prompt peut l’y pousser ; elle ne peut ni fusionner, ni toucher la branche par défaut, ni emporter le jeton.</li>

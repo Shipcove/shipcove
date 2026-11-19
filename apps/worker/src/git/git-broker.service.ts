@@ -297,10 +297,12 @@ export class GitBrokerService implements OnApplicationBootstrap {
       await run('git', ['-C', repo, 'fetch', '-q', join(dir, 'x.bundle'), `refs/heads/${local}:refs/heads/cap-push`], { env: gitEnv });
       const { stdout } = await run('git', ['-C', repo, 'rev-parse', 'refs/heads/cap-push'], { env: gitEnv });
       if (stdout.trim() !== a.commitSha) throw new PermanentJobError('Contenu du bundle différent du commit approuvé');
-      const url = await this.git.authenticatedCloneUrl(t.conn, t.repo.cloneUrl);
+      // Jeton dans l'environnement du processus (lisible par son seul propriétaire), pas dans ses
+      // arguments (visibles de tous dans /proc).
+      const remoteAuth = await this.git.authenticatedRemote(t.conn, t.repo.cloneUrl);
       try {
-        const res = await run('git', ['-C', repo, '-c', 'credential.helper=', 'push', '--porcelain', ...(force ? ['--force'] : []), url, `${a.commitSha}:refs/heads/${remote}`], {
-          env: gitEnv,
+        const res = await run('git', ['-C', repo, '-c', 'credential.helper=', 'push', '--porcelain', ...(force ? ['--force'] : []), remoteAuth.url, `${a.commitSha}:refs/heads/${remote}`], {
+          env: { ...gitEnv, ...remoteAuth.env },
           timeout: 300_000,
         });
         await execCollect(this.sandboxes.provider, sb.handle, ['git', 'fetch', '--quiet', 'origin'], { env: this.sandboxes.forgeEnv(sb) }).catch(() => undefined);

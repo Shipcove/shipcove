@@ -34,6 +34,33 @@ export interface DockerProviderOptions {
   runtime?: string;
   /** Activer la limite disque (`--storage-opt size`) : nécessite overlay2 sur xfs+pquota. */
   enforceDiskQuota?: boolean;
+  /**
+   * Plage d'adresses des réseaux privés de sandbox (ex. `10.231.0.0/16`). Définie : chaque sandbox
+   * a son propre réseau interne (un `/28`), où la garde Docker branche la gateway et la preview ;
+   * deux sandboxes ne peuvent plus se joindre. Absente : réseau partagé `network`.
+   */
+  subnetPool?: string;
+}
+
+/** Nom du réseau privé d'une sandbox. */
+export const privateNetworkName = (instanceId: string) => `cap-sbx-net-${instanceId.toLowerCase()}`;
+
+/**
+ * `/28` de la plage pour une sandbox : position tirée de son identifiant, décalée à chaque
+ * nouvel essai (sous-réseau déjà pris).
+ */
+export function subnetFor(pool: string, instanceId: string, attempt: number): string {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(pool);
+  if (!m || Number(m[5]) > 28) throw new SandboxError(`Plage de réseaux de sandbox invalide : ${pool}`, false);
+  const bits = Number(m[5]);
+  const base = ((Number(m[1]) << 24) | (Number(m[2]) << 16) | (Number(m[3]) << 8) | Number(m[4])) >>> 0;
+  const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+  const count = 2 ** (28 - bits);
+  let h = 2166136261;
+  for (const c of instanceId) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+  const index = (h + attempt * 7919) % count;
+  const ip = ((base & mask) + index * 16) >>> 0;
+  return `${ip >>> 24}.${(ip >>> 16) & 255}.${(ip >>> 8) & 255}.${ip & 255}/28`;
 }
 
 /**
@@ -68,6 +95,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         no_proxy: ['localhost', '127.0.0.1', '::1', ...(this.opts.noProxyHosts ?? [])].join(','),
       });
     }
+    const network = this.opts.subnetPool ? await this.createPrivateNetwork(spec.instanceId) : this.opts.network;
     const memory = spec.resources.memoryMb * 1024 * 1024;
     // NoCopy=false : le volume est initialisé avec le contenu de l'image (ex. /home/agent).
     const volOpts = { NoCopy: false, Labels: { [SANDBOX_LABEL]: 'true', 'cap.instance': spec.instanceId }, DriverConfig: { Name: 'local', Options: {} } };
@@ -88,7 +116,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         Cmd: ['/opt/cap/bin/sandbox-init'],
         StopSignal: 'SIGTERM',
         HostConfig: {
-          NetworkMode: this.opts.network,
+          NetworkMode: network,
           ReadonlyRootfs: true,
           CapDrop: ['ALL'],
           SecurityOpt: ['no-new-privileges:true'],
@@ -117,8 +145,48 @@ export class DockerSandboxProvider implements SandboxProvider {
       })) as unknown as Docker.Container;
       return { provider: 'docker', externalId: container.id, internalHost: null };
     } catch (err) {
+      if (network !== this.opts.network) await this.removeNetwork(network);
       throw new SandboxError(`Création de la sandbox impossible : ${(err as Error).message}`, true);
     }
+  }
+
+  /** Réseau interne propre à la sandbox (repris s'il existe déjà : création interrompue). */
+  private async createPrivateNetwork(instanceId: string): Promise<string> {
+    const name = privateNetworkName(instanceId);
+    let last: Error | null = null;
+    for (let attempt = 0; attempt < 24; attempt++) {
+      try {
+        await this.docker.createNetwork({
+          Name: name,
+          Driver: 'bridge',
+          Internal: true,
+          CheckDuplicate: true,
+          Labels: { 'cap.sandbox-net': 'true', 'cap.instance': instanceId },
+          IPAM: { Driver: 'default', Config: [{ Subnet: subnetFor(this.opts.subnetPool!, instanceId, attempt) }] },
+        });
+        return name;
+      } catch (err) {
+        last = err as Error;
+        const msg = last.message;
+        if (/already exists/i.test(msg)) return name;
+        if (!/overlap|in use|conflict/i.test(msg)) break;
+      }
+    }
+    throw new SandboxError(`Réseau de la sandbox impossible à créer : ${last?.message ?? 'inconnu'}`, true);
+  }
+
+  private async removeNetwork(name: string): Promise<void> {
+    try {
+      await this.docker.getNetwork(name).remove();
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode !== 404) throw new SandboxError(`Suppression du réseau ${name} impossible : ${(err as Error).message}`, true);
+    }
+  }
+
+  /** Adresse de la sandbox sur son réseau (privé ou partagé). */
+  private ipOf(info: Docker.ContainerInspectInfo): string | null {
+    const nets = info.NetworkSettings.Networks ?? {};
+    return nets[info.HostConfig?.NetworkMode ?? '']?.IPAddress || nets[this.opts.network]?.IPAddress || null;
   }
 
   async start(handle: SandboxHandle): Promise<SandboxHandle> {
@@ -129,8 +197,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       if (!/already started/i.test((err as Error).message)) throw new SandboxError(`Démarrage impossible : ${(err as Error).message}`, true);
     }
     const info = await c.inspect();
-    const ip = info.NetworkSettings.Networks?.[this.opts.network]?.IPAddress || null;
-    return { ...handle, internalHost: ip };
+    return { ...handle, internalHost: this.ipOf(info) };
   }
 
   async inspect(handle: SandboxHandle): Promise<SandboxInfo> {
@@ -139,7 +206,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       const s = info.State;
       return {
         ...handle,
-        internalHost: info.NetworkSettings.Networks?.[this.opts.network]?.IPAddress || handle.internalHost,
+        internalHost: this.ipOf(info) || handle.internalHost,
         state: s.Running ? 'running' : s.Status === 'created' ? 'creating' : s.Status === 'dead' ? 'failed' : 'stopped',
         startedAt: s.StartedAt ?? null,
         exitCode: s.Running ? null : s.ExitCode,
@@ -252,11 +319,18 @@ export class DockerSandboxProvider implements SandboxProvider {
   async destroy(handle: SandboxHandle): Promise<void> {
     // Les services partagent le réseau de la sandbox : supprimés d'abord.
     await this.removeServices(handle).catch(() => undefined);
+    const network = await this.docker
+      .getContainer(handle.externalId)
+      .inspect()
+      .then((i) => i.HostConfig?.NetworkMode ?? null)
+      .catch(() => null);
     try {
       await this.docker.getContainer(handle.externalId).remove({ force: true, v: true });
     } catch (err) {
       if ((err as { statusCode?: number }).statusCode !== 404) throw new SandboxError(`Destruction impossible : ${(err as Error).message}`, true);
     }
+    // Réseau privé : supprimé avec la sandbox (la garde débranche d'abord la gateway et la preview).
+    if (network?.startsWith('cap-sbx-net-')) await this.removeNetwork(network);
   }
 
   /* ------------------------------ Services d'appui ------------------------------ */

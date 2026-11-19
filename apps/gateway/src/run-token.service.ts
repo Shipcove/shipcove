@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
-import { agentRuns, runTokens, type Database } from '@cap/database';
+import { sandboxInstances, agentRuns, runTokens, type Database } from '@cap/database';
 import { DB, sha256Hex } from '@cap/server-core';
 
 export interface RunPrincipal {
@@ -24,6 +24,14 @@ export class RunTokenService {
       .from(runTokens)
       .where(and(eq(runTokens.tokenHash, sha256Hex(m[1])), isNull(runTokens.revokedAt), gt(runTokens.expiresAt, sql`now()`)));
     if (!t) return null;
+    // Le jeton n'est valable que pour la sandbox en service du workspace : celui d'une ancienne
+    // sandbox (mal détruite, jeton récupéré) ne dépense plus de quota au nom du run courant.
+    if (!t.sandboxInstanceId) return null;
+    const [inst] = await this.db
+      .select({ id: sandboxInstances.id })
+      .from(sandboxInstances)
+      .where(and(eq(sandboxInstances.id, t.sandboxInstanceId), eq(sandboxInstances.workspaceId, t.workspaceId), inArray(sandboxInstances.status, ['creating', 'restoring', 'running'])));
+    if (!inst) return null;
     const [run] = await this.db
       .select({ id: agentRuns.id, status: agentRuns.status })
       .from(agentRuns)

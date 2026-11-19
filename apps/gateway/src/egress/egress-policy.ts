@@ -1,4 +1,4 @@
-import { isIP } from 'node:net';
+import { BlockList, isIP } from 'node:net';
 
 /**
  * Hôtes de forges jamais joignables en direct. Les forges utilisables (github.com, api.github.com,
@@ -36,33 +36,32 @@ export function decideHost(host: string, port: number, allowlist: string[], deni
   if (isIP(h)) return { allowed: false, reason: 'adresse IP directe interdite' };
   for (const d of [...ALWAYS_DENIED_HOSTS, ...deniedHosts]) {
     if (hostMatches(h, d) || hostMatches(h, `*.${norm(d)}`)) {
-      return { allowed: false, reason: `forge Git ${d} : accès direct non pris en charge (git, gh et glab passent par le proxy des forges)` };
+      return { allowed: false, reason: 'forge Git : accès direct non pris en charge (git, gh et glab passent par le proxy des forges)' };
     }
   }
   if (allowlist.some((a) => hostMatches(h, a))) return { allowed: true, reason: 'liste blanche' };
   return { allowed: false, reason: 'domaine hors liste blanche (configurable par l’administrateur)' };
 }
 
-/** Adresses internes interdites (anti-SSRF) : privées, loopback, link-local, métadonnées, CGNAT, ULA. */
+/**
+ * Adresses internes interdites (anti-SSRF) : privées, loopback, link-local, métadonnées, CGNAT,
+ * multicast et réservées. En IPv6, toutes les écritures d'une adresse IPv4 (`::ffff:a.b.c.d`,
+ * `::ffff:7f00:1`, NAT64 `64:ff9b::/96`, compatibilité `::/96`) sont refusées par principe.
+ */
+// Deux listes : Node ferait correspondre toute IPv4 à la règle IPv6 `::ffff:0:0/96`.
+const PRIVATE_V4 = new BlockList();
+const PRIVATE_V6 = new BlockList();
+for (const [net, prefix] of [
+  ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12],
+  ['192.0.0.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['224.0.0.0', 3],
+] as const) PRIVATE_V4.addSubnet(net, prefix, 'ipv4');
+for (const [net, prefix] of [
+  ['::', 96], ['::ffff:0:0', 96], ['64:ff9b::', 96], ['64:ff9b:1::', 48], ['100::', 64], ['fc00::', 7], ['fe80::', 10], ['fec0::', 10], ['ff00::', 8], ['2001:db8::', 32],
+] as const) PRIVATE_V6.addSubnet(net, prefix, 'ipv6');
+
 export function isPrivateAddress(ip: string): boolean {
-  if (isIP(ip) === 4) {
-    const [a, b] = ip.split('.').map(Number);
-    return (
-      a === 0 ||
-      a === 10 ||
-      a === 127 ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 198 && (b === 18 || b === 19)) ||
-      a >= 224
-    );
-  }
-  const v6 = ip.toLowerCase();
-  if (v6 === '::1' || v6 === '::') return true;
-  if (v6.startsWith('fe8') || v6.startsWith('fe9') || v6.startsWith('fea') || v6.startsWith('feb')) return true;
-  if (v6.startsWith('fc') || v6.startsWith('fd')) return true;
-  if (v6.startsWith('::ffff:')) return isPrivateAddress(v6.slice(7));
-  return false;
+  const family = isIP(ip);
+  if (family === 4) return PRIVATE_V4.check(ip, 'ipv4');
+  if (family === 6) return PRIVATE_V6.check(ip, 'ipv6');
+  return true; // pas une adresse : refus
 }

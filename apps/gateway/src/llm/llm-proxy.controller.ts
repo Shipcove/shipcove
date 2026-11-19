@@ -3,23 +3,7 @@ import type { Request, Response } from 'express';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { SecretProvider } from '@cap/secrets';
 import { llmModels, llmRequests, workspaces, type Database } from '@cap/database';
-import {
-  DB,
-  ENV,
-  EventsService,
-  QuotaExceededError,
-  QuotaService,
-  SECRETS,
-  SettingsService,
-  estimateInputTokens,
-  normalizeOpenAiUsage,
-  redactString,
-  type NormalizedUsage,
-  EnvironmentService,
-  scrubSecrets,
-  LiteLlmClient,
-  modelAllowedFor,
-} from '@cap/server-core';
+import { DB, ENV, EventsService, QuotaExceededError, QuotaService, SECRETS, SettingsService, estimateInputTokens, normalizeOpenAiUsage, redactString, type NormalizedUsage, EnvironmentService, scrubSecrets, LiteLlmClient, modelAllowedFor, fetchSameOrigin } from '@cap/server-core';
 import type { GatewayEnv } from '../env.js';
 import { RunTokenService, type RunPrincipal } from '../run-token.service.js';
 
@@ -116,7 +100,7 @@ export class LlmProxyController {
     let upstream: globalThis.Response;
     try {
       const conn = await this.litellm.connection();
-      upstream = await fetch(`${conn.url}/v1/chat/completions`, {
+      upstream = await fetchSameOrigin(`${conn.url}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(conn.key ? { Authorization: `Bearer ${conn.key}` } : {}), 'x-litellm-call-id': reservation.requestId },
         // Secrets de l'environnement du workspace retirés de ce qui part vers le fournisseur LLM

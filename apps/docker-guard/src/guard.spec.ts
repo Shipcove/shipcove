@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DockerSandboxProvider, execCollect, type SandboxHandle } from '@cap/sandbox';
-import { route, validateCreate, Refused, type GuardConfig } from './policy.js';
+import { route, subnetWithin, validateCreate, validateExec, validateNetworkCreate, validatePull, Refused, type GuardConfig } from './policy.js';
 import { createGuard } from './server.js';
 
 const cfg: GuardConfig = { sandboxNetwork: 'cap-sandbox', sandboxUser: '10001:10001', allowedRuntimes: [], maxMemoryMb: 8192, maxCpus: 8, maxPids: 4096 };
@@ -80,15 +80,71 @@ describe('politique du garde Docker', () => {
       ['PUT', '/containers/abc/archive'],
       ['POST', '/build'],
       ['POST', '/volumes/create'],
-      ['POST', '/networks/create'],
       ['POST', '/networks/cap-sandbox/connect'],
       ['POST', '/containers/abc/update'],
       ['POST', '/images/create?fromSrc=-'],
       ['GET', '/containers/abc/logs?follow=1'],
+      ['GET', '/containers/abc/logs?stdout=1&follow=TRUE'],
+      ['POST', '/networks/abc/disconnect'],
       ['POST', '/swarm/init'],
     ]) {
       expect(() => route(m, p), `${m} ${p}`).toThrow(Refused);
     }
+  });
+});
+
+describe('isolation des sandboxes et durcissements', () => {
+  const pooled: GuardConfig = { ...cfg, sandboxSubnetPool: '10.231.0.0/16' };
+  const net = (over: Record<string, unknown> = {}) => ({
+    Name: 'cap-sbx-net-0f3c2a91-7d4e-4b8a-9c1d-2e5f6a7b8c9d',
+    Driver: 'bridge',
+    Internal: true,
+    Labels: { 'cap.sandbox-net': 'true', 'cap.instance': 'x' },
+    IPAM: { Driver: 'default', Config: [{ Subnet: '10.231.4.16/28' }] },
+    CheckDuplicate: true,
+    ...over,
+  });
+  const refused = (fn: () => unknown, re: RegExp) => expect(fn).toThrow(re);
+
+  it('réseau privé de sandbox : interne, étiqueté, /28 dans la plage', () => {
+    expect(validateNetworkCreate(net(), pooled).name).toMatch(/^cap-sbx-net-/);
+    refused(() => validateNetworkCreate(net(), cfg), /non activés/);
+    refused(() => validateNetworkCreate(net({ Internal: false }), pooled), /interne/);
+    refused(() => validateNetworkCreate(net({ Name: 'backend' }), pooled), /cap-sbx-net/);
+    refused(() => validateNetworkCreate(net({ Driver: 'host' }), pooled), /pilote/);
+    refused(() => validateNetworkCreate(net({ IPAM: { Config: [{ Subnet: '172.18.0.0/28' }] } }), pooled), /hors de la plage/);
+    refused(() => validateNetworkCreate(net({ IPAM: { Config: [{ Subnet: '10.231.0.0/24' }] } }), pooled), /hors de la plage/);
+    refused(() => validateNetworkCreate(net({ IPAM: { Config: [{ Subnet: '10.231.4.16/28', Gateway: '10.0.0.1' }] } }), pooled), /Gateway/);
+    refused(() => validateNetworkCreate(net({ Options: { 'com.docker.network.bridge.name': 'docker0' } }), pooled), /Options/);
+  });
+
+  it('sous-réseaux : alignement et appartenance à la plage', () => {
+    expect(subnetWithin('10.231.255.240/28', '10.231.0.0/16', 28)).toBe(true);
+    expect(subnetWithin('10.231.4.17/28', '10.231.0.0/16', 28)).toBe(false); // non aligné
+    expect(subnetWithin('10.232.0.0/28', '10.231.0.0/16', 28)).toBe(false);
+  });
+
+  it('sandbox : réseau partagé ou réseau privé (si activé), rien d’autre', () => {
+    const body = (nm: string) => ({ ...sandboxBody(), HostConfig: { ...sandboxBody().HostConfig, NetworkMode: nm } });
+    expect(validateCreate(body('cap-sbx-net-0f3c2a91-7d4e-4b8a-9c1d-2e5f6a7b8c9d'), pooled)).toEqual({ type: 'sandbox' });
+    refused(() => validateCreate(body('cap-sbx-net-0f3c2a91-7d4e-4b8a-9c1d-2e5f6a7b8c9d'), cfg), /réseau/);
+    refused(() => validateCreate(body('backend'), pooled), /réseau/);
+  });
+
+  it('exec : jamais en root', () => {
+    expect(() => validateExec({ Cmd: ['id'] }, 'sandbox', cfg)).not.toThrow();
+    expect(() => validateExec({ Cmd: ['id'], User: '10001:10001' }, 'sandbox', cfg)).not.toThrow();
+    expect(() => validateExec({ Cmd: ['id'], User: '' }, 'service', cfg)).not.toThrow();
+    refused(() => validateExec({ Cmd: ['id'], User: 'root' }, 'sandbox', cfg), /utilisateur/);
+    refused(() => validateExec({ Cmd: ['id'], User: '0' }, 'sandbox', cfg), /utilisateur/);
+    refused(() => validateExec({ Cmd: ['id'], User: 'root' }, 'service', cfg), /utilisateur/);
+  });
+
+  it('téléchargement d’images : liste de préfixes facultative', () => {
+    expect(() => validatePull('anything/at-all', 'latest', cfg)).not.toThrow();
+    const strict = { pullAllowlist: ['ghcr.io/shipcove/', 'harbor.example.com/dockerhub/'] };
+    expect(() => validatePull('ghcr.io/shipcove/shipcove-sandbox', '0.2.2', strict)).not.toThrow();
+    refused(() => validatePull('docker.io/evil/miner', 'latest', strict), /hors de la liste/);
   });
 });
 

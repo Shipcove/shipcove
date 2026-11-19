@@ -10,6 +10,8 @@ export const WorkerEnvSchema = BaseEnvSchema.extend({
   DOCKER_GUARD_URL: z.string().optional(),
   DOCKER_GUARD_TOKEN: z.string().min(32).optional(),
   SANDBOX_NETWORK: z.string().default('cap-sandbox'),
+  /** Plage des réseaux privés de sandbox (Docker) ; vide : réseau partagé `SANDBOX_NETWORK`. */
+  SANDBOX_SUBNET_POOL: z.string().optional(),
   /** Image officielle par défaut (si aucune image active en base). */
   SANDBOX_IMAGE: z.string().default('shipcove-sandbox:0.1.0'),
   SANDBOX_RUNTIME: z.string().optional(),

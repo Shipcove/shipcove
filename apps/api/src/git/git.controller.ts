@@ -15,7 +15,7 @@ import {
   type RemoteRepositoryDto,
 } from '@cap/contracts';
 import type { SecretProvider } from '@cap/secrets';
-import { gitApprovalRequests, gitConnections, gitOperations, repositories, type Database } from '@cap/database';
+import { gitApprovalRequests, gitConnections, gitForges, gitOperations, repositories, type Database } from '@cap/database';
 import { AppError, AuditService, DB, EventsService, GitProviderClient, GitProviderError, JobFailedError, JobsService, SECRETS, SettingsService } from '@cap/server-core';
 import { isUniqueViolation } from '@cap/server-core';
 import { CurrentUser, ReqCtx, type RequestContext } from '../common/decorators.js';
@@ -240,6 +240,13 @@ export class GitConnectionsController {
       throw new AppError('forbidden', 'Les jetons d’accès personnels sont désactivés : connectez votre compte via OAuth');
     }
     const host = body.provider === 'github' ? 'github.com' : body.provider === 'gitlab' ? 'gitlab.com' : body.host.toLowerCase();
+    // Forge auto-hébergée : seulement une forge déclarée et activée par l'administrateur. Sinon un
+    // utilisateur ferait appeler par la plateforme (puis intercepter pour toutes les sandboxes)
+    // l'hôte de son choix.
+    if (body.provider !== 'github' && body.provider !== 'gitlab') {
+      const [forge] = await this.db.select({ id: gitForges.id }).from(gitForges).where(and(eq(gitForges.host, host), eq(gitForges.provider, body.provider), eq(gitForges.enabled, true)));
+      if (!forge) throw new AppError('forbidden', 'Forge non déclarée par l’administrateur : demandez-lui de l’ajouter (Administration → Forges Git)');
+    }
     let who;
     try {
       who = await this.git.whoAmI(body.provider, host, body.token);

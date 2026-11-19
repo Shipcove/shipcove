@@ -92,3 +92,19 @@ nouvelle installation avec le bon mode, ou une opération manuelle :
   identité de service fonctionnelle, pas de déverrouillage automatique après redémarrage ;
 - **`auto`** : transit d'un autre Vault, clés de récupération chiffrées, déverrouillage automatique
   y compris après redémarrage.
+
+## Posture et limites connues
+
+- **Transport** : les services joignent Vault en HTTP sur le réseau `backend` du même hôte. Pour un
+  déploiement multi-hôte, activez TLS sur Vault (listener `tls_cert_file` / `tls_key_file`) et passez
+  `VAULT_ADDR` en `https://`.
+- **Portée du worker** : sa politique couvre les jetons Git de tous les utilisateurs, les secrets MCP
+  et la clé LiteLLM, car il exécute les opérations approuvées pour chacun. C'est le composant le plus
+  sensible : tenez-le à jour en priorité, et ne l'exposez à aucun réseau autre que `backend` et
+  `dockerctl`.
+- **Identifiants AppRole** : les `secret_id` n'expirent pas (`secret_id_ttl = 0`), car les services
+  les relisent à chaque démarrage. Ils vivent dans `.secrets/approle/` (droits `0700`). Pour les
+  renouveler (après tout incident sur l'hôte) : `docker compose run --rm -e ROTATE_APPROLE=1 bootstrap`
+  écrit un nouvel identifiant par service **et révoque l'ancien dans Vault**, puis
+  `docker compose up -d --force-recreate api worker gateway preview` redémarre les services.
+
