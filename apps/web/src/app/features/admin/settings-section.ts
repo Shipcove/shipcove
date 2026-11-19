@@ -48,6 +48,9 @@ const LABELS: Record<string, string> = {
   startupScript: t('Script bash exécuté au démarrage de chaque sandbox'),
   allowPersonalTokens: t('Autoriser les jetons d’accès personnels (sinon : OAuth uniquement)'),
   coAuthorEmail: t('Adresse du co-auteur « Shipcove » ajouté à chaque commit (vide : aucune mention)'),
+  maxTasks: t('Sous-agents par appel (max.)'),
+  maxParallel: t('Sous-agents d’exploration en même temps (max.)'),
+  timeoutMinutes: t('Durée max. d’un sous-agent (min)'),
   emailEnabled: t('Envoi d’emails'),
   mandatoryEmailTypes: t('Emails imposés (types)'),
 };

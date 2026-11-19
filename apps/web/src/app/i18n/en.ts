@@ -1093,4 +1093,8 @@ export const en: Record<string, string> = {
   "Replier": "Collapse",
   "Fermer le volet des sous-agents": "Close the sub-agents pane",
   "Redimensionner le volet des sous-agents": "Resize the sub-agents pane",
+  "Sous-agents de l’agent": "Agent sub-agents",
+  "Sous-agents par appel (max.)": "Sub-agents per call (max.)",
+  "Sous-agents d’exploration en même temps (max.)": "Explore sub-agents at the same time (max.)",
+  "Durée max. d’un sous-agent (min)": "Max. duration of a sub-agent (min)",
 };

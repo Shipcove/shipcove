@@ -11,8 +11,8 @@ import {
   workspaces,
   type Database,
 } from '@cap/database';
-import { BROWSER_PLUGIN, PI_KEEP_RECENT_TOKENS, PI_PROVIDER, PLAN_PLUGIN, SUBAGENT_PLUGIN, TOOLS_WITH_DETAILS, SCREENSHOT_PROMPT, PI_RESERVE_TOKENS, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
-import { DB, ENV, EnvironmentService, EventsService, NotificationService, modelAllowedFor, ObjectStorage, PgNotifier, QuotaService, RunQueueService, StreamScrubber, redactString, scrubDeep, scrubSecrets, type NewEvent } from '@cap/server-core';
+import { BROWSER_PLUGIN, PI_KEEP_RECENT_TOKENS, PI_PROVIDER, PLAN_PLUGIN, SUBAGENT_PLUGIN, TOOLS_WITH_DETAILS, subagentEnv, SCREENSHOT_PROMPT, PI_RESERVE_TOKENS, PI_TOKEN_ENV, PLAN_MODE_PROMPT, PLAN_MODE_TOOLS, PiAgentRuntime, piCommand, type RuntimeEvent, type RuntimeImage } from '@cap/agent-runtime';
+import { DB, ENV, EnvironmentService, EventsService, NotificationService, modelAllowedFor, ObjectStorage, PgNotifier, QuotaService, RunQueueService, SettingsService, StreamScrubber, redactString, scrubDeep, scrubSecrets, type NewEvent } from '@cap/server-core';
 import { contextPercent, type ToolFileDto } from '@cap/contracts';
 import { toUserPath } from '@cap/storage';
 import { execCollect } from '@cap/sandbox';
@@ -128,6 +128,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     private readonly repoAttach: RepositoryAttachService,
     private readonly screenshots: ScreenshotsService,
     private readonly services: ServicesService,
+    private readonly settings: SettingsService,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -241,7 +242,9 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     await this.sandboxes.provider.exec(sandbox.handle, ['pkill', '-f', 'pi --mode json']).then((p) => p.wait()).catch(() => undefined);
     // Mode Plan : liste blanche d'outils en lecture seule appliquée par Pi lui-même.
     const planMode = run.agentMode === 'plan';
-    const plugins = await this.sandboxes.availablePlugins(sandbox);
+    const subagentSettings = await this.settings.section('subagents');
+    // Sous-agents désactivés par l'administrateur : le plugin n'est pas chargé, l'outil n'existe pas.
+    const plugins = (await this.sandboxes.availablePlugins(sandbox)).filter((p) => p !== SUBAGENT_PLUGIN || subagentSettings.enabled);
     // Captures d'écran sans demande de l'utilisateur dès qu'une interface web change (hors mode Plan).
     const screenshots = !planMode && plugins.includes(BROWSER_PLUGIN) ? SCREENSHOT_PROMPT : null;
     const command = piCommand({
@@ -263,7 +266,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     const environment = await this.environment.forWorkspace(ws.id, { fresh: true });
     const proc = await this.sandboxes.provider.exec(sandbox.handle, command, {
       interactive: true,
-      env: { ...environment.vars, ...this.sandboxes.forgeEnv(sandbox), [PI_TOKEN_ENV]: sandbox.runToken, HOME: '/home/agent', PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1', ...(planMode ? { CAP_SUBAGENT_READONLY: '1' } : {}) },
+      env: { ...environment.vars, ...this.sandboxes.forgeEnv(sandbox), [PI_TOKEN_ENV]: sandbox.runToken, HOME: '/home/agent', PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1', ...subagentEnv(subagentSettings, planMode) },
       workdir: '/workspace',
     });
     const runtime = new PiAgentRuntime({ stdin: proc.stdin!, stdout: proc.stdout, stderr: proc.stderr, wait: () => proc.wait(), kill: () => proc.kill() });

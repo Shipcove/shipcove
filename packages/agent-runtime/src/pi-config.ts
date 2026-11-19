@@ -89,6 +89,22 @@ export const BROWSER_PLUGIN = '/opt/cap/pi-extension/browser.ts';
 export const PLAN_PLUGIN = '/opt/cap/pi-extension/plan.ts';
 /** Plugin de sous-agents (outil `subagent`) : tâches confiées à des processus Pi au contexte isolé. */
 export const SUBAGENT_PLUGIN = '/opt/cap/pi-extension/subagent.ts';
+/** Réglages des sous-agents (paramètres de la plateforme), transmis au plugin par l'environnement. */
+export interface SubagentLimits {
+  maxTasks: number;
+  maxParallel: number;
+  timeoutMinutes: number;
+}
+
+export function subagentEnv(limits: SubagentLimits, readOnly: boolean): Record<string, string> {
+  return {
+    CAP_SUBAGENT_MAX_TASKS: String(limits.maxTasks),
+    CAP_SUBAGENT_MAX_PARALLEL: String(limits.maxParallel),
+    CAP_SUBAGENT_TIMEOUT_MINUTES: String(limits.timeoutMinutes),
+    ...(readOnly ? { CAP_SUBAGENT_READONLY: '1' } : {}),
+  };
+}
+
 /** Outils dont les détails structurés (`details`) sont transmis à l'interface et enregistrés. */
 export const TOOLS_WITH_DETAILS = new Set(['subagent']);
 

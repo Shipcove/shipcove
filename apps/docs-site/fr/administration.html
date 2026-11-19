@@ -40,6 +40,7 @@
         <li><strong>script de démarrage</strong> : un script bash unique exécuté dans chaque nouvelle sandbox (registres npm / pip, miroirs, outils communs) et sa durée maximale — voir <a href="environnement.html">Environnement et services</a> ;</li>
         <li><strong>images de sandbox</strong> : ajout (référence + digest), activation comme image par défaut, dépréciation ;</li>
         <li><strong>services lancés par l’agent</strong> : voir <a href="environnement.html#services-lances-par-l-agent">Environnement et services</a> ;</li>
+        <li><strong>sous-agents de l’agent</strong> : activation sur toute la plateforme, nombre maximal de sous-agents par appel (4 par défaut, jusqu’à 8), nombre d’explorations en même temps (4 par défaut) et durée maximale d’un sous-agent (20 min par défaut). Chaque sous-agent consomme des tokens sur les quotas de l’utilisateur et un processus dans la sandbox : réduisez le parallélisme pour de petites sandboxes. Les réglages s’appliquent au run suivant ; une image de sandbox sans le plugin n’en propose pas — voir <a href="guide.html#sous-agents">Sous-agents</a> ;</li>
         <li>previews : nombre de ports simultanés par conversation ;</li>
         <li>instances en cours, avec arrêt forcé.</li>
       </ul>

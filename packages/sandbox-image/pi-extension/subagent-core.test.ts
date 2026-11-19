@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyEvent, finish, forUi, initialState, resultText, schedule, stepSummary, TOOLS } from './subagent-core.ts';
+import { applyEvent, envInt, finish, forUi, initialState, resultText, schedule, stepSummary, TOOLS } from './subagent-core.ts';
 
 const ev = (o: unknown) => JSON.stringify(o);
 
@@ -44,6 +44,21 @@ test('explorations en parallèle, travaux l’un après l’autre', () => {
   assert.deepEqual(schedule(['explore', 'explore']), [[0, 1]]);
   assert.deepEqual(schedule(['work', 'explore', 'work']), [[1, 0], [2]]);
   assert.deepEqual(schedule(['work']), [[0]]);
+});
+
+test('parallélisme borné par le réglage de l’administrateur', () => {
+  assert.deepEqual(schedule(['explore', 'explore', 'explore', 'explore', 'explore'], 2), [[0, 1], [2, 3], [4]]);
+  assert.deepEqual(schedule(['explore', 'work', 'explore'], 2), [[0, 1], [2]]);
+  assert.deepEqual(schedule(['explore', 'explore'], 1), [[0], [1]]);
+  assert.deepEqual(schedule(['work', 'work'], 1), [[0], [1]]);
+});
+
+test('réglages lus dans l’environnement, bornés', () => {
+  assert.equal(envInt(undefined, 4, 1, 8), 4);
+  assert.equal(envInt('6', 4, 1, 8), 6);
+  assert.equal(envInt('50', 4, 1, 8), 8);
+  assert.equal(envInt('0', 4, 1, 8), 1);
+  assert.equal(envInt('abc', 4, 1, 8), 4);
 });
 
 test('un explorateur n’a aucun outil d’écriture ni de commande', () => {

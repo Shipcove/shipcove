@@ -10,15 +10,21 @@
  *
  * Les sous-agents passent par la même gateway que Pi (mêmes quotas, même jeton de run) et ne
  * chargent aucune extension de la plateforme : ni outils de plateforme, ni sous-agents à leur tour.
- * En mode Plan (`CAP_SUBAGENT_READONLY=1`), seuls les explorateurs sont autorisés.
+ * En mode Plan (`CAP_SUBAGENT_READONLY=1`), seuls les explorateurs sont autorisés. Nombre de tâches,
+ * parallélisme et durée maximale : paramètres « Sous-agents » de l'administration (CAP_SUBAGENT_*).
  * La progression (statut, étapes) est transmise à l'interface par les mises à jour de l'outil.
  */
 import { spawn } from 'node:child_process';
 import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
 import { Type } from 'typebox';
-import { applyEvent, finish, forUi, initialState, resultText, schedule, TOOLS, type SubagentMode, type SubagentState } from './subagent-core.js';
+import { applyEvent, envInt, finish, forUi, initialState, resultText, schedule, TOOLS, type SubagentMode, type SubagentState } from './subagent-core.js';
 
-const TIMEOUT_MS = 20 * 60_000;
+// Réglages de l'administrateur (paramètres « Sous-agents »), transmis par le worker.
+const MAX_TASKS = envInt(process.env.CAP_SUBAGENT_MAX_TASKS, 4, 1, 8);
+const MAX_PARALLEL = envInt(process.env.CAP_SUBAGENT_MAX_PARALLEL, 4, 1, 8);
+const TIMEOUT_MIN = envInt(process.env.CAP_SUBAGENT_TIMEOUT_MINUTES, 20, 1, 120);
+const TIMEOUT_MS = TIMEOUT_MIN * 60_000;
+const TIMEOUT_ERROR = `délai dépassé (${TIMEOUT_MIN} min)`;
 const UPDATE_EVERY_MS = 300;
 
 const SUBAGENT_PROMPT =
@@ -42,8 +48,8 @@ export default function subagentPlugin(pi: ExtensionAPI) {
     name: 'subagent',
     label: 'Sous-agents',
     description:
-      'Delegates 1 to 4 tasks to sub-agents with their own isolated context. Each one works in the same workspace and returns a written report; ' +
-      'only the reports come back to you, which saves your context. Mode "explore" (default) is read-only and runs in parallel; ' +
+      `Delegates 1 to ${MAX_TASKS} task${MAX_TASKS > 1 ? 's' : ''} to sub-agents with their own isolated context. Each one works in the same workspace and returns a written report; ` +
+      `only the reports come back to you, which saves your context. Mode "explore" (default) is read-only and runs in parallel (up to ${MAX_PARALLEL} at a time); ` +
       `mode "work" can edit files and run commands, one at a time.${readOnly ? ' In the current Plan mode, only "explore" is allowed.' : ''}`,
     promptSnippet: 'Déléguer des recherches ou des sous-tâches à des sous-agents au contexte isolé',
     promptGuidelines: [
@@ -52,7 +58,7 @@ export default function subagentPlugin(pi: ExtensionAPI) {
       'Do not use subagent for simple tasks you can do in a few tool calls yourself.',
     ],
     parameters: Type.Object({
-      tasks: Type.Array(Task, { minItems: 1, maxItems: 4, description: 'Tâches confiées, une par sous-agent' }),
+      tasks: Type.Array(Task, { minItems: 1, maxItems: MAX_TASKS, description: 'Tâches confiées, une par sous-agent' }),
     }),
     async execute(_id, p, signal, onUpdate, ctx) {
       // Même modèle que l'agent principal (choisi par la plateforme via RPC, pas en ligne de commande).
@@ -74,7 +80,7 @@ export default function subagentPlugin(pi: ExtensionAPI) {
         else pending ??= setTimeout(send, UPDATE_EVERY_MS);
       };
 
-      for (const wave of schedule(modes)) {
+      for (const wave of schedule(modes, MAX_PARALLEL)) {
         if (signal?.aborted) break;
         await Promise.all(wave.map((i) => runOne(states[i], p.tasks[i].prompt, model, signal, push)));
       }
@@ -107,7 +113,7 @@ function runOne(state: SubagentState, prompt: string, model: string[], signal: A
       setTimeout(() => proc.exitCode === null && proc.kill('SIGKILL'), 5000).unref();
     };
     const timer = setTimeout(() => {
-      state.error = 'délai dépassé (20 min)';
+      state.error = TIMEOUT_ERROR;
       kill();
     }, TIMEOUT_MS);
     if (signal?.aborted) kill();
@@ -132,7 +138,7 @@ function runOne(state: SubagentState, prompt: string, model: string[], signal: A
       if (buffer.trim()) applyEvent(state, buffer);
       // Délai dépassé : échec, pas une interruption par l'utilisateur.
       finish(state, code, aborted && !state.error, stderr);
-      if (state.error === 'délai dépassé (20 min)') state.status = 'failed';
+      if (state.error === TIMEOUT_ERROR) state.status = 'failed';
       push(true);
       resolve();
     };

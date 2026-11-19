@@ -167,6 +167,18 @@ export const PlatformSettingsSchema = z.object({
       coAuthorEmail: z.union([z.literal(''), z.email().max(254)]).default('noreply@shipcove.dev'),
     })
     .prefault({}),
+  subagents: z
+    .object({
+      /** Outil `subagent` proposé à l'agent (sinon : aucun sous-agent sur la plateforme). */
+      enabled: z.boolean().default(true),
+      /** Nombre maximal de sous-agents par appel de l'outil. */
+      maxTasks: z.number().int().min(1).max(8).default(4),
+      /** Sous-agents d'exploration lancés en même temps (ceux de travail passent un par un). */
+      maxParallel: z.number().int().min(1).max(8).default(4),
+      /** Durée maximale d'un sous-agent, au-delà il est arrêté et compté en échec. */
+      timeoutMinutes: z.number().int().min(1).max(120).default(20),
+    })
+    .prefault({}),
   conversations: z
     .object({
       /** Modèle qui génère les titres des conversations (non décompté des quotas) ; vide : premier message tronqué. */
@@ -183,7 +195,7 @@ export const PlatformSettingsSchema = z.object({
 export type PlatformSettings = z.infer<typeof PlatformSettingsSchema>;
 
 export const PlatformSettingsPatchSchema = z.object({
-  section: z.enum(['auth', 'editor', 'sandbox', 'previews', 'quotas', 'attachments', 'skills', 'mcp', 'git', 'conversations', 'notifications']),
+  section: z.enum(['auth', 'editor', 'sandbox', 'previews', 'quotas', 'attachments', 'skills', 'mcp', 'git', 'subagents', 'conversations', 'notifications']),
   values: z.record(z.string(), z.unknown()),
 });
 

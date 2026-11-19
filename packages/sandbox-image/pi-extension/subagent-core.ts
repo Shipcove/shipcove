@@ -144,14 +144,26 @@ export function resultText(states: SubagentState[]): string {
 }
 
 /**
- * Ordre d'exécution : les explorations en parallèle ; les sous-agents qui modifient des fichiers
- * l'un après l'autre (deux écrivains simultanés dans le même dossier se gêneraient).
+ * Ordre d'exécution, par vagues d'au plus `maxParallel` sous-agents : les explorations en
+ * parallèle ; au plus un sous-agent qui modifie des fichiers par vague (deux écrivains simultanés
+ * dans le même dossier se gêneraient).
  */
-export function schedule(modes: SubagentMode[]): number[][] {
+export function schedule(modes: SubagentMode[], maxParallel = Infinity): number[][] {
   const explore = modes.map((m, i) => (m === 'explore' ? i : -1)).filter((i) => i >= 0);
   const work = modes.map((m, i) => (m === 'work' ? i : -1)).filter((i) => i >= 0);
-  // Vague 1 : toutes les explorations + le premier travail ; puis un travail par vague.
-  const waves: number[][] = [[...explore, ...work.slice(0, 1)]];
-  for (const w of work.slice(1)) waves.push([w]);
-  return waves.filter((w) => w.length > 0);
+  const size = Math.max(1, Math.floor(maxParallel));
+  const waves: number[][] = [];
+  while (explore.length || work.length) {
+    const hasWork = work.length > 0;
+    const wave = explore.splice(0, hasWork ? size - 1 : size);
+    if (hasWork) wave.push(work.shift()!);
+    waves.push(wave);
+  }
+  return waves;
+}
+
+/** Entier lu dans l'environnement, borné ; `fallback` s'il est absent ou invalide. */
+export function envInt(value: string | undefined, fallback: number, min: number, max: number): number {
+  const n = Number(value);
+  return value && Number.isInteger(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }

@@ -25,6 +25,7 @@ type Row = Record<string, never>;
         <cap-settings-section section="previews" [title]="t('Previews (proxy de ports)')" />
         <cap-settings-section section="editor" [title]="t('Éditeur')" />
         <cap-settings-section section="attachments" [title]="t('Pièces jointes')" />
+        <cap-settings-section section="subagents" [title]="t('Sous-agents de l’agent')" />
       </div>
     </div>
     <h2 class="mt-6 mb-1 text-sm font-semibold text-stone-500 uppercase">{{ t('Script de démarrage') }}</h2>
