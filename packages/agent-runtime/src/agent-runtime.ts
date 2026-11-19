@@ -26,7 +26,7 @@ export type RuntimeEvent =
       usage: RuntimeUsage | null;
     }
   | { type: 'tool_start'; toolCallId: string; toolName: string; args: unknown }
-  | { type: 'tool_update'; toolCallId: string; output: string }
+  | { type: 'tool_update'; toolCallId: string; output: string; details: unknown }
   | { type: 'tool_end'; toolCallId: string; toolName: string; output: string; isError: boolean; details: unknown }
   | { type: 'compaction_start'; reason: string }
   /** `willRetry` : compaction après dépassement du contexte, Pi relance ensuite le tour interrompu. */

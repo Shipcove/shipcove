@@ -273,6 +273,7 @@ export class WorkspaceStore {
           filesTouched: [],
           images: [],
           files: [],
+          details: null,
           startedAt: e.ts,
           completedAt: null,
           durationMs: null,
@@ -282,7 +283,12 @@ export class WorkspaceStore {
         return;
       }
       case 'tool.output':
-        this.patchTool(d['toolCallId'] as string, (t) => ({ ...t, output: d['output'] as string, outputTruncated: d['truncated'] as boolean }));
+        this.patchTool(d['toolCallId'] as string, (t) => ({
+          ...t,
+          output: d['output'] as string,
+          outputTruncated: d['truncated'] as boolean,
+          details: (d['details'] as ToolCallDto['details'] | undefined) ?? t.details ?? null,
+        }));
         return;
       case 'tool.completed':
         this.patchTool(d['toolCallId'] as string, (t) => ({
@@ -295,6 +301,7 @@ export class WorkspaceStore {
           filesTouched: d['filesTouched'] as string[],
           images: (d['images'] as ToolCallDto['images'] | undefined) ?? t.images ?? [],
           files: (d['files'] as ToolCallDto['files'] | undefined) ?? t.files ?? [],
+          details: (d['details'] as ToolCallDto['details'] | undefined) ?? t.details ?? null,
           completedAt: e.ts,
         }));
         return;

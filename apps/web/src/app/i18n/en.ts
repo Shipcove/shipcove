@@ -1073,4 +1073,17 @@ export const en: Record<string, string> = {
 
   // Agent
   "Agent": "Agent",
+
+  // Sous-agents
+  "Sous-agents": "Sub-agents",
+  "Terminé": "Done",
+  "Interrompu": "Stopped",
+  "Peut modifier des fichiers et lancer des commandes": "Can edit files and run commands",
+  "travail": "work",
+  "exploration": "explore",
+  "{n} action(s)": "{n} action(s)",
+  "Étapes ({n})": "Steps ({n})",
+  "Aucun compte rendu.": "No report.",
+  "{done}/{total} terminé(s), {running} en cours": "{done}/{total} done, {running} running",
+  "{n} sous-agent(s)": "{n} sub-agent(s)",
 };

@@ -16,7 +16,7 @@ export type TimelineRow =
   | { kind: 'error'; key: string; m: MessageDto };
 
 /** Outils affichés hors des groupes d'étapes : l'utilisateur doit les voir sans rien déplier (formulaires, fichiers, approbations Git). */
-const STANDALONE_TOOLS = new Set(['ask_user', 'share_files', 'platform_git_push', 'platform_create_pull_request', 'platform_merge_pull_request', 'platform_delete_remote_branch']);
+const STANDALONE_TOOLS = new Set(['ask_user', 'share_files', 'subagent', 'platform_git_push', 'platform_create_pull_request', 'platform_merge_pull_request', 'platform_delete_remote_branch']);
 
 /**
  * Aplati les messages en lignes et regroupe les raisonnements et appels d'outils consécutifs.

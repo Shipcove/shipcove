@@ -110,6 +110,7 @@ export class ConversationController {
           filesTouched: c.filesTouched,
           images: c.images,
           files: c.files,
+          details: c.details ?? null,
           startedAt: c.startedAt.toISOString(),
           completedAt: c.completedAt?.toISOString() ?? null,
           durationMs: c.durationMs,
