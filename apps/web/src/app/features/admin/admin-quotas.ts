@@ -31,7 +31,7 @@ interface Policy {
     <div class="card overflow-x-auto"><table class="table">
       <thead><tr><th>{{ t('Portée') }}</th><th>{{ t('Sujet') }}</th><th>5 h</th><th>{{ t('7 j') }}</th><th>{{ t('Exempté') }}</th><th>{{ t('Version') }}</th><th></th></tr></thead>
       <tbody>@for (p of policies(); track p.id) {
-        <tr><td>{{ p.scope }}</td><td class="text-xs">{{ subjectName(p) }}</td><td>{{ p.limit5h | credits }}</td><td>{{ p.limit7d | credits }}</td><td>{{ p.exempt ? 'oui' : 'non' }}</td><td>v{{ p.version }} · {{ p.createdAt | ago }}</td>
+        <tr><td>{{ p.scope }}</td><td class="text-xs">{{ subjectName(p) }}</td><td>{{ p.limit5h | credits }}</td><td>{{ p.limit7d | credits }}</td><td>{{ p.exempt ? t('oui') : t('non') }}</td><td>v{{ p.version }} · {{ p.createdAt | ago }}</td>
         <td class="text-right"><button class="btn-ghost !py-0.5 text-xs text-red-600" (click)="removePolicy(p)">{{ t('Retirer') }}</button></td></tr>
       } @empty { <tr><td colspan="7" class="text-stone-500">{{ t('Aucune politique : consommation illimitée.') }}</td></tr> }</tbody>
     </table></div>

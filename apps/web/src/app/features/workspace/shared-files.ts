@@ -3,6 +3,7 @@ import type { ToolCallDto, ToolFileDto } from '@cap/contracts';
 import { Icon } from '../../shared/icon';
 import { BytesPipe } from '../../shared/pipes';
 import { WorkspaceStore } from './workspace.store';
+import { fileUrl } from '../../core/mode';
 import { t } from '../../core/i18n';
 
 /**
@@ -52,7 +53,7 @@ export class SharedFiles {
   protected readonly files = computed(() => this.call().files ?? []);
 
   protected url(f: ToolFileDto): string {
-    return `/api/v1/workspaces/${this.store.workspace()?.id}/agent-files/${f.attachmentId}`;
+    return fileUrl(this.store.workspace()?.id, 'agent-files', f.attachmentId);
   }
 
   protected icon(f: ToolFileDto): string {

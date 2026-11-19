@@ -3,7 +3,8 @@ import { enPatterns, enServer } from '../i18n/en-server';
 
 /**
  * Langue de l'interface (français ou anglais), fixée au démarrage :
- * choix enregistré (sélecteur), sinon langues préférées du navigateur, sinon anglais.
+ * `?lang=` dans l'adresse, sinon choix enregistré (sélecteur), sinon langues préférées du
+ * navigateur, sinon anglais.
  * Changer de langue recharge la page : tous les textes, formats et libellés basculent ensemble.
  *
  * Les textes sont écrits en français dans le code, qui sert de clé (`t('Partager')`) ; la
@@ -15,6 +16,9 @@ export const LANG_NAMES: Record<Lang, string> = { fr: 'Français', en: 'English'
 const STORAGE_KEY = 'shipcove-lang';
 
 function detect(): Lang {
+  // Lien qui impose la langue (ex. depuis la documentation : `?lang=en`).
+  const param = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('lang');
+  if (param === 'fr' || param === 'en') return param;
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved === 'fr' || saved === 'en') return saved;
@@ -69,7 +73,13 @@ export function setLang(next: Lang): void {
   } catch {
     /* stockage indisponible : le changement vaut pour cette page */
   }
-  if (next !== lang) location.reload();
+  if (next === lang) return;
+  // Un `?lang=` dans l'adresse primerait sur le nouveau choix : on le retire.
+  const url = new URL(location.href);
+  if (url.searchParams.has('lang')) {
+    url.searchParams.delete('lang');
+    location.replace(url.href);
+  } else location.reload();
 }
 
 /**

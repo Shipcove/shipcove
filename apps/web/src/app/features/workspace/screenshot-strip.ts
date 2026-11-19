@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, effect, ElementRef, inject, input, 
 import type { ToolImageDto } from '@cap/contracts';
 import { Icon } from '../../shared/icon';
 import { WorkspaceStore } from './workspace.store';
+import { fileUrl } from '../../core/mode';
 import { t } from '../../core/i18n';
 
 /**
@@ -70,7 +71,7 @@ export class ScreenshotStrip {
   }
 
   protected src(attachmentId: string): string {
-    return `/api/v1/workspaces/${this.store.workspace()?.id}/screenshots/${attachmentId}`;
+    return fileUrl(this.store.workspace()?.id, 'screenshots', attachmentId);
   }
 
   protected thumbWidth(img: { width: number | null; height: number | null }): number | null {

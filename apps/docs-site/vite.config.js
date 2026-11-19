@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
@@ -10,6 +10,13 @@ const root = import.meta.dirname;
  * DOCS_BASE=/docs/ pnpm docs:build. Tous les liens du site sont dérivés de cette valeur.
  */
 const base = (process.env.DOCS_BASE ?? '/').replace(/\/?$/, '/');
+
+/**
+ * Démonstration de l'application (sans serveur), construite par `pnpm --filter web build:demo`.
+ * Si elle existe, elle est publiée avec le site dans `demo/` et l'en-tête propose de l'essayer.
+ */
+const demoDir = resolve(root, '../web/dist/demo');
+const hasDemo = existsSync(resolve(demoDir, 'index.html'));
 
 /** Langues du site : chaque page existe dans chacune, sous le même nom de fichier. */
 export const LANGS = ['fr', 'en'];
@@ -28,6 +35,7 @@ const UI = {
     language: 'Langue',
     footer: 'Shipcove — logiciel libre sous licence AGPL v3.',
     source: 'Code source',
+    demo: 'Essayer la démo',
   },
   en: {
     docs: 'Documentation',
@@ -41,6 +49,7 @@ const UI = {
     language: 'Language',
     footer: 'Shipcove — free software under the AGPL v3 license.',
     source: 'Source code',
+    demo: 'Try the demo',
   },
 };
 
@@ -118,11 +127,23 @@ function docsLayout() {
           .replaceAll('{{home}}', href(lang, 'index.html'))
           .replace('{{alternates}}', alternates)
           .replace('{{switcher}}', switcher)
+          .replace('{{demo}}', hasDemo ? `<a class="demo-link" href="${base}demo/?lang=${lang}">${ui.demo}</a>` : '')
           .replace('{{nav}}', nav)
           .replace('{{content}}', content)
           .replace('{{pager}}', i >= 0 ? pager : '')
           .replace(/\{\{ui\.(\w+)\}\}/g, (_m, k) => ui[k] ?? k);
       },
+    },
+  };
+}
+
+/** Copie la démonstration dans le site construit (`dist/demo`). */
+function publishDemo() {
+  return {
+    name: 'shipcove-demo',
+    apply: 'build',
+    closeBundle() {
+      if (hasDemo) cpSync(demoDir, resolve(root, 'dist/demo'), { recursive: true });
     },
   };
 }
@@ -134,7 +155,7 @@ const pages = (dir) =>
 
 export default defineConfig({
   base,
-  plugins: [tailwindcss(), docsLayout()],
+  plugins: [tailwindcss(), docsLayout(), publishDemo()],
   build: {
     rollupOptions: {
       input: Object.fromEntries([...pages('.'), ...LANGS.flatMap((l) => pages(l))]),

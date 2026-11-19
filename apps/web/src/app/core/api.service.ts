@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular
 import { t, tr } from './i18n';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { API_BASE } from './mode';
 import type { ApiErrorBody, ErrorCode } from '@cap/contracts';
 
 export class ApiError extends Error {
@@ -22,7 +23,7 @@ type Params = Record<string, string | number | boolean | undefined | null>;
 @Injectable({ providedIn: 'root' })
 export class Api {
   private readonly http = inject(HttpClient);
-  readonly base = '/api/v1';
+  readonly base = API_BASE;
 
   get<T>(url: string, params?: Params): Promise<T> {
     return this.wrap(this.http.get<T>(this.base + url, { params: toParams(params), withCredentials: true }));

@@ -1,5 +1,6 @@
 import { Injectable, NgZone, inject } from '@angular/core';
 import type { EventEnvelope } from '@cap/contracts';
+import { API_BASE } from './mode';
 
 export interface SseHandle {
   close(): void;
@@ -21,7 +22,7 @@ export class SseService {
     let retry = 1000;
     const open = () => {
       if (closed) return;
-      source = new EventSource(`/api/v1/workspaces/${workspaceId}/events?lastEventId=${lastId}`, { withCredentials: true });
+      source = new EventSource(`${API_BASE}/workspaces/${workspaceId}/events?lastEventId=${lastId}`, { withCredentials: true });
       source.onopen = () => {
         retry = 1000;
         this.zone.run(() => onState?.('open'));
