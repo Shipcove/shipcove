@@ -6,10 +6,24 @@ import { LiteLlmClient } from '@cap/server-core';
 export class LiteLlmAdminService {
   constructor(private readonly client: LiteLlmClient) {}
 
-  /** Complétion courte (titres de conversation) : appel direct à LiteLLM, hors quotas des utilisateurs. */
-  async complete(model: string, messages: Array<{ role: 'system' | 'user'; content: string }>, maxTokens: number): Promise<string> {
-    const r = await this.client.request<{ choices?: Array<{ message?: { content?: string } }> }>('POST', '/v1/chat/completions', { model, messages, max_tokens: maxTokens, temperature: 0.2 }, 60_000);
-    return r.choices?.[0]?.message?.content ?? '';
+  /**
+   * Complétion courte (titres de conversation) : appel direct à LiteLLM, hors quotas des
+   * utilisateurs. Renvoie aussi la raison d'arrêt et la présence d'un raisonnement, pour expliquer
+   * une réponse vide (budget de tokens épuisé par le raisonnement d'un modèle « thinking »).
+   */
+  async complete(
+    model: string,
+    messages: Array<{ role: 'system' | 'user'; content: string }>,
+    maxTokens: number,
+  ): Promise<{ content: string; finishReason: string | null; reasoning: boolean }> {
+    const r = await this.client.request<{ choices?: Array<{ finish_reason?: string; message?: { content?: string | null; reasoning_content?: string | null } }> }>(
+      'POST',
+      '/v1/chat/completions',
+      { model, messages, max_tokens: maxTokens, temperature: 0.2 },
+      60_000,
+    );
+    const c = r.choices?.[0];
+    return { content: c?.message?.content ?? '', finishReason: c?.finish_reason ?? null, reasoning: !!c?.message?.reasoning_content };
   }
 
   /** Test réel d'un modèle (appel minimal). */

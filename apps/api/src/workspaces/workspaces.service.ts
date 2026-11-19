@@ -91,7 +91,7 @@ export class WorkspacesService {
       const [m] = await this.db.select().from(llmModels).where(and(eq(llmModels.id, titleModelId), eq(llmModels.enabled, true), isNull(llmModels.deletedAt)));
       if (m) {
         try {
-          const text = await this.litellm.complete(
+          const r = await this.litellm.complete(
             m.litellmModel,
             [
               {
@@ -102,10 +102,16 @@ export class WorkspacesService {
               },
               { role: 'user', content: firstMessage.slice(0, 4000) },
             ],
-            40,
+            // Large marge : un modèle qui raisonne avant de répondre consomme d'abord ce budget
+            // (40 tokens ne laissaient aucune place au titre). L'appel n'est pas décompté des quotas.
+            TITLE_MAX_TOKENS,
           );
-          const cleaned = cleanTitle(text);
+          const cleaned = cleanTitle(r.content);
           if (cleaned) title = cleaned;
+          else
+            this.logger.warn(
+              `Titre automatique (${workspaceId}) : réponse vide de ${m.litellmModel} (arrêt : ${r.finishReason ?? 'inconnu'}${r.reasoning ? ', raisonnement seul' : ''}) ; début du message utilisé`,
+            );
         } catch (err) {
           this.logger.warn(`Titre automatique (${workspaceId}) : ${(err as Error).message}`);
         }
@@ -120,6 +126,9 @@ export class WorkspacesService {
   }
 }
 
+/** Budget de tokens de la génération de titre, raisonnement éventuel du modèle compris. */
+export const TITLE_MAX_TOKENS = 1024;
+
 /** Début du message, sur une ligne, coupé proprement. */
 export function shortTitle(text: string): string {
   const line = text.replace(/\[\[[^\]]*\]\]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -133,6 +142,8 @@ export function shortTitle(text: string): string {
 export function cleanTitle(text: string): string {
   const t = text
     .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    // Raisonnement coupé avant sa fin (budget épuisé) : aucun titre dedans.
+    .replace(/<think>[\s\S]*$/i, '')
     .split('\n')
     .map((l) => l.trim())
     .find((l) => l.length > 0);
