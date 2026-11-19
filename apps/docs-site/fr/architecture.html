@@ -48,7 +48,7 @@
       <h2>Points clés</h2>
       <ul>
         <li><strong>Reprise</strong> : si un worker disparaît, son verrou expire et un autre reprend le run depuis le dernier état connu.</li>
-        <li><strong>Quotas</strong> : chaque appel LLM réserve son coût maximal en transaction avant d’être transmis ; le coût réel est facturé à la réponse. Aucun dépassement possible, même en parallèle.</li>
+        <li><strong>Quotas</strong> : chaque appel LLM réserve un coût estimé en transaction avant d’être transmis ; le coût réel est facturé à la réponse. Un appel est admis tant que la fenêtre n’est pas épuisée ; le dépassement est borné au coût réel des appels en cours.</li>
         <li><strong>Git</strong> : <code>git</code>, <code>gh</code> et <code>glab</code> passent par la gateway, qui substitue le jeton OAuth au jeton de run et applique les garde-fous ; les opérations sensibles (branche par défaut, fusion, suppression) passent par le broker du worker, après approbation d’une opération figée.</li>
         <li><strong>Réseau</strong> : les sandboxes sont sur un réseau interne sans route ; leurs services d’appui partagent leur espace réseau.</li>
       </ul>

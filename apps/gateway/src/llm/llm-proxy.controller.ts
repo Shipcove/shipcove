@@ -57,8 +57,11 @@ export class LlmProxyController {
     if (!model) return openAiError(res, 403, 'model_not_allowed', `Modèle non autorisé : ${modelName}`);
 
     const quotaSettings = await this.settings.section('quotas');
+    // Pi demande toujours le maximum de sortie du modèle (max_tokens) : réserver ce plafond
+    // gonflerait les réservations ouvertes (surtout avec des sous-agents en parallèle). L'estimation
+    // de sortie est donc plafonnée par le réglage de réservation ; la régularisation débite l'usage réel.
     const requestedOut = Number(body.max_completion_tokens ?? body.max_tokens ?? 0) || quotaSettings.defaultOutputReservation;
-    const estimatedOut = Math.min(requestedOut, model.maxOutputTokens);
+    const estimatedOut = Math.min(requestedOut, model.maxOutputTokens, quotaSettings.defaultOutputReservation);
     const estimatedIn = estimateInputTokens(JSON.stringify(body.messages ?? []).length + JSON.stringify(body.tools ?? []).length);
 
     let reservation;

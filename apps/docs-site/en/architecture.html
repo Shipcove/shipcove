@@ -48,7 +48,7 @@
       <h2>Key points</h2>
       <ul>
         <li><strong>Recovery</strong>: if a worker disappears, its lock expires and another one resumes the run from the last known state.</li>
-        <li><strong>Quotas</strong>: every LLM call reserves its maximum cost in a transaction before being forwarded; the actual cost is billed on the response. No overrun possible, even in parallel.</li>
+        <li><strong>Quotas</strong>: every LLM call reserves an estimated cost in a transaction before being forwarded; the actual cost is billed on the response. A call is admitted as long as the window is not used up; any overrun is bounded by the actual cost of the calls in flight.</li>
         <li><strong>Git</strong>: <code>git</code>, <code>gh</code> and <code>glab</code> go through the gateway, which substitutes the OAuth token for the run token and applies the safeguards; sensitive operations (default branch, merge, deletion) go through the worker’s broker, after approval of a pinned operation.</li>
         <li><strong>Network</strong>: sandboxes are on an internal network without a route; their support services share their network namespace.</li>
       </ul>
