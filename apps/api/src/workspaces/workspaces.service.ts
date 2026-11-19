@@ -84,30 +84,35 @@ export class WorkspacesService {
    * non décompté des quotas), sinon début du message. N'écrase jamais un titre choisi par l'utilisateur.
    */
   async generateTitle(workspaceId: string, firstMessage: string): Promise<void> {
-    const fallback = shortTitle(firstMessage);
+    const { titleModelId, titleMaxLength } = await this.settings.section('conversations');
+    const fallback = shortTitle(firstMessage, titleMaxLength);
     let title = fallback;
-    const { titleModelId } = await this.settings.section('conversations');
     if (titleModelId) {
       const [m] = await this.db.select().from(llmModels).where(and(eq(llmModels.id, titleModelId), eq(llmModels.enabled, true), isNull(llmModels.deletedAt)));
       if (m) {
+        const messages = [
+          {
+            role: 'system' as const,
+            content:
+              'Tu donnes un titre à une conversation entre un développeur et un agent de code. ' +
+              `Titre de 3 à 7 mots, ${titleMaxLength} caractères au plus, dans la langue du message, sans guillemets ni point final. ` +
+              'Réponds uniquement en JSON : {"title": "<titre>"}.',
+          },
+          { role: 'user' as const, content: firstMessage.slice(0, 4000) },
+        ];
         try {
-          const r = await this.litellm.complete(
-            m.litellmModel,
-            [
-              {
-                role: 'system',
-                content:
-                  'Tu donnes un titre à une conversation entre un développeur et un agent de code. Réponds uniquement par le titre : ' +
-                  '3 à 7 mots, dans la langue du message, sans guillemets, sans point final, sans préfixe.',
-              },
-              { role: 'user', content: firstMessage.slice(0, 4000) },
-            ],
-            // Large marge : un modèle qui raisonne avant de répondre consomme d'abord ce budget
-            // (40 tokens ne laissaient aucune place au titre). L'appel n'est pas décompté des quotas.
-            TITLE_MAX_TOKENS,
-          );
-          const cleaned = cleanTitle(r.content);
-          if (cleaned) title = cleaned;
+          // Sortie contrainte (JSON Schema, longueur maximale) ; sans limite de tokens, pour qu'un
+          // modèle qui raisonne avant de répondre aille jusqu'au titre.
+          let r;
+          try {
+            r = await this.litellm.complete(m.litellmModel, messages, { responseFormat: titleResponseFormat(titleMaxLength) });
+          } catch (err) {
+            // Fournisseur sans sortie structurée : même consigne, réponse libre (longueur vérifiée ensuite).
+            if (!/HTTP (400|422)\b/.test((err as Error).message)) throw err;
+            r = await this.litellm.complete(m.litellmModel, messages);
+          }
+          const parsed = parseTitle(r.content, titleMaxLength);
+          if (parsed) title = parsed;
           else
             this.logger.warn(
               `Titre automatique (${workspaceId}) : réponse vide de ${m.litellmModel} (arrêt : ${r.finishReason ?? 'inconnu'}${r.reasoning ? ', raisonnement seul' : ''}) ; début du message utilisé`,
@@ -126,16 +131,56 @@ export class WorkspacesService {
   }
 }
 
-/** Budget de tokens de la génération de titre, raisonnement éventuel du modèle compris. */
-export const TITLE_MAX_TOKENS = 1024;
+/** Sortie contrainte des titres : un objet `{ title }` d'au plus `maxLength` caractères. */
+export function titleResponseFormat(maxLength: number): Record<string, unknown> {
+  return {
+    type: 'json_schema',
+    json_schema: {
+      name: 'conversation_title',
+      strict: true,
+      schema: {
+        type: 'object',
+        properties: { title: { type: 'string', minLength: 1, maxLength } },
+        required: ['title'],
+        additionalProperties: false,
+      },
+    },
+  };
+}
+
+/** Coupe un texte à `max` caractères, sur une fin de mot si possible. */
+export function clip(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max - 1);
+  const space = cut.lastIndexOf(' ');
+  return `${(space >= max * 0.6 ? cut.slice(0, space) : cut).trim()}…`;
+}
 
 /** Début du message, sur une ligne, coupé proprement. */
-export function shortTitle(text: string): string {
+export function shortTitle(text: string, max = 60): string {
   const line = text.replace(/\[\[[^\]]*\]\]/g, ' ').replace(/\s+/g, ' ').trim();
   if (!line) return DEFAULT_TITLE;
-  if (line.length <= 60) return line;
-  const cut = line.slice(0, 60);
-  return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 40)).trim()}…`;
+  return clip(line, max);
+}
+
+/**
+ * Titre lu dans la réponse : JSON `{ title }` (sortie contrainte) ou texte libre (repli), sans
+ * raisonnement, puis borné à `max` caractères (au cas où le fournisseur ignorerait la contrainte).
+ */
+export function parseTitle(content: string, max: number): string {
+  const text = content.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<think>[\s\S]*$/i, '').trim();
+  let candidate = text;
+  const json = text.match(/\{[\s\S]*\}/);
+  if (json) {
+    try {
+      const t = (JSON.parse(json[0]) as { title?: unknown }).title;
+      if (typeof t === 'string') candidate = t;
+    } catch {
+      /* texte libre */
+    }
+  }
+  const cleaned = cleanTitle(candidate);
+  return cleaned ? clip(cleaned, max) : '';
 }
 
 /** Réponse du modèle ramenée à un titre : première ligne, sans guillemets ni balises de raisonnement. */

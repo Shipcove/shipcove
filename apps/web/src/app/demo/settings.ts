@@ -76,7 +76,8 @@ export const SETTINGS: PlatformSettings = {
     "coAuthorEmail": "shipcove@example.com"
   },
   "conversations": {
-    "titleModelId": "m-qwen"
+    "titleModelId": "m-qwen",
+    "titleMaxLength": 60
   },
   "notifications": {
     "emailEnabled": true,

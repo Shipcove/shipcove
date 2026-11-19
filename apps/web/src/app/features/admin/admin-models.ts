@@ -152,12 +152,16 @@ interface EditForm {
 
     <form class="card mt-6 space-y-2 p-4" (ngSubmit)="saveTitleModel()">
       <div class="font-medium">{{ t('Titres automatiques des conversations') }}</div>
-      <p class="text-sm text-stone-500">{{ t('Après le premier message, ce modèle propose un titre court (appel non décompté des quotas, liste blanche non appliquée). Sans modèle, le début du message sert de titre. Un titre renommé par l’utilisateur n’est jamais remplacé.') }}</p>
+      <p class="text-sm text-stone-500">{{ t('Après le premier message, ce modèle propose un titre court (appel non décompté des quotas, liste blanche non appliquée), limité au nombre de caractères choisi. Sans modèle, le début du message sert de titre. Un titre renommé par l’utilisateur n’est jamais remplacé.') }}</p>
       <div class="flex gap-2">
         <select class="input md:max-w-sm" name="titleModel" [(ngModel)]="titleModelId" [attr.aria-label]="t('Modèle des titres')">
           <option [ngValue]="null">{{ t('Aucun (début du message)') }}</option>
           @for (m of models(); track m.id) { @if (m.enabled) { <option [ngValue]="m.id">{{ m.displayName }}</option> } }
         </select>
+        <label class="flex items-center gap-2 text-sm text-stone-600 dark:text-stone-400">
+          {{ t('Caractères max.') }}
+          <input class="input w-20" type="number" name="titleMaxLength" min="20" max="120" [(ngModel)]="titleMaxLength" [attr.aria-label]="t('Longueur maximale des titres (caractères)')" />
+        </label>
         <button class="btn-primary">{{ t('Enregistrer') }}</button>
       </div>
     </form>
@@ -180,6 +184,7 @@ export class AdminModels implements OnInit {
   protected key = '';
   protected userQuery = '';
   protected titleModelId: string | null = null;
+  protected titleMaxLength = 60;
   protected f: EditForm = emptyForm();
 
   async ngOnInit() {
@@ -187,6 +192,7 @@ export class AdminModels implements OnInit {
     this.connection.set(c);
     this.url = c.url;
     this.titleModelId = s.conversations.titleModelId;
+    this.titleMaxLength = s.conversations.titleMaxLength;
     await this.load();
   }
 
@@ -317,7 +323,7 @@ export class AdminModels implements OnInit {
 
   protected async saveTitleModel() {
     try {
-      await this.api.patch('/admin/settings', { section: 'conversations', values: { titleModelId: this.titleModelId } });
+      await this.api.patch('/admin/settings', { section: 'conversations', values: { titleModelId: this.titleModelId, titleMaxLength: Number(this.titleMaxLength) } });
       this.toast.show(t('Modèle des titres enregistré'), 'success');
     } catch (e) {
       this.toast.error(e);

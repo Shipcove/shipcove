@@ -171,6 +171,8 @@ export const PlatformSettingsSchema = z.object({
     .object({
       /** Modèle qui génère les titres des conversations (non décompté des quotas) ; vide : premier message tronqué. */
       titleModelId: z.uuid().nullable().default(null),
+      /** Longueur maximale d'un titre (caractères), imposée au modèle (sortie contrainte) puis vérifiée. */
+      titleMaxLength: z.number().int().min(20).max(120).default(60),
     })
     .prefault({}),
   notifications: z
