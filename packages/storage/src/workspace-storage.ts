@@ -12,9 +12,13 @@ export interface BlobStore {
   put(key: string, body: Buffer, sha256Base64?: string): Promise<void>;
   get(key: string): Promise<Buffer | null>;
   head(key: string): Promise<{ size: number } | null>;
-  list(prefix: string): Promise<Array<{ key: string; size: number }>>;
+  /** `lastModified` : date d'écriture, si le stockage la fournit (S3). */
+  list(prefix: string): Promise<Array<{ key: string; size: number; lastModified?: Date }>>;
   deleteMany(keys: string[]): Promise<void>;
 }
+
+/** Âge minimal d'un objet non référencé avant suppression par le nettoyage (checkpoints en cours). */
+export const ORPHAN_GRACE_MS = 6 * 3600_000;
 
 export class FencingError extends Error {
   constructor(workspaceId: string) {
@@ -433,7 +437,13 @@ export class WorkspaceStorage {
       for (const e of m?.entries ?? []) if (e.h) referenced.add(e.h);
     }
     const objects = await this.blobs.list(`workspaces/${workspaceId}/objects/`);
-    const orphanObjects = objects.filter((o) => !referenced.has(o.key.split('/').pop()!)).map((o) => o.key);
+    // Un checkpoint en cours écrit ses objets avant de publier sa génération : récents et non encore
+    // référencés, ils ne sont pas orphelins. Seuls les objets plus anciens que le délai de grâce
+    // (bien au-delà de la durée d'un checkpoint) sont supprimés.
+    const graceLimit = Date.now() - ORPHAN_GRACE_MS;
+    const orphanObjects = objects
+      .filter((o) => !referenced.has(o.key.split('/').pop()!) && (!o.lastModified || o.lastModified.getTime() < graceLimit))
+      .map((o) => o.key);
     if (dropped.length) {
       await this.db
         .update(workspaceSnapshots)

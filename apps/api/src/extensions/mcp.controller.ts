@@ -30,6 +30,9 @@ const uuid = { schema: z.uuid() };
  * une politique globale ne peut pas être contournée par une portée inférieure.
  */
 
+/** Message des anciens serveurs stdio (transport retiré). */
+const STDIO_REMOVED = 'Transport stdio retiré (secrets exposés dans la sandbox) : supprimez ce serveur et recréez-le en Streamable HTTP';
+
 const hideConfig = (s: { scope: string }, user: AuthUser) => s.scope === 'global' && user.platformRole !== 'platform_admin';
 
 @ApiTags('mcp')
@@ -100,18 +103,11 @@ export class McpController {
   async create(@Body({ schema: CreateMcpServerSchema }) body: CreateMcpServer, @CurrentUser() user: AuthUser, @ReqCtx() ctx: RequestContext) {
     const cfg = await this.settings.section('mcp');
     if (body.scope === 'personal' && !cfg.personalServersAllowed) throw new AppError('forbidden', 'Les serveurs MCP personnels sont désactivés');
-    if (body.transport === 'streamable_http' && !body.url) throw new AppError('validation_failed', 'URL requise');
-    if (body.transport === 'stdio' && !body.command) throw new AppError('validation_failed', 'Commande requise');
-    if (body.transport === 'streamable_http') this.assertHostAllowed(body.scope, body.url!, cfg.allowedRemoteHosts);
+    this.assertHostAllowed(body.scope, body.url, cfg.allowedRemoteHosts);
     const meta = { scope: body.scope, ownerId: body.scope === 'personal' ? user.id : null };
     await this.assertManage(user, meta);
-    // Un serveur stdio s'exécute dans la sandbox de l'utilisateur, avec ses droits : des variables
-    // secrètes posées par l'administrateur y seraient lisibles par l'agent de chacun.
-    if (body.transport === 'stdio' && body.scope === 'global' && Object.keys(body.secretEnv ?? {}).length > 0) {
-      throw new AppError('validation_failed', 'Serveur MCP global en stdio : pas de variable secrète (elle serait lisible dans chaque sandbox). Utilisez un serveur Streamable HTTP, dont les secrets restent côté plateforme.');
-    }
     const { pub: publicHeaders, secret } = splitHeaders(body.headers, body.secretHeaders);
-    const secretData: Record<string, string> = { ...body.secretEnv };
+    const secretData: Record<string, string> = {};
     for (const [k, v] of Object.entries(secret)) secretData[`header:${k}`] = v;
     const [s] = await this.db
       .insert(mcpServers)
@@ -120,9 +116,9 @@ export class McpController {
         description: body.description,
         ...meta,
         transport: body.transport,
-        url: body.url ?? null,
-        command: body.command ?? null,
-        args: body.args,
+        url: body.url,
+        command: null,
+        args: [],
         headers: publicHeaders,
         secretKeys: Object.keys(secretData),
         version: body.version ?? null,
@@ -138,7 +134,7 @@ export class McpController {
     }
     await this.audit.record({ actorId: user.id, action: 'mcp.create', targetType: 'mcp_server', targetId: s.id, ip: ctx.ip, metadata: { scope: body.scope, transport: body.transport } });
     // Découverte immédiate : outils et état de santé visibles dès l'ajout.
-    const discovery = body.transport === 'streamable_http' ? await this.runDiscovery(s.id) : null;
+    const discovery = await this.runDiscovery(s.id);
     return { id: s.id, discovery };
   }
 
@@ -178,7 +174,7 @@ export class McpController {
     const [s] = await this.db.select().from(mcpServers).where(eq(mcpServers.id, id));
     if (!s) throw new AppError('not_found', 'Serveur introuvable');
     await this.assertManage(user, s);
-    if (s.transport !== 'streamable_http') throw new AppError('conflict', 'Serveur stdio : déclarez ses outils (exécution uniquement dans les sandboxes)');
+    if (s.transport !== 'streamable_http') throw new AppError('conflict', STDIO_REMOVED);
     return this.runDiscovery(id);
   }
 
@@ -196,21 +192,6 @@ export class McpController {
       await this.db.update(mcpServers).set({ health: 'unhealthy', healthDetail: (r.detail ?? '').slice(0, 300), lastHealthAt: new Date() }).where(eq(mcpServers.id, id));
     }
     return r;
-  }
-
-  /** Déclaration manuelle des outils (serveurs stdio). */
-  @Put(':serverId/tools')
-  async declareTools(
-    @Param('serverId', uuid) id: string,
-    @Body({ schema: z.object({ tools: z.array(z.object({ name: z.string().min(1).max(200), description: z.string().max(2000).default(''), inputSchema: z.record(z.string(), z.unknown()).optional() })).max(200) }) })
-    body: { tools: Array<{ name: string; description: string; inputSchema?: Record<string, unknown> }> },
-    @CurrentUser() user: AuthUser,
-  ) {
-    const [s] = await this.db.select().from(mcpServers).where(eq(mcpServers.id, id));
-    if (!s) throw new AppError('not_found', 'Serveur introuvable');
-    await this.assertManage(user, s);
-    await this.upsertTools(id, body.tools);
-    return { ok: true };
   }
 
   private async upsertTools(serverId: string, tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>) {
@@ -272,16 +253,14 @@ export class McpController {
     if (!s) throw new AppError('not_found', 'Serveur introuvable');
     await this.assertManage(user, s);
     if (body.url !== undefined) {
-      if (s.transport !== 'streamable_http') throw new AppError('validation_failed', 'URL réservée aux serveurs Streamable HTTP');
+      if (s.transport !== 'streamable_http') throw new AppError('validation_failed', STDIO_REMOVED);
       this.assertHostAllowed(s.scope, body.url, (await this.settings.section('mcp')).allowedRemoteHosts);
     }
-    if (body.command !== undefined && s.transport !== 'stdio') throw new AppError('validation_failed', 'Commande réservée aux serveurs stdio');
+    // Ancien serveur stdio : il ne peut plus être réactivé ni modifié, seulement supprimé.
+    if (s.transport !== 'streamable_http' && (body.enabled === true || Object.keys(body).some((k) => k !== 'enabled'))) throw new AppError('validation_failed', STDIO_REMOVED);
     const { pub, secret } = splitHeaders(body.headers ?? s.headers, body.secretHeaders ?? {});
     const stored = s.secretRef ? await this.secrets.read(s.secretRef) : {};
-    const next = mergeSecrets(stored, { publicHeaders: pub, secretHeaders: secret, secretEnv: body.secretEnv ?? {}, remove: body.removeSecrets ?? [] });
-    if (s.transport === 'stdio' && s.scope === 'global' && Object.keys(next).some((k) => !k.startsWith('header:'))) {
-      throw new AppError('validation_failed', 'Serveur MCP global en stdio : pas de variable secrète (elle serait lisible dans chaque sandbox).');
-    }
+    const next = mergeSecrets(stored, { publicHeaders: pub, secretHeaders: secret, remove: body.removeSecrets ?? [] });
     const secretsChanged = JSON.stringify(Object.entries(next).sort()) !== JSON.stringify(Object.entries(stored).sort());
     let secretRef = s.secretRef;
     if (secretsChanged) {
@@ -297,8 +276,6 @@ export class McpController {
         ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
         ...(body.description !== undefined ? { description: body.description } : {}),
         ...(body.url !== undefined ? { url: body.url } : {}),
-        ...(body.command !== undefined ? { command: body.command } : {}),
-        ...(body.args !== undefined ? { args: body.args } : {}),
         headers: pub,
         secretKeys: Object.keys(next),
         secretRef,

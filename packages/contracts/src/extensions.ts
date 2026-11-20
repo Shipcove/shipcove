@@ -137,18 +137,20 @@ export interface SkillCategoryDto {
 export const McpScopeSchema = z.enum(['global', 'personal']);
 export type McpScope = z.infer<typeof McpScopeSchema>;
 
-export const McpTransportSchema = z.enum(['stdio', 'streamable_http']);
+/**
+ * Seul transport proposé : Streamable HTTP (les secrets restent côté plateforme). Le transport
+ * stdio, qui lançait le serveur dans la sandbox avec ses secrets, n'est plus pris en charge.
+ */
+export const McpTransportSchema = z.literal('streamable_http');
+/** Nom d'un serveur MCP : lettres (majuscules comprises), chiffres, - et _. */
+export const MCP_SERVER_NAME = /^[A-Za-z0-9_-]+$/;
 
 export const CreateMcpServerSchema = z.object({
-  name: z.string().min(1).max(64).regex(/^[a-z0-9_-]+$/),
+  name: z.string().min(1).max(64).regex(MCP_SERVER_NAME),
   description: z.string().max(1000).default(''),
   scope: McpScopeSchema,
   transport: McpTransportSchema,
-  url: z.url().max(2000).optional(),
-  command: z.string().max(500).optional(),
-  args: z.array(z.string().max(500)).max(50).default([]),
-  /** Variables / en-têtes sensibles : stockés dans Vault. */
-  secretEnv: z.record(z.string().regex(/^[A-Z_][A-Z0-9_]*$/), z.string().max(4000)).default({}),
+  url: z.url().max(2000),
   headers: z.record(z.string().max(200), z.string().max(4000)).default({}),
   /** En-têtes marqués secrets dans le formulaire : stockés dans Vault (en plus des noms sensibles de `headers`). */
   secretHeaders: z.record(z.string().max(200), z.string().max(4000)).default({}),
@@ -165,11 +167,8 @@ export const UpdateMcpServerSchema = z.object({
   enabled: z.boolean().optional(),
   description: z.string().max(1000).optional(),
   url: z.url().max(2000).optional(),
-  command: z.string().max(500).optional(),
-  args: z.array(z.string().max(500)).max(50).optional(),
   headers: z.record(z.string().max(200), z.string().max(4000)).optional(),
   secretHeaders: z.record(z.string().max(200), z.string().max(4000)).optional(),
-  secretEnv: z.record(z.string().regex(/^[A-Z_][A-Z0-9_]*$/), z.string().max(4000)).optional(),
   removeSecrets: z.array(z.string().max(210)).max(100).optional(),
 });
 export type UpdateMcpServer = z.infer<typeof UpdateMcpServerSchema>;
@@ -212,6 +211,7 @@ export interface McpServerDto {
   description: string;
   scope: McpScope;
   ownerId: string | null;
+  /** `stdio` : ancien serveur, désactivé (transport retiré) ; à supprimer ou recréer en HTTP. */
   transport: 'stdio' | 'streamable_http';
   url: string | null;
   command: string | null;

@@ -142,6 +142,8 @@ export class GitBrokerService implements OnApplicationBootstrap {
       if (remoteRef.code === 0 && commits.length === 0) throw new AppError('conflict', 'Rien à publier : la branche distante est à jour');
       target = `${t.repo.fullName}:${remote}`;
       normalized = { localBranch: local, remoteBranch: remote, force: params.force === true };
+      // Réécrire l'historique de la branche par défaut n'est jamais proposé à l'approbation.
+      if (normalized.force && remote === t.repo.defaultBranch) throw new AppError('forbidden', 'Push forcé interdit sur la branche par défaut');
     } else if (action === 'create_pull_request' || action === 'create_merge_request') {
       realAction = t.repo.provider.startsWith('gitlab') ? 'create_merge_request' : 'create_pull_request';
       const source = String(params.sourceBranch ?? '');
@@ -208,7 +210,9 @@ export class GitBrokerService implements OnApplicationBootstrap {
       await this.audit.record({ actorId: requestedBy === 'user' ? t.workspace.ownerId : null, actorLabel: requestedBy === 'agent' ? 'pi' : null, action: 'git.approval_requested', targetType: 'git_approval', targetId: rows[0].id, metadata: { action: realAction, target, commitSha } }, tx);
       return rows;
     });
-    const summary = `${labelOf(realAction)} ${target}`;
+    // Le push forcé est annoncé partout où le propriétaire décide (carte, notification).
+    const forced = realAction === 'push' && normalized.force === true;
+    const summary = `${labelOf(realAction)}${forced ? ' FORCÉ (réécrit l’historique distant)' : ''} ${target}`;
     await this.events.emit(workspaceId, 'approval.required', { approvalId: approval.id, action: realAction as GitActionKind, summary });
     await this.notifications.notify({
       userId: t.workspace.ownerId,

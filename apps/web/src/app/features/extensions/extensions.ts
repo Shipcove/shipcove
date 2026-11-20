@@ -118,7 +118,7 @@ import { t } from '../../core/i18n';
           <div class="card p-4 text-sm">
             <div class="flex flex-wrap items-center gap-2">
               <span class="font-mono font-medium">{{ m.name }}</span><span class="badge bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300">{{ m.scope === 'global' ? 'Global' : t('Personnel') }}</span>
-              <span class="badge bg-stone-100 text-stone-600 dark:bg-stone-800">{{ m.transport === 'stdio' ? t('stdio (dans la sandbox)') : 'Streamable HTTP' }}</span>
+              <span class="badge bg-stone-100 text-stone-600 dark:bg-stone-800">{{ m.transport === 'stdio' ? t('stdio (retiré)') : 'Streamable HTTP' }}</span>
               <span class="badge" [class]="m.health === 'healthy' ? 'bg-emerald-100 text-emerald-800' : m.health === 'unhealthy' ? 'bg-red-100 text-red-800' : 'bg-stone-100 text-stone-600'"
                 [title]="m.lastHealthAt ? t('Dernier contrôle : {date}', { date: (m.lastHealthAt | date: 'short') ?? '' }) : ''">
                 {{ m.health === 'healthy' ? t('connecté') : m.health === 'unhealthy' ? t('injoignable') : t('non vérifié') }}
@@ -126,9 +126,11 @@ import { t } from '../../core/i18n';
               @if (!m.enabled) { <span class="badge bg-stone-300 text-stone-700">{{ t('désactivé') }}</span> }
               @if (canManage(m)) {
                 <span class="ml-auto flex gap-1">
-                  @if (m.transport === 'streamable_http') { <button class="btn-ghost !py-0.5 text-xs" (click)="discover(m)" [title]="t('Recharger la liste des outils')"><cap-icon name="refresh" [size]="12" /> {{ t('Actualiser') }}</button> }
-                  <button class="btn-ghost !py-0.5 text-xs" (click)="editing.set(m)"><cap-icon name="edit" [size]="12" /> {{ t('Modifier') }}</button>
-                  <button class="btn-ghost !py-0.5 text-xs" (click)="toggleServer(m)">{{ m.enabled ? t('Désactiver') : t('Activer') }}</button>
+                  @if (m.transport === 'streamable_http') {
+                    <button class="btn-ghost !py-0.5 text-xs" (click)="discover(m)" [title]="t('Recharger la liste des outils')"><cap-icon name="refresh" [size]="12" /> {{ t('Actualiser') }}</button>
+                    <button class="btn-ghost !py-0.5 text-xs" (click)="editing.set(m)"><cap-icon name="edit" [size]="12" /> {{ t('Modifier') }}</button>
+                    <button class="btn-ghost !py-0.5 text-xs" (click)="toggleServer(m)">{{ m.enabled ? t('Désactiver') : t('Activer') }}</button>
+                  }
                   <button class="btn-ghost !py-0.5 text-xs text-red-600" (click)="removeServer(m)">{{ t('Supprimer') }}</button>
                 </span>
               }
@@ -140,7 +142,7 @@ import { t } from '../../core/i18n';
                 @if (canManage(m) && m.transport === 'streamable_http') { <button class="ml-auto shrink-0 underline" (click)="discover(m)">{{ t('Réessayer') }}</button> }
               </div>
             }
-            @if (m.tools.length) {
+            @if (m.tools.length && m.transport === 'streamable_http') {
               <div class="mt-3">
                 <div class="mb-1 flex items-center text-xs text-stone-500">
                   <span>{{ adminGlobal(m) ? t('Outils proposés à tous (règle globale)') : t('Outils proposés à l’agent') }}</span>
@@ -156,7 +158,7 @@ import { t } from '../../core/i18n';
                 }
               </div>
             } @else {
-              <p class="mt-2 text-xs text-stone-500">{{ m.transport === 'stdio' ? t('Outils découverts au premier lancement dans une sandbox.') : t('Aucun outil connu : actualisez une fois le serveur joignable.') }}</p>
+              <p class="mt-2 text-xs text-stone-500">{{ t('Aucun outil connu : actualisez une fois le serveur joignable.') }}</p>
             }
           </div>
         } @empty { <p class="text-sm text-stone-500">{{ t('Aucun serveur MCP.') }}</p> }

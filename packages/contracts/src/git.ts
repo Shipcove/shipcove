@@ -97,6 +97,8 @@ export interface ApprovalDto {
   patchPreview: string | null;
   title: string | null;
   body: string | null;
+  /** Push forcé (`--force`) : réécrit l'historique de la branche distante. */
+  force: boolean;
   expiresAt: string;
   decidedAt: string | null;
   decidedBy: string | null;

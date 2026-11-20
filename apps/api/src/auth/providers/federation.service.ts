@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { timingSafeEqual } from 'node:crypto';
 import { and, count, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 import {
   AUTH_PROVIDER_CONFIG_SCHEMAS,
@@ -41,6 +42,8 @@ export interface SsoCallbackInput {
   url: URL;
   /** Corps POST (SAML : SAMLResponse + RelayState). */
   body: Record<string, unknown>;
+  /** Jeton de liaison présenté par le navigateur (cookie posé au démarrage d'un rattachement). */
+  linkBinding?: string;
 }
 
 export type FederatedLogin = { kind: 'login'; result: LoginResult; tokens: SessionTokens; returnTo: string } | { kind: 'linked'; returnTo: string };
@@ -77,7 +80,7 @@ export class FederationService {
   /* ------------------------------ Connexion ------------------------------ */
 
   /** Démarre une redirection vers le fournisseur ; renvoie l'URL d'autorisation. */
-  async start(providerId: string, opts: { returnTo?: string; linkUserId?: string }): Promise<string> {
+  async start(providerId: string, opts: { returnTo?: string; linkUserId?: string }): Promise<{ url: string; linkBinding: string | null }> {
     const p = await this.load(providerId, true);
     if (p.type === 'ldap') throw new AppError('validation_failed', 'LDAP s’utilise par identifiant et mot de passe');
     const state = randomToken(32);
@@ -98,6 +101,8 @@ export class FederationService {
         break;
     }
     await this.db.delete(authFlows).where(lt(authFlows.expiresAt, sql`now() - interval '1 day'`));
+    // Rattachement : jeton lié au navigateur demandeur, exigé au retour du fournisseur.
+    const linkBinding = opts.linkUserId ? randomToken(32) : null;
     await this.db.insert(authFlows).values({
       providerId: p.row.id,
       stateHash: sha256Hex(state),
@@ -105,9 +110,10 @@ export class FederationService {
       codeVerifier: started.codeVerifier,
       returnTo: safeReturnTo(opts.returnTo),
       linkUserId: opts.linkUserId ?? null,
+      linkBindingHash: linkBinding ? sha256Hex(linkBinding) : null,
       expiresAt: new Date(Date.now() + FLOW_TTL_MS),
     });
-    return started.url;
+    return { url: started.url, linkBinding };
   }
 
   /** Retour du fournisseur : valide le flux (usage unique), authentifie, puis ouvre une session ou rattache l'identité. */
@@ -159,6 +165,11 @@ export class FederationService {
     }
 
     if (flow.linkUserId) {
+      // Le retour doit avoir lieu dans le navigateur qui a demandé le rattachement : sinon, toute
+      // personne ouvrant le lien d'autorisation rattacherait son identité au compte du demandeur.
+      if (!flow.linkBindingHash || !input.linkBinding || !safeEqualHex(sha256Hex(input.linkBinding), flow.linkBindingHash)) {
+        throw new FederationError('sso_denied', 'Rattachement refusé : il doit être terminé dans le navigateur qui l’a demandé');
+      }
       await this.link(p, profile, flow.linkUserId, ctx);
       return { kind: 'linked', returnTo: flow.returnTo };
     }
@@ -468,4 +479,10 @@ function usernameFrom(p: FederatedProfile): string {
     if (s.length >= 3) return s;
   }
   return `utilisateur-${randomToken(3).toLowerCase().replace(/[^a-z0-9]/g, 'x')}`;
+}
+
+/** Comparaison à temps constant de deux empreintes hexadécimales. */
+function safeEqualHex(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'));
 }

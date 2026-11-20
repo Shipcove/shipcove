@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Put } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { asc, count, eq, sql } from 'drizzle-orm';
+import { and, asc, count, eq, or, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import { ReorderSkillCategoriesSchema, UpsertSkillCategorySchema, type SkillCategoryDto, type UpsertSkillCategory } from '@cap/contracts';
 import { skillCategories, skills, type Database } from '@cap/database';
@@ -10,9 +10,15 @@ import type { AuthUser } from '../common/request.js';
 
 const uuid = { schema: z.uuid() };
 
-async function listCategories(db: Database): Promise<SkillCategoryDto[]> {
+/**
+ * Catégories et nombre de skills de chacune. `visibleTo` : ne compter que les skills visibles par
+ * cet utilisateur (globaux et les siens), sans révéler les skills personnels des autres.
+ */
+async function listCategories(db: Database, visibleTo?: string): Promise<SkillCategoryDto[]> {
   const rows = await db.select().from(skillCategories).orderBy(asc(skillCategories.position), asc(skillCategories.name));
-  const counts = await db.select({ id: skills.categoryId, n: count() }).from(skills).where(sql`${skills.status} <> 'revoked'`).groupBy(skills.categoryId);
+  const filters: SQL[] = [sql`${skills.status} <> 'revoked'`];
+  if (visibleTo) filters.push(or(eq(skills.scope, 'global'), and(eq(skills.scope, 'personal'), eq(skills.ownerId, visibleTo)))!);
+  const counts = await db.select({ id: skills.categoryId, n: count() }).from(skills).where(and(...filters)).groupBy(skills.categoryId);
   return rows.map((c) => ({ id: c.id, name: c.name, description: c.description, position: c.position, skillCount: counts.find((x) => x.id === c.id)?.n ?? 0 }));
 }
 
@@ -23,8 +29,8 @@ export class SkillCategoriesController {
   constructor(@Inject(DB) private readonly db: Database) {}
 
   @Get()
-  list(): Promise<SkillCategoryDto[]> {
-    return listCategories(this.db);
+  list(@CurrentUser() user: AuthUser): Promise<SkillCategoryDto[]> {
+    return listCategories(this.db, user.id);
   }
 }
 

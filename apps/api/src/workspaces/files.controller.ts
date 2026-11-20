@@ -27,6 +27,18 @@ import { buildChangeList, type ChangeEntry, type LineStats } from './change-stat
 const uuid = { schema: z.uuid() };
 const MAX_DISPLAY = 2 * 1024 * 1024;
 const HIDDEN = [/^\.git(\/|$)/, /^\.cap(\/|$)/];
+
+/**
+ * Chemin demandé par l'utilisateur, refusé s'il désigne le dépôt Git interne ou les fichiers de la
+ * plateforme (`.cap` : pièces jointes du propriétaire, configuration de l'agent). Les listes les
+ * masquent déjà ; une lecture directe par chemin ne doit pas les contourner.
+ */
+function visiblePath(path: string): string {
+  const abs = fromUserPath(path);
+  const rel = toUserPath(abs) ?? '';
+  if (HIDDEN.some((re) => re.test(rel))) throw new AppError('not_found', 'Fichier introuvable');
+  return abs;
+}
 /** Objets conservés en mémoire : au plus 512 Kio chacun, 64 Mio au total (par processus). */
 const OBJECT_CACHE_MAX_ITEM = 512 * 1024;
 const OBJECT_CACHE_MAX_BYTES = 64 * 1024 * 1024;
@@ -137,8 +149,8 @@ export class FilesController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<FileContentDto> {
     await this.access.requireWorkspaceRead(user, id);
+    const abs = visiblePath(path);
     const m = await this.manifest(id);
-    const abs = fromUserPath(path);
     const entry = m?.entries.find((e) => e.p === abs && e.t === 'f');
     if (!entry || !entry.h) throw new AppError('not_found', 'Fichier introuvable');
     res.setHeader('ETag', `"${entry.h}"`);
@@ -253,7 +265,7 @@ export class FilesController {
     @Query('scope', { schema: ChangeScopeSchema.default('conversation') }) scope: ChangeScope,
   ): Promise<FileDiffDto> {
     await this.access.requireWorkspaceRead(user, id);
-    const abs = fromUserPath(path);
+    const abs = visiblePath(path);
     const current = await this.manifest(id);
     const cur = current?.entries.find((e) => e.p === abs && e.t === 'f');
     const modifiedBuf = cur?.h ? await this.object(id, cur.h) : null;

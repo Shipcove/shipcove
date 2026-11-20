@@ -75,6 +75,11 @@ export const authFlows = pgTable(
     returnTo: text().notNull().default('/'),
     /** Rattachement d'une identité externe à l'utilisateur connecté (sinon : connexion). */
     linkUserId: uuid().references(() => users.id, { onDelete: 'cascade' }),
+    /**
+     * Empreinte du jeton de liaison remis au navigateur qui a demandé le rattachement (cookie) : le
+     * callback n'est accepté que dans ce navigateur, pas dans celui d'une autre personne.
+     */
+    linkBindingHash: text(),
     expiresAt: ts().notNull(),
     usedAt: ts(),
     createdAt: createdAt(),

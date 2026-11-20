@@ -113,6 +113,11 @@ export class PreviewProxyService implements OnModuleInit, OnModuleDestroy {
         res.writeHead((await this.tlsAllowed(url.searchParams.get('domain') ?? '')) ? 200 : 404).end();
         return;
       }
+      // Requête modifiante émise depuis une autre preview (même site, cookie joint) : refusée.
+      if (!SAFE_METHODS.has(req.method ?? 'GET') && !sameOrigin(req)) {
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Origine non autorisée');
+        return;
+      }
       const auth = await this.authorize(req);
       if ('status' in auth) {
         res.writeHead(auth.status, { 'Content-Type': 'text/plain; charset=utf-8' }).end(auth.message);
@@ -166,12 +171,34 @@ export class PreviewProxyService implements OnModuleInit, OnModuleDestroy {
    * (PostgreSQL, Redis…) ne répond jamais 101 : impossible d'en faire un tunnel TCP brut.
    */
   private async upgrade(req: http.IncomingMessage, socket: net.Socket, head: Buffer): Promise<void> {
+    // Un WebSocket n'est soumis à aucune politique CORS : sans ce contrôle, une page d'une autre
+    // preview (même site, donc avec le cookie de celle-ci) lirait et piloterait cette application.
+    if (!sameOrigin(req)) {
+      socket.end('HTTP/1.1 403 Forbidden\r\n\r\n');
+      return;
+    }
     const auth = await this.authorize(req).catch(() => ({ status: 500, message: 'erreur' }));
     if ('status' in auth) {
       socket.end(`HTTP/1.1 ${auth.status} Forbidden\r\n\r\n`);
       return;
     }
     proxyUpgrade(req, socket, head, auth.target);
+  }
+}
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * La requête vient-elle de la preview elle-même ? `Origin` absent (outil hors navigateur, navigation)
+ * : accepté ; présent : son hôte doit être exactement celui de la preview.
+ */
+export function sameOrigin(req: http.IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (!origin || origin === 'null') return origin !== 'null';
+  try {
+    return new URL(origin).host.toLowerCase() === String(req.headers.host ?? '').toLowerCase();
+  } catch {
+    return false;
   }
 }
 

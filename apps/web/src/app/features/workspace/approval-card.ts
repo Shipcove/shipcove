@@ -29,6 +29,12 @@ import { t } from '../../core/i18n';
         @if (a.commitSha) { · <span class="font-mono">{{ a.commitSha.slice(0, 10) }}</span> }
         @if (a.status === 'pending') { · {{ t('expire {when}', { when: (a.expiresAt | ago) }) }} }
       </div>
+      @if (a.force) {
+        <div class="mt-2 flex items-start gap-2 rounded-md border border-red-300 bg-red-50 px-2 py-1.5 text-xs text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300" role="alert">
+          <cap-icon name="alert" [size]="14" class="mt-0.5 shrink-0" />
+          <span><strong>{{ t('Push forcé') }}</strong> — {{ t('réécrit l’historique de {branch} sur la forge : les commits distants absents de cette branche seront perdus.', { branch: a.target }) }}</span>
+        </div>
+      }
       @if (a.title) { <div class="mt-2 font-medium">{{ a.title }}</div> }
       @if (a.commits.length) {
         <ul class="mt-2 space-y-0.5 text-xs">

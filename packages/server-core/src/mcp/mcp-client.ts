@@ -1,6 +1,4 @@
-import type { Readable, Writable } from 'node:stream';
-
-/** Client MCP minimal (JSON-RPC 2.0) : transports Streamable HTTP et stdio. */
+/** Client MCP minimal (JSON-RPC 2.0), transport Streamable HTTP. */
 export const MCP_PROTOCOL_VERSION = '2025-06-18';
 
 export interface McpToolInfo {
@@ -88,75 +86,6 @@ export class McpHttpClient {
     };
     await this.rpc('notifications/initialized', {}, true);
     return r;
-  }
-
-  async listTools(): Promise<McpToolInfo[]> {
-    const r = (await this.rpc('tools/list', {})) as { tools: McpToolInfo[] };
-    return r.tools ?? [];
-  }
-
-  async callTool(name: string, args: Record<string, unknown>): Promise<McpCallResult> {
-    return resultText(await this.rpc('tools/call', { name, arguments: args }));
-  }
-}
-
-/** Transport stdio (JSON-RPC délimité par LF) sur des flux arbitraires (ex. exec dans une sandbox). */
-export class McpStdioClient {
-  private nextId = 1;
-  private buffer = '';
-  private readonly waiting = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
-
-  constructor(
-    private readonly stdin: Writable,
-    stdout: Readable,
-    private readonly timeoutMs = 60_000,
-  ) {
-    stdout.on('data', (c: Buffer) => {
-      this.buffer += c.toString('utf8');
-      let idx;
-      while ((idx = this.buffer.indexOf('\n')) !== -1) {
-        const line = this.buffer.slice(0, idx).trim();
-        this.buffer = this.buffer.slice(idx + 1);
-        if (!line) continue;
-        try {
-          const msg = JSON.parse(line) as JsonRpcResponse;
-          if (typeof msg.id === 'number' && this.waiting.has(msg.id)) {
-            const w = this.waiting.get(msg.id)!;
-            this.waiting.delete(msg.id);
-            if (msg.error) w.reject(new Error(msg.error.message));
-            else w.resolve(msg.result);
-          }
-        } catch {
-          /* journal du serveur sur stdout : ignoré */
-        }
-      }
-    });
-  }
-
-  private rpc(method: string, params: unknown): Promise<unknown> {
-    const id = this.nextId++;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.waiting.delete(id);
-        reject(new Error(`MCP ${method} : délai dépassé`));
-      }, this.timeoutMs);
-      this.waiting.set(id, {
-        resolve: (v) => {
-          clearTimeout(timer);
-          resolve(v);
-        },
-        reject: (e) => {
-          clearTimeout(timer);
-          reject(e);
-        },
-      });
-      this.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
-    });
-  }
-
-  async initialize(): Promise<void> {
-    await this.rpc('initialize', { protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: CLIENT_INFO });
-    this.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} })}\n`);
   }
 
   async listTools(): Promise<McpToolInfo[]> {

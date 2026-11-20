@@ -1,0 +1,41 @@
+{{- /*
+  Garde-fou d'admission (Kubernetes ≥ 1.30) : le worker crée et supprime les NetworkPolicies propres
+  à chaque sandbox, mais ne doit jamais toucher à celles du chart (deny-all, sortie vers la gateway).
+  Le RBAC ne sait pas exclure des noms : une ValidatingAdmissionPolicy refuse donc au compte de
+  service du worker toute modification ou suppression d'une politique gérée par Helm.
+*/ -}}
+{{- if and .Values.networkPolicies.enabled .Values.networkPolicies.protectChartPolicies (.Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy") }}
+{{- $worker := printf "%s-worker" (include "shipcove.fullname" .) }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ include "shipcove.fullname" . }}-protect-sandbox-netpol
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [networking.k8s.io]
+        apiVersions: [v1]
+        operations: [UPDATE, DELETE]
+        resources: [networkpolicies]
+  matchConditions:
+    - name: worker-service-account
+      expression: request.userInfo.username == "system:serviceaccount:{{ .Release.Namespace }}:{{ $worker }}"
+  validations:
+    - expression: "!has(oldObject.metadata.labels) || !('app.kubernetes.io/managed-by' in oldObject.metadata.labels) || oldObject.metadata.labels['app.kubernetes.io/managed-by'] != 'Helm'"
+      message: Les NetworkPolicies du chart ne peuvent pas être modifiées ni supprimées par le worker.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ include "shipcove.fullname" . }}-protect-sandbox-netpol
+  labels: {{- include "shipcove.labels" . | nindent 4 }}
+spec:
+  policyName: {{ include "shipcove.fullname" . }}-protect-sandbox-netpol
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: {{ .Values.sandbox.namespace }}
+{{- end }}

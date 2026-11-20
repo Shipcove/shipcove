@@ -278,7 +278,7 @@ I checked the rendering in the browser (screenshot above) and pushed the \`feat/
       id: 'appr-1', workspaceId: w.id, action: 'push', status: 'consumed', requestedBy: 'agent', toolCallId: pushTool.id, repository: 'acme/landing', target: 'feat/dark-mode', commitSha: '4f2a9c1',
       commits: [{ sha: '4f2a9c1', subject: L('feat: mode sombre et bouton de bascule', 'feat: dark mode and theme toggle'), author: 'Shipcove' }],
       diffStat: ' index.html     |  3 ++-\n src/styles.css | 15 +++++++++++++++\n src/theme.js   | 11 +++++++++++\n 3 files changed, 28 insertions(+), 1 deletion(-)',
-      patchPreview: null, title: null, body: null, expiresAt: ago(t0 - 66), decidedAt: ago(t0 - 6), decidedBy: ME.id, createdAt: ago(t0 - 6),
+      patchPreview: null, title: null, body: null, force: false, expiresAt: ago(t0 - 66), decidedAt: ago(t0 - 6), decidedBy: ME.id, createdAt: ago(t0 - 6),
       operation: { id: 'op-1', status: 'succeeded', result: L('feat/dark-mode publiée (4f2a9c1)', 'feat/dark-mode pushed (4f2a9c1)') },
     },
   ];
@@ -435,7 +435,6 @@ export const MCP: McpServerDto[] = [
     headers: { 'X-Atlassian-Jira-Url': 'https://jira.example.com' }, secretKeys: ['header:X-Atlassian-Jira-Personal-Token'], version: '0.11.9', enabled: true, health: 'healthy', healthDetail: 'mcp-atlassian 0.11.9', lastHealthAt: ago(12),
     tools: JIRA_TOOLS.map((x, i) => ({ id: `mj-${i}`, ...x, effective: x.name === 'jira_delete_issue' ? 'denied' : 'allowed', lockedByAdmin: false })),
   },
-  { id: 'mcp-pw', name: 'playwright', description: L('Navigateur dans la sandbox', 'Browser in the sandbox'), scope: 'personal', ownerId: ME.id, transport: 'stdio', url: null, command: 'npx', args: ['@playwright/mcp'], headers: {}, secretKeys: [], version: null, enabled: true, health: 'unknown', healthDetail: null, lastHealthAt: null, tools: [{ id: 'mt-4', name: 'browser_navigate', description: L('Ouvrir une page', 'Open a page'), effective: 'allowed', lockedByAdmin: false }] },
 ];
 
 export const NOTIFICATIONS: NotificationDto[] = [

@@ -17,7 +17,6 @@ describe('configuration des serveurs MCP', () => {
     const next = mergeSecrets(stored, {
       publicHeaders: { 'X-Public': 'désormais public' },
       secretHeaders: { 'X-Token': 'nouveau' },
-      secretEnv: {},
       remove: ['API_KEY'],
     });
     expect(next).toEqual({ 'header:X-Token': 'nouveau', 'header:X-Other': 'garde' });

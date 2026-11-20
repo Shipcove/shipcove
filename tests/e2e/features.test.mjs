@@ -238,33 +238,22 @@ test('skills : disponibles dès la création, chaque utilisateur active et réac
   }
 });
 
-// Serveur MCP stdio minimal (JSON-RPC ligne à ligne), exécuté dans la sandbox.
-const ECHO_SERVER = `
-const rl = require('readline').createInterface({ input: process.stdin });
-const send = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
-rl.on('line', (l) => {
-  const m = JSON.parse(l);
-  if (m.id === undefined) return;
-  if (m.method === 'initialize') return send({ jsonrpc: '2.0', id: m.id, result: { protocolVersion: m.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'echo', version: '1.0.0' } } });
-  if (m.method === 'tools/list') return send({ jsonrpc: '2.0', id: m.id, result: { tools: [{ name: 'echo', description: 'Écho', inputSchema: { type: 'object', properties: { text: { type: 'string' } } } }] } });
-  if (m.method === 'tools/call') return send({ jsonrpc: '2.0', id: m.id, result: { content: [{ type: 'text', text: 'echo:' + m.params.arguments.text + ':' + (process.env.ECHO_SECRET === 'valeur-secrete-mcp' ? 'secret-ok' : 'secret-absent') }] } });
-  send({ jsonrpc: '2.0', id: m.id, error: { code: -32601, message: 'inconnu' } });
-});`;
+// Serveur MCP Streamable HTTP de test : endpoint /mcp du faux LLM (réseau interne de la plateforme).
+const MCP_URL = 'http://mock-llm:4010/mcp';
 
-test('MCP : outil stdio exécuté dans la sandbox, aucun secret dans un serveur global stdio, permissions globale et personnelle, cloisonnement', async () => {
+test('MCP : outil HTTP appelé par le worker, secret d’en-tête jamais exposé, stdio refusé, permissions globale et personnelle, cloisonnement', async () => {
   const ws = await workspace(ctx.dev, 'MCP');
-  // Script du serveur déposé dans le workspace (les arguments sont limités à 500 caractères).
-  const b64 = Buffer.from(ECHO_SERVER).toString('base64');
-  await bashViaPi(ctx.dev, ws.id, `echo ${b64} | base64 -d > /workspace/mcp-echo.cjs && node --check /workspace/mcp-echo.cjs && echo pret`);
-  const name = `echo_${uid().toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-  // Un serveur global stdio tourne dans la sandbox de chaque utilisateur : ses secrets y seraient
-  // lisibles par l'agent, ils sont donc refusés.
-  const refused = await ctx.admin.post('/mcp-servers', { name, description: 'écho de test', scope: 'global', transport: 'stdio', command: 'node', args: ['/workspace/mcp-echo.cjs'], secretEnv: { ECHO_SECRET: 'valeur-secrete-mcp' } });
-  assert.equal(refused.status, 400, JSON.stringify(refused.body));
-  const created = await ctx.admin.post('/mcp-servers', { name, description: 'écho de test', scope: 'global', transport: 'stdio', command: 'node', args: ['/workspace/mcp-echo.cjs'] });
+  // Majuscules acceptées dans le nom.
+  const name = `Echo_${uid().replace(/[^A-Za-z0-9]/g, '')}`;
+  // Le transport stdio (serveur lancé dans la sandbox, secrets compris) n'existe plus.
+  const stdio = await ctx.admin.post('/mcp-servers', { name, scope: 'global', transport: 'stdio', command: 'node', args: ['x.cjs'] });
+  assert.equal(stdio.status, 400, JSON.stringify(stdio.body));
+  const created = await ctx.admin.post('/mcp-servers', { name, description: 'écho de test', scope: 'global', transport: 'streamable_http', url: MCP_URL, secretHeaders: { 'X-Echo-Secret': 'valeur-secrete-mcp' } });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   const srv = created.body.id;
-  assert.equal((await ctx.admin.put(`/mcp-servers/${srv}/tools`, { tools: [{ name: 'echo', description: 'Écho', inputSchema: { type: 'object', properties: { text: { type: 'string' } } } }] })).status, 200);
+  // Découverte automatique à l'ajout.
+  assert.equal(created.body.discovery.ok, true, JSON.stringify(created.body.discovery));
+  assert.deepEqual(created.body.discovery.tools.map((t) => t.name), ['echo']);
   // Le secret n'apparaît jamais dans l'API.
   const listed = await ctx.dev.get('/mcp-servers');
   assert.ok(listed.body.some((s) => s.id === srv));
@@ -281,29 +270,41 @@ test('MCP : outil stdio exécuté dans la sandbox, aucun secret dans un serveur 
   };
   let done = await callEcho();
   assert.equal(done.data.isError, false, JSON.stringify(done.data));
-  assert.match(done.data.output, /echo:bonjour:secret-absent/);
+  // Le worker a présenté le secret au serveur MCP ; la sandbox ne l'a jamais vu.
+  assert.match(done.data.output, /echo:bonjour:secret-ok/);
 
   const effective = async () => (await ctx.dev.get('/mcp-servers')).body.find((s) => s.id === srv).tools[0].effective;
-  // Interdiction personnelle : l'outil n'est plus proposé à Pi et l'appel est refusé.
-  assert.equal((await ctx.dev.put(`/mcp-servers/${srv}/permissions`, { toolName: 'echo', scope: 'personal', effect: 'deny' })).status, 200);
+  // Outil décoché (sélection personnelle) : il n'est plus proposé à Pi et l'appel est refusé.
+  assert.equal((await ctx.dev.put(`/mcp-servers/${srv}/selection`, { scope: 'personal', denied: ['echo'] })).status, 200);
   done = await callEcho();
   assert.equal(done.data.isError, true, JSON.stringify(done.data));
   assert.doesNotMatch(done.data.output, /echo:bonjour/);
   assert.equal(await effective(), 'denied');
-  // Levée personnelle, puis interdiction globale : la règle globale l'emporte.
-  assert.equal((await ctx.dev.put(`/mcp-servers/${srv}/permissions`, { toolName: 'echo', scope: 'personal', effect: 'allow' })).status, 200);
+  // Recoché, puis refusé par l'administrateur : la règle globale l'emporte (outil verrouillé).
+  assert.equal((await ctx.dev.put(`/mcp-servers/${srv}/selection`, { scope: 'personal', denied: [] })).status, 200);
   assert.equal(await effective(), 'allowed');
-  assert.equal((await ctx.admin.put(`/mcp-servers/${srv}/permissions`, { toolName: 'echo', scope: 'global', effect: 'deny' })).status, 200);
+  assert.equal((await ctx.admin.put(`/mcp-servers/${srv}/selection`, { scope: 'global', denied: ['echo'] })).status, 200);
   assert.equal(await effective(), 'denied');
+  assert.equal((await ctx.dev.get('/mcp-servers')).body.find((s) => s.id === srv).tools[0].lockedByAdmin, true);
   done = await callEcho();
   assert.equal(done.data.isError, true, JSON.stringify(done.data));
   // Un utilisateur ne pose pas de règle globale ; la portée « équipe » n'existe plus.
   assert.equal((await ctx.dev.put(`/mcp-servers/${srv}/permissions`, { toolName: 'echo', scope: 'global', effect: 'allow' })).status, 403);
   assert.equal((await ctx.dev.put(`/mcp-servers/${srv}/permissions`, { toolName: 'echo', scope: 'team', effect: 'allow' })).status, 400);
 
-  // Serveur personnel d'un autre utilisateur : invisible (liste, règles, permissions).
+  // Serveur personnel d'un autre utilisateur : invisible (liste, règles, permissions). Son hôte doit
+  // être autorisé par l'administration.
   const neighbour = await newUser();
-  const hidden = await neighbour.post('/mcp-servers', { name: `${name}_x`, scope: 'personal', transport: 'stdio', command: 'node', args: ['/workspace/mcp-echo.cjs'] });
+  const personal = { name: `${name}_x`, scope: 'personal', transport: 'streamable_http', url: MCP_URL };
+  assert.equal((await neighbour.post('/mcp-servers', personal)).status, 403);
+  const mcpCfg = (await ctx.admin.get('/admin/settings')).body.mcp;
+  await ctx.admin.req('PATCH', '/admin/settings', { section: 'mcp', values: { allowedRemoteHosts: [...mcpCfg.allowedRemoteHosts, 'mock-llm'] } });
+  let hidden;
+  try {
+    hidden = await neighbour.post('/mcp-servers', personal);
+  } finally {
+    await ctx.admin.req('PATCH', '/admin/settings', { section: 'mcp', values: { allowedRemoteHosts: mcpCfg.allowedRemoteHosts } });
+  }
   assert.equal(hidden.status, 201, JSON.stringify(hidden.body));
   assert.ok(!(await ctx.dev.get('/mcp-servers')).body.some((s) => s.id === hidden.body.id));
   assert.equal((await ctx.dev.get(`/mcp-servers/${hidden.body.id}/permissions`)).status, 404);

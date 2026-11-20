@@ -108,13 +108,13 @@ export class ObjectStorage {
     }
   }
 
-  async list(bucket: string, prefix: string): Promise<Array<{ key: string; size: number }>> {
+  async list(bucket: string, prefix: string): Promise<Array<{ key: string; size: number; lastModified?: Date }>> {
     const c = await this.client();
-    const out: Array<{ key: string; size: number }> = [];
+    const out: Array<{ key: string; size: number; lastModified?: Date }> = [];
     let token: string | undefined;
     do {
       const res = await c.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }));
-      for (const o of res.Contents ?? []) out.push({ key: o.Key!, size: Number(o.Size ?? 0) });
+      for (const o of res.Contents ?? []) out.push({ key: o.Key!, size: Number(o.Size ?? 0), ...(o.LastModified ? { lastModified: o.LastModified } : {}) });
       token = res.IsTruncated ? res.NextContinuationToken : undefined;
     } while (token);
     return out;

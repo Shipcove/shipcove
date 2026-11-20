@@ -131,6 +131,7 @@ export function toApprovalDto(a: typeof gitApprovalRequests.$inferSelect, repo: 
     patchPreview: a.patchPreview,
     title: (p.title as string) ?? null,
     body: (p.body as string) ?? null,
+    force: a.action === 'push' && p.force === true,
     expiresAt: a.expiresAt.toISOString(),
     decidedAt: a.decidedAt?.toISOString() ?? null,
     decidedBy: a.decidedBy,
