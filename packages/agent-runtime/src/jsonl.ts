@@ -7,22 +7,43 @@ import type { Readable } from 'node:stream';
  */
 export function attachJsonlReader(stream: Readable, onLine: (line: string) => void, maxLineBytes = 64 * 1024 * 1024): void {
   const decoder = new StringDecoder('utf8');
-  let buffer = '';
+  // Ligne en cours, en morceaux : chaque octet n'est parcouru qu'une fois (pas de recopie ni de
+  // nouvelle recherche depuis le début du tampon à chaque bloc reçu).
+  let parts: string[] = [];
+  let pending = 0;
+  let skipping = false;
+  const emit = (line: string) => {
+    if (line.endsWith('\r')) line = line.slice(0, -1);
+    if (line.length > 0) onLine(line);
+  };
   stream.on('data', (chunk: Buffer | string) => {
-    buffer += typeof chunk === 'string' ? chunk : decoder.write(chunk);
+    const text = typeof chunk === 'string' ? chunk : decoder.write(chunk);
+    let start = 0;
     for (;;) {
-      const idx = buffer.indexOf('\n');
+      const idx = text.indexOf('\n', start);
       if (idx === -1) break;
-      let line = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 1);
-      if (line.endsWith('\r')) line = line.slice(0, -1);
-      if (line.length > 0) onLine(line);
+      const tail = text.slice(start, idx);
+      if (!skipping) emit(parts.length ? parts.join('') + tail : tail);
+      parts = [];
+      pending = 0;
+      skipping = false;
+      start = idx + 1;
     }
-    if (buffer.length > maxLineBytes) buffer = ''; // protection mémoire
+    if (start < text.length && !skipping) {
+      parts.push(text.slice(start));
+      pending += text.length - start;
+      // Ligne démesurée : abandonnée jusqu'au prochain saut de ligne (protection mémoire).
+      if (pending > maxLineBytes) {
+        parts = [];
+        pending = 0;
+        skipping = true;
+      }
+    }
   });
   stream.on('end', () => {
-    buffer += decoder.end();
-    if (buffer.length > 0) onLine(buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer);
-    buffer = '';
+    const rest = decoder.end();
+    if (!skipping && (parts.length || rest)) emit(parts.join('') + rest);
+    parts = [];
+    pending = 0;
   });
 }

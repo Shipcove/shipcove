@@ -23,13 +23,12 @@ export function splitHeaders(headers: Record<string, string>, secretHeaders: Rec
  */
 export function mergeSecrets(
   stored: Record<string, string>,
-  change: { publicHeaders: Record<string, string>; secretHeaders: Record<string, string>; secretEnv: Record<string, string>; remove: string[] },
+  change: { publicHeaders: Record<string, string>; secretHeaders: Record<string, string>; remove: string[] },
 ): Record<string, string> {
   const next: Record<string, string> = { ...stored };
   for (const k of change.remove) delete next[k];
   for (const k of Object.keys(change.publicHeaders)) delete next[`header:${k}`];
   for (const [k, v] of Object.entries(change.secretHeaders)) next[`header:${k}`] = v;
-  for (const [k, v] of Object.entries(change.secretEnv)) next[k] = v;
   return next;
 }
 

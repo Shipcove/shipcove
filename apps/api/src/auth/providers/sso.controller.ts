@@ -36,7 +36,12 @@ export class SsoController {
     const linking = link === '1';
     try {
       if (linking && !req.user) throw new FederationError('sso_denied', 'Session requise pour rattacher une identité');
-      const url = await this.federation.start(id, { returnTo: safeReturnTo(returnTo ?? (linking ? '/settings' : '/')), linkUserId: linking ? req.user!.id : undefined });
+      const { url, linkBinding } = await this.federation.start(id, { returnTo: safeReturnTo(returnTo ?? (linking ? '/settings' : '/')), linkUserId: linking ? req.user!.id : undefined });
+      if (linkBinding) {
+        // SameSite=None en HTTPS : le retour SAML est un POST intersite ; Lax suffit aux retours GET.
+        const secure = this.env.COOKIE_SECURE;
+        res.cookie(LINK_COOKIE, linkBinding, { httpOnly: true, secure, sameSite: secure ? 'none' : 'lax', path: '/api/v1/auth/sso', maxAge: 10 * 60_000 });
+      }
       res.redirect(302, url);
     } catch (e) {
       this.fail(res, e, linking ? '/settings' : null);
@@ -46,7 +51,7 @@ export class SsoController {
   @Public()
   @Get('sso/:id/callback')
   async callbackGet(@Param('id', uuid) id: string, @Req() req: Request, @Res() res: Response, @ReqCtx() ctx: RequestContext): Promise<void> {
-    await this.handle(id, { url: this.currentUrl(req), body: {} }, res, ctx);
+    await this.handle(id, { url: this.currentUrl(req), body: {}, linkBinding: linkCookie(req) }, res, ctx);
   }
 
   /** ACS SAML (HTTP-POST) : requête intersite émise par le fournisseur, sans jeton CSRF. */
@@ -54,7 +59,7 @@ export class SsoController {
   @SkipCsrf()
   @Post('sso/:id/callback')
   async callbackPost(@Param('id', uuid) id: string, @Req() req: Request, @Body() body: Record<string, unknown>, @Res() res: Response, @ReqCtx() ctx: RequestContext): Promise<void> {
-    await this.handle(id, { url: this.currentUrl(req), body: body ?? {} }, res, ctx);
+    await this.handle(id, { url: this.currentUrl(req), body: body ?? {}, linkBinding: linkCookie(req) }, res, ctx);
   }
 
   @Public()
@@ -85,6 +90,7 @@ export class SsoController {
   }
 
   private async handle(id: string, input: SsoCallbackInput, res: Response, ctx: RequestContext): Promise<void> {
+    if (input.linkBinding) res.clearCookie(LINK_COOKIE, { path: '/api/v1/auth/sso' });
     try {
       const out = await this.federation.callback(id, input, ctx);
       if (out.kind === 'linked') {
@@ -163,4 +169,12 @@ export class AdminAuthProvidersController {
 
 function appendQuery(path: string, key: string, value: string): string {
   return `${path}${path.includes('?') ? '&' : '?'}${key}=${encodeURIComponent(value)}`;
+}
+
+/** Cookie du jeton de liaison d'un rattachement d'identité en cours. */
+const LINK_COOKIE = 'cap_sso_link';
+
+function linkCookie(req: Request): string | undefined {
+  const v = (req as Request & { cookies?: Record<string, string> }).cookies?.[LINK_COOKIE];
+  return typeof v === 'string' && v.length > 0 ? v : undefined;
 }

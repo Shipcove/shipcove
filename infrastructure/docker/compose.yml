@@ -114,6 +114,8 @@ services:
     env_file: [./.secrets/litellm.env]
     environment:
       STORE_MODEL_IN_DB: "True"
+      # Interface d'administration de LiteLLM inutile (la plateforme passe par l'API) : désactivée.
+      DISABLE_ADMIN_UI: "True"
       LITELLM_LOG: ERROR
       NO_DOCS: "True"
     volumes:
@@ -168,7 +170,9 @@ services:
       VAULT_ROLE_ID_FILE: /secrets/approle/api/role_id
       VAULT_SECRET_ID_FILE: /secrets/approle/api/secret_id
       COOKIE_SECURE: ${CAP_COOKIE_SECURE:-false}
-      TRUST_PROXY: "loopback, linklocal, uniquelocal"
+      # Seuls les proxys de la plateforme (web, et edge avec le profil « tls ») fixent l'adresse IP du
+      # client ; un autre conteneur du réseau interne ne peut pas l'usurper.
+      TRUST_PROXY: ${CAP_TRUST_PROXY:-loopback, web, edge}
       BOOTSTRAP_ADMIN_EMAIL: ${CAP_ADMIN_EMAIL:-}
       BOOTSTRAP_ADMIN_PASSWORD: ${CAP_ADMIN_PASSWORD:-}
     secrets: [database_url_api]

@@ -58,6 +58,13 @@ Le service `sandbox` ne démarre pas : il sert seulement à construire l'image d
 - Vault : `CAP_VAULT_UNSEAL_MODE=manual` ou `auto` **avant** la première initialisation (`vault.md`).
 - Domaine des previews distinct de l'application.
 - Documentation de l'API (`/api/docs`) : désactivée en production ; `API_DOCS=true` pour la publier.
+- Adresse IP des clients : l'API ne croit l'en-tête `X-Forwarded-For` que de `web` et `edge`
+  (`CAP_TRUST_PROXY`, défaut `loopback, web, edge` ; noms de services résolus toutes les 30 s).
+  Les autres conteneurs du réseau interne ne peuvent donc pas usurper l'adresse utilisée pour le
+  verrouillage après échecs de connexion et l'audit. Ajoutez votre propre reverse proxy s'il précède
+  `web` (nom, adresse ou plage).
+- LiteLLM : interface d'administration désactivée (`DISABLE_ADMIN_UI`) ; la plateforme n'utilise
+  que son API, avec la clé maître.
 - Images téléchargeables par le garde : `CAP_GUARD_PULL_ALLOWLIST` (préfixes, ex.
   `ghcr.io/shipcove/,harbor.example.com/`).
 - Antivirus : `CLAMAV_HOST` ; sans lui, les pièces jointes ne sont pas analysées (signalé dans la vue

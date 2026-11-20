@@ -84,6 +84,8 @@ api:
   replicas: 2
   cookieSecure: true
   # Proxys de confiance (adresses des Ingress / load balancers) pour l'IP des clients.
+  # Proxys dont l API accepte X-Forwarded-For : restreignez aux adresses de l Ingress controller
+  # (mots-clés, adresses, plages CIDR ou noms DNS) ; uniquelocal = tout le réseau privé du cluster.
   trustProxy: "loopback, linklocal, uniquelocal"
   resources:
     requests: { cpu: 200m, memory: 384Mi }
@@ -142,6 +144,9 @@ sandbox:
 networkPolicies:
   # Politiques réseau des sandboxes (indispensables : sans elles, une sandbox joint tout le cluster).
   enabled: true
+  # Interdit au worker de modifier ou supprimer les politiques du chart (deny-all…) :
+  # ValidatingAdmissionPolicy, Kubernetes ≥ 1.30 (ignoré sur une version antérieure).
+  protectChartPolicies: true
   # Sélecteur du DNS du cluster (sortie autorisée en UDP/TCP 53).
   dns:
     namespaceSelector: { kubernetes.io/metadata.name: kube-system }

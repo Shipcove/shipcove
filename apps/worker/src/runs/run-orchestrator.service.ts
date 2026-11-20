@@ -853,6 +853,15 @@ export class RunOrchestrator implements OnApplicationBootstrap {
 export type { RunContext };
 
 /** Les arguments d'outils sont expurgés (jetons éventuellement saisis par l'agent). */
-function redactArgs(args: unknown): unknown {
-  return JSON.parse(redactString(JSON.stringify(args ?? null)));
+/**
+ * Arguments d'un appel d'outil, secrets masqués chaîne par chaîne. Un aller-retour JSON pouvait
+ * échouer (masquage au milieu d'un échappement) et faire perdre la trace de l'appel ; ici rien ne
+ * lève d'exception, et la profondeur est bornée.
+ */
+export function redactArgs(args: unknown, depth = 0): unknown {
+  if (typeof args === 'string') return redactString(args);
+  if (args === null || typeof args !== 'object') return typeof args === 'bigint' ? String(args) : (args ?? null);
+  if (depth > 20) return '[profondeur maximale]';
+  if (Array.isArray(args)) return args.map((v) => redactArgs(v, depth + 1));
+  return Object.fromEntries(Object.entries(args as Record<string, unknown>).map(([k, v]) => [k, redactArgs(v, depth + 1)]));
 }

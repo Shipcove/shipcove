@@ -63,7 +63,7 @@
       <h2>MCP servers</h2>
       <p>An MCP server gives the agent extra tools (Jira tickets, knowledge base, internal API…). In <strong>Skills &amp; MCP</strong>, <em>Add an MCP server</em> opens a dialog:</p>
       <ul>
-        <li><strong>Form</strong>: name, scope (personal; global for an administrator), <em>Streamable HTTP</em> transport (URL) or <em>stdio</em> (command started in the sandbox), and as many <strong>HTTP headers</strong> as needed. The <em>Secret</em> box sends the value to Vault: it is never shown again. It is checked automatically for sensitive names (<code>token</code>, <code>authorization</code>, <code>key</code>…).</li>
+        <li><strong>Form</strong>: name (letters, digits, <code>-</code> and <code>_</code>), scope (personal; global for an administrator), server URL (<em>Streamable HTTP</em>, the only supported transport: the <em>stdio</em> transport, which ran the server in the sandbox along with its secrets, has been removed), and as many <strong>HTTP headers</strong> as needed. The <em>Secret</em> box sends the value to Vault: it is never shown again. It is checked automatically for sensitive names (<code>token</code>, <code>authorization</code>, <code>key</code>…).</li>
         <li><strong>Paste a JSON config</strong>: the <code>mcpServers</code> block from the server's documentation (Claude Desktop, Cursor… format) fills in the form.</li>
         <li><strong>Test connection</strong> queries the server without saving anything and shows the result as is (version and number of tools, or the error: token refused, host not allowed…). Adding then discovers the tools and lets you choose them.</li>
       </ul>

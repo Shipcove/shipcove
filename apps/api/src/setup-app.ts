@@ -7,6 +7,7 @@ import helmet from 'helmet';
 import type { SecretProvider } from '@cap/secrets';
 import { AppModule } from './app.module.js';
 import { correlationMiddleware } from './common/correlation.middleware.js';
+import { trustProxy } from './common/trust-proxy.js';
 import type { ApiEnv } from './env.js';
 
 export async function createApp(env: ApiEnv, opts: { secretProvider?: SecretProvider; logger?: false } = {}): Promise<NestExpressApplication> {
@@ -15,7 +16,10 @@ export async function createApp(env: ApiEnv, opts: { secretProvider?: SecretProv
     bodyParser: true,
     rawBody: false,
   });
-  app.set('trust proxy', env.TRUST_PROXY);
+  // Proxys de confiance : mots-clés, plages ou noms de services (résolus et rafraîchis).
+  const proxies = trustProxy(env.TRUST_PROXY);
+  await proxies.ready;
+  app.set('trust proxy', (addr: string) => proxies.trust(addr));
   app.disable('x-powered-by');
   app.use(
     helmet({

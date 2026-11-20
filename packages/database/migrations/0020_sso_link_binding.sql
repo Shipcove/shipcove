@@ -1,0 +1,1 @@
+ALTER TABLE "auth_flows" ADD COLUMN "link_binding_hash" text;

@@ -61,8 +61,9 @@ export class SkillsMaterializer {
 
   async allowedMcpTools(ws: Pick<Ws, 'ownerId'>) {
     const subject = { userId: ws.ownerId };
-    const servers = (await this.db.select().from(mcpServers).where(eq(mcpServers.enabled, true))).filter((s) =>
-      scopeVisible(s.scope, s.ownerId, subject),
+    // Streamable HTTP seulement : un ancien serveur stdio n'est plus proposé à l'agent.
+    const servers = (await this.db.select().from(mcpServers).where(eq(mcpServers.enabled, true))).filter(
+      (s) => s.transport === 'streamable_http' && scopeVisible(s.scope, s.ownerId, subject),
     );
     if (servers.length === 0) return [];
     const ids = servers.map((s) => s.id);

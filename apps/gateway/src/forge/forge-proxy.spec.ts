@@ -2,6 +2,7 @@ import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
 import tls from 'node:tls';
+import zlib from 'node:zlib';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ForgeCaService } from './forge-ca.service.js';
@@ -185,6 +186,23 @@ describe('proxy des forges (interception TLS)', () => {
     expect(r2.status).toBe(200);
     expect(r2.headers['content-type']).toBe('application/x-git-receive-pack-result');
     expect(r2.body.toString()).toContain('ng refs/heads/main');
+    expect(seen.length).toBe(before);
+  });
+
+  it('push gzip : section de commandes compressée lue, bombe de décompression refusée sans bloquer', async () => {
+    const auth = `Basic ${Buffer.from(`x-access-token:${RUN_TOKEN}`).toString('base64')}`;
+    const pack = 'PACK\x00\x00\x00\x02' + 'z'.repeat(10_000);
+    const bad = pkt(`${A} ${B} refs/heads/main\0report-status side-band-64k\n`) + '0000' + pack;
+    const r1 = await request('github.com', 'POST', '/o/r.git/git-receive-pack', { authorization: auth, 'content-encoding': 'gzip' }, zlib.gzipSync(Buffer.from(bad, 'latin1')));
+    expect(r1.body.toString()).toContain('ng refs/heads/main');
+
+    // 64 Mio de zéros (≈ 64 Kio compressés) sans fin de section : refusé dès 1 Mio décompressé.
+    const before = seen.length;
+    const bomb = zlib.gzipSync(Buffer.alloc(64 * 1024 * 1024));
+    const t0 = Date.now();
+    const r2 = await request('github.com', 'POST', '/o/r.git/git-receive-pack', { authorization: auth, 'content-encoding': 'gzip' }, bomb);
+    expect(r2.status).toBe(400);
+    expect(Date.now() - t0).toBeLessThan(5000);
     expect(seen.length).toBe(before);
   });
 

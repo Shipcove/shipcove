@@ -52,6 +52,8 @@ const SAAS: Record<string, { family: ForgeFamily; connHost: string }> = {
 
 const HOP = ['connection', 'proxy-connection', 'proxy-authorization', 'keep-alive', 'transfer-encoding', 'upgrade', 'te', 'trailer'];
 const MAX_INSPECT = 64 * 1024 * 1024;
+/** Taille maximale de la section de commandes d'un push (compressée et décompressée). */
+const RECEIVE_PACK_COMMANDS_MAX = 1024 * 1024;
 
 class Denied extends Error {
   constructor(
@@ -259,30 +261,60 @@ export class ForgeProxyService {
   private async inspectReceivePack(req: http.IncomingMessage, res: http.ServerResponse, target: ForgeTarget, conn: Conn, repo: string): Promise<Buffer | null> {
     const gzip = /gzip/i.test(String(req.headers['content-encoding'] ?? ''));
     const raw: Buffer[] = [];
+    let rawLength = 0;
     let parsed: ReturnType<typeof parseReceivePack> = null;
     await new Promise<void>((resolve, reject) => {
+      // Décompression incrémentale (hors de la boucle d'événements) et bornée : chaque octet reçu
+      // n'est décompressé qu'une fois, et ni l'entrée ni la sortie ne dépassent la limite.
+      const gunzip = gzip ? zlib.createGunzip({ finishFlush: zlib.constants.Z_SYNC_FLUSH }) : null;
+      const decoded: Buffer[] = [];
+      let decodedLength = 0;
+      let finished = false;
       const done = (err?: Error) => {
+        if (finished) return;
+        finished = true;
         req.off('data', onData).off('end', onEnd).off('error', onError);
+        gunzip?.removeAllListeners('data');
+        gunzip?.destroy();
         if (err) reject(err);
         else resolve();
       };
-      const onData = (chunk: Buffer) => {
-        raw.push(chunk);
-        try {
-          const all = Buffer.concat(raw);
-          // Décompression tolérante d'un préfixe tronqué.
-          const decoded = gzip ? zlib.gunzipSync(all, { finishFlush: zlib.constants.Z_SYNC_FLUSH }) : all;
-          parsed = parseReceivePack(decoded);
-          if (!parsed && decoded.length > 1024 * 1024) throw new Denied(400, 'Section de commandes du push trop longue');
-        } catch (err) {
-          return done(err instanceof Denied ? err : new Denied(400, `Push illisible : ${(err as Error).message}`));
-        }
+      const feed = (buf: Buffer) => {
+        decoded.push(buf);
+        decodedLength += buf.length;
+        if (decodedLength > RECEIVE_PACK_COMMANDS_MAX) throw new Denied(400, 'Section de commandes du push trop longue');
+        parsed = parseReceivePack(Buffer.concat(decoded, decodedLength));
         if (parsed) {
           req.pause();
           done();
         }
       };
-      const onEnd = () => done();
+      const fail = (err: unknown) => done(err instanceof Denied ? err : new Denied(400, `Push illisible : ${(err as Error).message}`));
+      gunzip?.on('data', (d: Buffer) => {
+        try {
+          if (!finished) feed(d);
+        } catch (err) {
+          fail(err);
+        }
+      });
+      gunzip?.on('error', fail);
+      const onData = (chunk: Buffer) => {
+        raw.push(chunk);
+        rawLength += chunk.length;
+        try {
+          if (!parsed && rawLength > RECEIVE_PACK_COMMANDS_MAX) throw new Denied(400, 'Section de commandes du push trop longue');
+          if (gunzip) gunzip.write(chunk);
+          else feed(chunk);
+        } catch (err) {
+          fail(err);
+        }
+      };
+      const onEnd = () => {
+        if (!gunzip) return done();
+        // Fin du corps : laisser la décompression rendre ses derniers octets.
+        gunzip.once('end', () => done());
+        gunzip.end();
+      };
       const onError = (err: Error) => done(err);
       req.on('data', onData).on('end', onEnd).on('error', onError);
     });

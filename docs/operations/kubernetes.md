@@ -133,7 +133,13 @@ Pour une mise à niveau, la même commande suffit (migrations jouées avant le d
   délais de lecture pour le SSE.
 - Les previews (`*.preview.<domaine>`) pointent vers le Service `preview`.
 - `api.trustProxy` doit couvrir les adresses de l'Ingress controller (IP des clients exactes,
-  limitation de débit).
+  limitation de débit) et rien d'autre : une plage trop large (`uniquelocal`) laisse tout pod du
+  cluster usurper l'adresse d'un client. Valeurs acceptées : mots-clés, adresses, plages CIDR ou
+  noms DNS (résolus toutes les 30 s).
+- Le worker crée et supprime les NetworkPolicies propres à chaque sandbox. Sur Kubernetes ≥ 1.30,
+  une `ValidatingAdmissionPolicy` (`networkPolicies.protectChartPolicies`, activée par défaut)
+  l'empêche de modifier ou supprimer celles du chart (deny-all, sortie vers la gateway). Le
+  namespace des sandboxes applique le profil Pod Security `baseline` (`restricted` en avertissement).
 
 ## Exploitation
 

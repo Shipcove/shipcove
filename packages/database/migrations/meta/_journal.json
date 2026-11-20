@@ -141,6 +141,20 @@
       "when": 1795089040179,
       "tag": "0019_tool_call_details",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795162396803,
+      "tag": "0020_sso_link_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795162662046,
+      "tag": "0021_mcp_disable_stdio",
+      "breakpoints": true
     }
   ]
 }

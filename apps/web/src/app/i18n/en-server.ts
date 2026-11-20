@@ -90,6 +90,11 @@ export const enServer: Record<string, string> = {
   "Les jetons d’accès personnels sont désactivés : connectez votre compte via OAuth": "Personal access tokens are disabled: connect your account through OAuth",
   "Les previews sont désactivées": "Previews are disabled",
   "Les serveurs MCP personnels sont désactivés": "Personal MCP servers are disabled",
+  "Transport stdio retiré (secrets exposés dans la sandbox) : supprimez ce serveur et recréez-le en Streamable HTTP": "stdio transport removed (secrets exposed in the sandbox): delete this server and recreate it as Streamable HTTP",
+  "Transport stdio retiré : recréez ce serveur en Streamable HTTP": "stdio transport removed: recreate this server as Streamable HTTP",
+  "Push forcé interdit sur la branche par défaut": "Force push to the default branch is not allowed",
+  "Rattachement refusé : il doit être terminé dans le navigateur qui l’a demandé": "Linking refused: it must be completed in the browser that requested it",
+  "Origine non autorisée": "Origin not allowed",
   "Les skills personnels sont désactivés": "Personal skills are disabled",
   "Lien invalide ou expiré": "Invalid or expired link",
   "L’annuaire ne fournit pas d’adresse email pour ce compte": "The directory does not provide an email address for this account",
@@ -125,7 +130,6 @@ export const enServer: Record<string, string> = {
   "Secret client requis pour activer la forge": "Client secret required to enable the forge",
   "Serveur introuvable": "Server not found",
   "Serveur personnel d’un autre utilisateur": "Another user's personal server",
-  "Serveur stdio : déclarez ses outils (exécution uniquement dans les sandboxes)": "stdio server: declare its tools (runs only in sandboxes)",
   "Service introuvable": "Service not found",
   "Session introuvable": "Session not found",
   "Session requise": "Session required",
@@ -188,7 +192,6 @@ export const enServer: Record<string, string> = {
   "désactivé (CLAMAV_HOST non défini)": "disabled (CLAMAV_HOST not set)",
   "Requête refusée : elle ne vient pas de l’application": "Request refused: it does not come from the application",
   "Forge non déclarée par l’administrateur : demandez-lui de l’ajouter (Administration → Forges Git)": "Forge not declared by the administrator: ask them to add it (Administration → Git forges)",
-  "Serveur MCP global en stdio : pas de variable secrète (elle serait lisible dans chaque sandbox). Utilisez un serveur Streamable HTTP, dont les secrets restent côté plateforme.": "Global stdio MCP server: no secret variables (they would be readable in every sandbox). Use a Streamable HTTP server, whose secrets stay on the platform side.",
   "Redirection de la forge vers un autre hôte refusée": "Forge redirect to another host refused",
 };
 
@@ -223,6 +226,8 @@ export const enPatterns: Array<[RegExp, string]> = [
   [/^Limite de (\d+) preview\(s\) simultanée\(s\) atteinte$/, "Limit of $1 concurrent preview(s) reached"],
   [/^Nom de skill invalide : « (.+) » \(minuscules, chiffres, tirets\)$/, "Invalid skill name: “$1” (lowercase letters, digits, hyphens)"],
   [/^Outil MCP non autorisé : (.+)$/, "MCP tool not allowed: $1"],
+  [/^Serveur MCP (.+) : transport stdio retiré, à recréer en Streamable HTTP$/, "MCP server $1: stdio transport removed, recreate it as Streamable HTTP"],
+  [/^Hôte (.+) non autorisé pour les serveurs personnels : un administrateur doit l’ajouter \(Administration → MCP\)$/, "Host $1 not allowed for personal servers: an administrator must add it (Administration → MCP)"],
   [/^Une forge est déjà déclarée pour (.+)$/, "A forge is already declared for $1"],
   [/^Archive refusée : (.+)$/, "Archive rejected: $1"],
   [/^Action Git inconnue : (.+)$/, "Unknown Git action: $1"],
@@ -233,5 +238,4 @@ export const enPatterns: Array<[RegExp, string]> = [
   [/^Modèle (.+) indisponible pour l’agent : (.*)$/, "Model $1 unavailable to the agent: $2"],
   [/^L’agent s’est arrêté \(code (.+?)\) : (.*)$/, "The agent stopped (code $1): $2"],
   [/^Le nom du frontmatter \(« (.+) »\) devrait être « (.+) » : l’agent s’appuie sur le nom du dossier$/, "The frontmatter name (“$1”) should be “$2”: the agent relies on the folder name"],
-  [/^Serveur MCP (.+) : un serveur global en stdio ne peut pas recevoir de secrets ; à reconfigurer en Streamable HTTP par l’administrateur$/, "MCP server $1: a global stdio server cannot receive secrets; the administrator must reconfigure it as Streamable HTTP"],
 ];

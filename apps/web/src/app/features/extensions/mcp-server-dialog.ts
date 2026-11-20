@@ -19,7 +19,7 @@ interface Row {
 }
 
 /** Configuration lue dans un bloc JSON `mcpServers` (format Claude Desktop / Cursor), ou un serveur seul. */
-export function parseMcpJson(text: string): { name: string; url?: string; command?: string; args: string[]; headers: Record<string, string>; env: Record<string, string> } {
+export function parseMcpJson(text: string): { name: string; url: string; headers: Record<string, string> } {
   const root = JSON.parse(text) as Record<string, unknown>;
   const servers = (root['mcpServers'] ?? root['servers'] ?? null) as Record<string, Record<string, unknown>> | null;
   let name = '';
@@ -32,15 +32,12 @@ export function parseMcpJson(text: string): { name: string; url?: string; comman
   const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
   const rec = (v: unknown) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, String(x)])) : {});
   const url = str(cfg['url']) ?? str(cfg['serverUrl']);
-  const command = str(cfg['command']);
-  if (!url && !command) throw new Error(t('Ni « url » ni « command » dans ce JSON.'));
+  if (!url && str(cfg['command'])) throw new Error(t('Serveur stdio (« command ») : non pris en charge. Seuls les serveurs Streamable HTTP (« url ») le sont.'));
+  if (!url) throw new Error(t('Pas d’« url » dans ce JSON.'));
   return {
-    name: (name || str(cfg['name']) || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, ''),
+    name: (name || str(cfg['name']) || '').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, ''),
     url,
-    command,
-    args: Array.isArray(cfg['args']) ? (cfg['args'] as unknown[]).map(String) : [],
     headers: rec(cfg['headers']),
-    env: rec(cfg['env']),
   };
 }
 
@@ -88,8 +85,8 @@ export function parseMcpJson(text: string): { name: string; url?: string; comman
               <div class="grid gap-2 md:grid-cols-[1fr_auto]">
                 <label class="block">
                   <span class="text-xs font-medium text-stone-600 dark:text-stone-400">{{ t('Nom') }}</span>
-                  <input class="input font-mono" name="name" [(ngModel)]="name" [disabled]="!!server()" required pattern="[a-z0-9_-]+" maxlength="64" placeholder="jira" />
-                  @if (!server()) { <span class="text-xs text-stone-500">{{ t('Minuscules, chiffres, - et _ ; préfixe des outils côté agent.') }}</span> }
+                  <input class="input font-mono" name="name" [(ngModel)]="name" [disabled]="!!server()" required pattern="[A-Za-z0-9_-]+" maxlength="64" placeholder="jira" />
+                  @if (!server()) { <span class="text-xs text-stone-500">{{ t('Lettres, chiffres, - et _ ; préfixe des outils côté agent.') }}</span> }
                 </label>
                 <label class="block">
                   <span class="text-xs font-medium text-stone-600 dark:text-stone-400">{{ t('Portée') }}</span>
@@ -104,45 +101,30 @@ export function parseMcpJson(text: string): { name: string; url?: string; comman
                 <input class="input" name="description" [(ngModel)]="description" maxlength="1000" />
               </label>
 
-              <fieldset class="flex flex-wrap gap-4" [disabled]="!!server()">
-                <legend class="mb-1 text-xs font-medium text-stone-600 dark:text-stone-400">{{ t('Transport') }}</legend>
-                <label class="flex items-center gap-1.5"><input type="radio" name="transport" value="streamable_http" [(ngModel)]="transport" /> Streamable HTTP</label>
-                <label class="flex items-center gap-1.5"><input type="radio" name="transport" value="stdio" [(ngModel)]="transport" /> {{ t('stdio (dans la sandbox)') }}</label>
-              </fieldset>
 
-              @if (transport === 'streamable_http') {
-                <label class="block">
-                  <span class="text-xs font-medium text-stone-600 dark:text-stone-400">URL</span>
-                  <input class="input font-mono" name="url" type="url" [(ngModel)]="url" required placeholder="https://mcp.exemple.com/mcp" />
-                  @if (scope === 'personal') { <span class="text-xs text-stone-500">{{ t('Serveur personnel : son hôte doit être autorisé par un administrateur (Administration → MCP).') }}</span> }
-                </label>
-              } @else {
-                <div class="grid gap-2 md:grid-cols-2">
-                  <label class="block"><span class="text-xs font-medium text-stone-600 dark:text-stone-400">{{ t('Commande') }}</span><input class="input font-mono" name="command" [(ngModel)]="command" required placeholder="npx" /></label>
-                  <label class="block"><span class="text-xs font-medium text-stone-600 dark:text-stone-400">{{ t('Arguments (séparés par des espaces)') }}</span><input class="input font-mono" name="args" [(ngModel)]="args" placeholder="-y @exemple/mcp-server" /></label>
-                </div>
-              }
+              <label class="block">
+                <span class="text-xs font-medium text-stone-600 dark:text-stone-400">URL</span>
+                <input class="input font-mono" name="url" type="url" [(ngModel)]="url" required placeholder="https://mcp.exemple.com/mcp" />
+                @if (scope === 'personal') { <span class="text-xs text-stone-500">{{ t('Serveur personnel : son hôte doit être autorisé par un administrateur (Administration → MCP).') }}</span> }
+              </label>
 
               <div>
                 <div class="mb-1 flex items-center text-xs font-medium text-stone-600 dark:text-stone-400">
-                  <span>{{ transport === 'stdio' ? t('Variables d’environnement (secrètes)') : t('En-têtes HTTP') }}</span>
-                  @if (transport === 'streamable_http') { <span class="ml-auto pr-9">{{ t('Secret') }}</span> }
+                  <span>{{ t('En-têtes HTTP') }}</span>
+                  <span class="ml-auto pr-9">{{ t('Secret') }}</span>
                 </div>
                 @for (r of rows(); track $index; let i = $index) {
                   <div class="mb-1.5 flex items-center gap-1.5">
-                    <input class="input w-2/5 font-mono text-xs" [name]="'k' + i" [(ngModel)]="r.key" (ngModelChange)="autoSecret(r)" [placeholder]="transport === 'stdio' ? 'API_KEY' : 'X-Api-Token'" [attr.aria-label]="t('Nom')" />
+                    <input class="input w-2/5 font-mono text-xs" [name]="'k' + i" [(ngModel)]="r.key" (ngModelChange)="autoSecret(r)" placeholder="X-Api-Token" [attr.aria-label]="t('Nom')" />
                     <input class="input flex-1 font-mono text-xs" [name]="'v' + i" [(ngModel)]="r.value" [type]="r.secret ? 'password' : 'text'" autocomplete="off"
                       [placeholder]="r.stored ? t('•••• enregistré (vide : conservé)') : t('valeur')" [attr.aria-label]="t('Valeur')" />
-                    @if (transport === 'streamable_http') {
-                      <input type="checkbox" class="h-4 w-4" [name]="'s' + i" [(ngModel)]="r.secret" [disabled]="sensitive(r.key)" [title]="sensitive(r.key) ? t('Nom sensible : toujours secret') : t('Stocker dans Vault, ne plus afficher')" [attr.aria-label]="t('Secret')" />
-                    }
+                    <input type="checkbox" class="h-4 w-4" [name]="'s' + i" [(ngModel)]="r.secret" [disabled]="sensitive(r.key)" [title]="sensitive(r.key) ? t('Nom sensible : toujours secret') : t('Stocker dans Vault, ne plus afficher')" [attr.aria-label]="t('Secret')" />
                     <button type="button" class="btn-ghost !p-1 text-stone-500 hover:text-red-600" (click)="removeRow(i)" [attr.aria-label]="t('Retirer')"><cap-icon name="trash" [size]="14" /></button>
                   </div>
                 }
-                <button type="button" class="btn-ghost !px-1.5 !py-0.5 text-xs" (click)="addRow()"><cap-icon name="plus" [size]="12" /> {{ transport === 'stdio' ? t('Ajouter une variable') : t('Ajouter un en-tête') }}</button>
+                <button type="button" class="btn-ghost !px-1.5 !py-0.5 text-xs" (click)="addRow()"><cap-icon name="plus" [size]="12" /> {{ t('Ajouter un en-tête') }}</button>
                 <p class="mt-1 text-xs text-stone-500">
                   {{ t('Les secrets sont chiffrés dans Vault et ne sont plus affichés.') }}
-                  @if (transport === 'stdio' && scope === 'global') { {{ t('Serveur global en stdio : aucune variable secrète possible (elle serait lisible dans chaque sandbox).') }} }
                 </p>
               </div>
 
@@ -154,11 +136,9 @@ export function parseMcpJson(text: string): { name: string; url?: string; comman
               }
 
               <div class="flex flex-wrap items-center justify-end gap-2 pt-1">
-                @if (transport === 'streamable_http') {
-                  <button type="button" class="btn-secondary mr-auto" (click)="test()" [disabled]="busy() || !url">{{ busy() === 'test' ? t('Test…') : t('Tester la connexion') }}</button>
-                }
+                <button type="button" class="btn-secondary mr-auto" (click)="test()" [disabled]="busy() || !url">{{ busy() === 'test' ? t('Test…') : t('Tester la connexion') }}</button>
                 <button type="button" class="btn-secondary" (click)="closed.emit()">{{ t('Annuler') }}</button>
-                <button class="btn-primary" [disabled]="!!busy()">{{ server() ? t('Enregistrer') : transport === 'streamable_http' ? t('Ajouter et choisir les outils') : t('Ajouter') }}</button>
+                <button class="btn-primary" [disabled]="!!busy()">{{ server() ? t('Enregistrer') : t('Ajouter et choisir les outils') }}</button>
               </div>
             </form>
           }
@@ -186,10 +166,7 @@ export class McpServerDialog implements OnInit {
   protected name = '';
   protected description = '';
   protected scope: 'personal' | 'global' = 'personal';
-  protected transport: 'streamable_http' | 'stdio' = 'streamable_http';
   protected url = '';
-  protected command = '';
-  protected args = '';
   protected json = '';
   /** Secrets enregistrés au départ (noms tels que dans `secretKeys`). */
   private storedSecrets: string[] = [];
@@ -205,10 +182,7 @@ export class McpServerDialog implements OnInit {
     this.name = s.name;
     this.description = s.description;
     this.scope = s.scope;
-    this.transport = s.transport;
     this.url = s.url ?? '';
-    this.command = s.command ?? '';
-    this.args = s.args.join(' ');
     this.storedSecrets = [...s.secretKeys];
     const rows: Row[] = Object.entries(s.headers ?? {}).map(([key, value]) => ({ key, value, secret: false, stored: false }));
     for (const k of s.secretKeys) {
@@ -219,7 +193,7 @@ export class McpServerDialog implements OnInit {
   }
 
   protected addRow() {
-    this.rows.update((r) => [...r, { key: '', value: '', secret: this.transport === 'stdio', stored: false }]);
+    this.rows.update((r) => [...r, { key: '', value: '', secret: false, stored: false }]);
   }
 
   protected removeRow(i: number) {
@@ -236,39 +210,31 @@ export class McpServerDialog implements OnInit {
     try {
       const c = parseMcpJson(this.json);
       this.name = c.name || this.name;
-      this.transport = c.url ? 'streamable_http' : 'stdio';
-      this.url = c.url ?? '';
-      this.command = c.command ?? '';
-      this.args = c.args.join(' ');
-      const rows: Row[] = c.url
-        ? Object.entries(c.headers).map(([key, value]) => ({ key, value, secret: SENSITIVE.test(key), stored: false }))
-        : Object.entries(c.env).map(([key, value]) => ({ key, value, secret: true, stored: false }));
+      this.url = c.url;
+      const rows: Row[] = Object.entries(c.headers).map(([key, value]) => ({ key, value, secret: SENSITIVE.test(key), stored: false }));
       this.rows.set(rows.length ? rows : [{ key: '', value: '', secret: false, stored: false }]);
       this.tab.set('form');
     } catch (e) {
-      this.jsonError.set(t('JSON illisible : {error}', { error: (e as Error).message }));
+      this.jsonError.set(e instanceof SyntaxError ? t('JSON illisible : {error}', { error: e.message }) : (e as Error).message);
     }
   }
 
-  /** Lignes remplies, réparties en en-têtes publics, secrets et variables. */
+  /** Lignes remplies, réparties en en-têtes publics et secrets. */
   private collect() {
     const rows = this.rows().filter((r) => r.key.trim());
     const headers: Record<string, string> = {};
     const secretHeaders: Record<string, string> = {};
-    const secretEnv: Record<string, string> = {};
     for (const r of rows) {
       const key = r.key.trim();
-      if (this.transport === 'stdio') {
-        if (r.value) secretEnv[key] = r.value;
-      } else if (r.secret || SENSITIVE.test(key)) {
+      if (r.secret || SENSITIVE.test(key)) {
         if (r.value) secretHeaders[key] = r.value;
       } else headers[key] = r.value;
     }
     // Secrets enregistrés dont la ligne a disparu, a été renommée ou est devenue publique : retirés.
-    const kept = new Set(rows.filter((r) => r.stored && (r.secret || SENSITIVE.test(r.key) || this.transport === 'stdio')).map((r) => (this.transport === 'stdio' ? r.key.trim() : `header:${r.key.trim()}`)));
+    const kept = new Set(rows.filter((r) => r.stored && (r.secret || SENSITIVE.test(r.key))).map((r) => `header:${r.key.trim()}`));
     const removeSecrets = this.storedSecrets.filter((k) => !kept.has(k));
-    const missing = rows.find((r) => !r.value && !r.stored && (this.transport === 'stdio' || r.secret));
-    return { headers, secretHeaders, secretEnv, removeSecrets, missing };
+    const missing = rows.find((r) => !r.value && !r.stored && r.secret);
+    return { headers, secretHeaders, removeSecrets, missing };
   }
 
   protected async test() {
@@ -302,7 +268,9 @@ export class McpServerDialog implements OnInit {
       if (s) {
         const r = await this.api.patch<{ discovery: McpDiscoveryResult | null }>(`/mcp-servers/${s.id}`, {
           description: this.description,
-          ...(this.transport === 'streamable_http' ? { url: this.url, headers: c.headers, secretHeaders: c.secretHeaders } : { command: this.command, args: this.splitArgs(), secretEnv: c.secretEnv }),
+          url: this.url,
+          headers: c.headers,
+          secretHeaders: c.secretHeaders,
           removeSecrets: c.removeSecrets,
         });
         discovery = r.discovery;
@@ -321,8 +289,10 @@ export class McpServerDialog implements OnInit {
         name: this.name,
         description: this.description,
         scope: this.scope,
-        transport: this.transport,
-        ...(this.transport === 'streamable_http' ? { url: this.url, headers: c.headers, secretHeaders: c.secretHeaders } : { command: this.command, args: this.splitArgs(), secretEnv: c.secretEnv }),
+        transport: 'streamable_http',
+        url: this.url,
+        headers: c.headers,
+        secretHeaders: c.secretHeaders,
       });
       this.createdId = r.id;
       discovery = r.discovery;
@@ -360,10 +330,6 @@ export class McpServerDialog implements OnInit {
     } finally {
       this.busy.set(null);
     }
-  }
-
-  private splitArgs(): string[] {
-    return this.args.trim() ? this.args.trim().split(/\s+/) : [];
   }
 }
 

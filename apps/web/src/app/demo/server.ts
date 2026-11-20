@@ -351,17 +351,16 @@ export class DemoServer {
     if (path === '/mcp-servers/test') return ok();
     if (path === '/mcp-servers' && method === 'POST') {
       const id = this.newId('mcp');
-      const http = b['transport'] === 'streamable_http';
       const headers = (b['headers'] as Record<string, string>) ?? {};
       const secret = Object.keys((b['secretHeaders'] as Record<string, string>) ?? {}).map((k) => `header:${k}`);
       this.mcp.push({
         id, name: String(b['name']), description: String(b['description'] ?? ''), scope: (b['scope'] as McpServerDto['scope']) ?? 'personal', ownerId: D.ME.id,
-        transport: http ? 'streamable_http' : 'stdio', url: (b['url'] as string) ?? null, command: (b['command'] as string) ?? null, args: (b['args'] as string[]) ?? [],
-        headers, secretKeys: [...secret, ...Object.keys((b['secretEnv'] as Record<string, string>) ?? {})], version: http ? '0.11.9' : null, enabled: true,
-        health: http ? 'healthy' : 'unknown', healthDetail: http ? 'mcp-atlassian 0.11.9' : null, lastHealthAt: http ? new Date().toISOString() : null,
-        tools: http ? D.JIRA_TOOLS.map((x, i) => ({ id: `${id}-${i}`, ...x, effective: 'allowed', lockedByAdmin: false })) : [],
+        transport: 'streamable_http', url: (b['url'] as string) ?? null, command: null, args: [],
+        headers, secretKeys: secret, version: '0.11.9', enabled: true,
+        health: 'healthy', healthDetail: 'mcp-atlassian 0.11.9', lastHealthAt: new Date().toISOString(),
+        tools: D.JIRA_TOOLS.map((x, i) => ({ id: `${id}-${i}`, ...x, effective: 'allowed', lockedByAdmin: false })),
       });
-      return { id, discovery: http ? ok() : null };
+      return { id, discovery: ok() };
     }
     const m = path.match(/^\/mcp-servers\/([^/]+)(?:\/(\w+))?$/);
     const s = m && this.mcp.find((x) => x.id === m[1]);

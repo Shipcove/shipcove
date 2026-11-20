@@ -56,6 +56,11 @@ export class LlmProxyController {
     const model = (await this.allowedModels(principal.userId)).find((m) => m.litellmModel === modelName);
     if (!model) return openAiError(res, 403, 'model_not_allowed', `Modèle non autorisé : ${modelName}`);
 
+    // Plusieurs réponses par appel (n, best_of) multiplient le coût réel sans être comptées dans la
+    // réservation : refusées (l'agent n'en demande jamais).
+    for (const k of ['n', 'best_of'] as const) {
+      if (body[k] !== undefined && body[k] !== null && Number(body[k]) !== 1) return openAiError(res, 400, 'unsupported_parameter', `Paramètre ${k} non pris en charge (une seule réponse par appel)`);
+    }
     const quotaSettings = await this.settings.section('quotas');
     // Pi demande toujours le maximum de sortie du modèle (max_tokens) : réserver ce plafond
     // gonflerait les réservations ouvertes (surtout avec des sous-agents en parallèle). L'estimation

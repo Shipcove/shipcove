@@ -53,6 +53,26 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify({ object: 'list', data: [{ id: 'mock-model', object: 'model' }] }));
     return;
   }
+  // Serveur MCP Streamable HTTP minimal (tests e2e) : outil « echo ». Il signale s'il a reçu le
+  // secret d'en-tête attendu, sans jamais le renvoyer.
+  if (req.method === 'POST' && req.url === '/mcp') {
+    let raw = '';
+    for await (const chunk of req) raw += chunk;
+    const m = JSON.parse(raw || '{}');
+    if (m.id === undefined) return void res.writeHead(202).end();
+    const reply = (result) => {
+      res.writeHead(200, { 'content-type': 'application/json', 'mcp-session-id': 'mock-session' });
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: m.id, result }));
+    };
+    if (m.method === 'initialize') return reply({ protocolVersion: m.params?.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'echo', version: '1.0.0' } });
+    if (m.method === 'tools/list') return reply({ tools: [{ name: 'echo', description: 'Écho', inputSchema: { type: 'object', properties: { text: { type: 'string' } } } }] });
+    if (m.method === 'tools/call') {
+      const ok = req.headers['x-echo-secret'] === 'valeur-secrete-mcp';
+      return reply({ content: [{ type: 'text', text: `echo:${m.params?.arguments?.text}:${ok ? 'secret-ok' : 'secret-absent'}` }] });
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    return void res.end(JSON.stringify({ jsonrpc: '2.0', id: m.id, error: { code: -32601, message: 'inconnu' } }));
+  }
   if (req.method !== 'POST' || !req.url.endsWith('/chat/completions')) {
     res.writeHead(404).end();
     return;
