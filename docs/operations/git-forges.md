@@ -25,6 +25,12 @@ Les comptes Git des utilisateurs se rattachent **par OAuth**, via les forges dé
 
 Supprimer une forge révoque toutes les connexions des utilisateurs qui en dépendent.
 
+**Par variables d'environnement** : une forge GitLab ou GitHub se déclare aussi avec
+`GIT_GITLAB_HOST`, `GIT_GITLAB_CLIENT_ID`, `GIT_GITLAB_CLIENT_SECRET` (et `GIT_GITHUB_*`), ou
+plusieurs avec `GIT_FORGES` en JSON ; elle est créée (activée) au démarrage de l'API. Il reste à
+déclarer chez la forge l'URL de rappel affichée par la console. Voir
+[`environment.md`](environment.md#forges-git).
+
 **Jetons d'accès personnels** : ils sont désactivés par défaut. L'administrateur peut les autoriser
 dans **Forges Git → Réglages Git** (`git.allowPersonalTokens`), par exemple pour une forge
 dépourvue d'OAuth.

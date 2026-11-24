@@ -4,6 +4,11 @@ La connexion locale (identifiant + mot de passe, MFA TOTP) fonctionne sans fourn
 Les fournisseurs se gèrent dans **Administration → IAM & connexion** (administrateur plateforme).
 Pour chacun : *Enregistrer* (désactivé par défaut), *Tester*, puis *Activer*.
 
+Ils peuvent aussi être déclarés par variables d'environnement de l'API (`SSO_OIDC_*`, `SSO_SAML_*`,
+`SSO_LDAP_*`, `SSO_GITHUB_*`, `SSO_GITLAB_*`, ou `SSO_PROVIDERS` en JSON), appliquées à chaque
+démarrage : voir [`environment.md`](environment.md#fournisseurs-didentité-sso). Les champs sont
+ceux décrits ci-dessous.
+
 Les exemples ci-dessous ne contiennent aucun secret réel. Les secrets saisis dans la console
 (secret client, mot de passe de liaison, clé privée SAML) sont écrits dans **Vault**
 (`<montage KV>/auth-providers/<id>`). L'API ne les renvoie jamais, et laisser le champ vide conserve

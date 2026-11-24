@@ -125,6 +125,23 @@ helm upgrade --install shipcove infrastructure/helm/shipcove -n shipcove \
 
 Pour une mise à niveau, la même commande suffit (migrations jouées avant le déploiement).
 
+Configuration déclarative (facultative) : modèles LiteLLM, SSO, forges Git, SMTP et paramètres
+plateforme se déclarent en variables d'environnement de l'API, appliquées à chaque démarrage
+([`environment.md`](environment.md)). Le plus simple est un Secret chargé entier :
+
+```bash
+kubectl -n shipcove create secret generic shipcove-provisioning \
+  --from-literal=LITELLM_ENABLED_MODELS='*' --from-literal=LITELLM_DEFAULT_MODEL=gpt-5 \
+  --from-literal=SSO_OIDC_ISSUER=https://keycloak.example.com/realms/acme \
+  --from-literal=SSO_OIDC_CLIENT_ID=shipcove --from-literal=SSO_OIDC_CLIENT_SECRET='…' \
+  --from-literal=GIT_GITLAB_HOST=gitlab.example.com \
+  --from-literal=GIT_GITLAB_CLIENT_ID='…' --from-literal=GIT_GITLAB_CLIENT_SECRET='…'
+helm upgrade --install shipcove infrastructure/helm/shipcove -n shipcove … \
+  --set 'api.envFrom[0].secretRef.name=shipcove-provisioning'
+```
+
+La clé de LiteLLM vient alors de Vault (`vaultSetup.infraSecret`) ou de `LITELLM_MASTER_KEY`.
+
 ### Ingress et previews
 
 - L'application (`publicUrl`) pointe vers le Service `web`, qui relaie lui-même l'API (flux SSE
