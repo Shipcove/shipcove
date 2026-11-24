@@ -182,6 +182,9 @@ services:
       TRUST_PROXY: ${CAP_TRUST_PROXY:-loopback, web, edge}
       BOOTSTRAP_ADMIN_EMAIL: ${CAP_ADMIN_EMAIL:-}
       BOOTSTRAP_ADMIN_PASSWORD: ${CAP_ADMIN_PASSWORD:-}
+      # Jeton d'administration de Vault éventuellement présent dans .env (amorçage manual / auto) :
+      # jamais transmis à l'API.
+      VAULT_TOKEN: ""
     secrets: [database_url_api]
     volumes:
       - ./.secrets/approle/api:/secrets/approle/api:ro
