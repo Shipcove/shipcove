@@ -37,6 +37,7 @@ import { IdempotencyService } from './common/idempotency.service.js';
 import { SkillsController } from './extensions/skills.controller.js';
 import { AdminSkillCategoriesController, SkillCategoriesController } from './extensions/skill-categories.controller.js';
 import { McpController } from './extensions/mcp.controller.js';
+import { ProvisioningService } from './provisioning/provisioning.service.js';
 
 @Module({})
 export class AppModule {
@@ -95,6 +96,7 @@ export class AppModule {
         SandboxRpcClient,
         IdempotencyService,
         LiteLlmAdminService,
+        ProvisioningService,
       ],
     };
   }

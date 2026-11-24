@@ -9,7 +9,8 @@ x-app-env: &app-env
   VAULT_AUTH_METHOD: approle
   S3_ENDPOINT: http://garage:3900
   S3_REGION: garage
-  LITELLM_URL: http://litellm:4000
+  # LiteLLM fourni par défaut ; un proxy existant : CAP_LITELLM_URL (+ LITELLM_MASTER_KEY).
+  LITELLM_URL: ${CAP_LITELLM_URL:-http://litellm:4000}
   PUBLIC_URL: ${CAP_PUBLIC_URL:-http://localhost:8080}
   PREVIEW_DOMAIN: ${CAP_PREVIEW_DOMAIN:-preview.localhost}
   PREVIEW_PUBLIC_SCHEME: ${CAP_PREVIEW_SCHEME:-http}
@@ -164,6 +165,12 @@ services:
   api:
     image: ${CAP_REGISTRY:-}shipcove-api:${CAP_VERSION:-0.1.0}
     restart: unless-stopped
+    # Configuration déclarative facultative (LiteLLM et modèles, SSO, forges Git, SMTP, paramètres) :
+    # variables lues dans .env et appliquées au démarrage (docs/operations/environment.md). Les
+    # valeurs de `environment` ci-dessous restent prioritaires.
+    env_file:
+      - path: ./.env
+        required: false
     environment:
       <<: *app-env
       DATABASE_URL_FILE: /run/secrets/database_url_api

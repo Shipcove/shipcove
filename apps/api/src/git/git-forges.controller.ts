@@ -66,7 +66,7 @@ export class GitForgesService {
     };
   }
 
-  async upsert(id: string | null, body: UpsertGitForge, actorId: string, ctx: RequestContext): Promise<GitForgeAdminDto> {
+  async upsert(id: string | null, body: UpsertGitForge, actorId: string | null, ctx: RequestContext): Promise<GitForgeAdminDto> {
     const host = normalizeHost(body.provider, body.host);
     let row: Forge;
     try {

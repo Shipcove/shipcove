@@ -323,7 +323,7 @@ export class FederationService {
   async upsert(
     id: string | null,
     input: { type: ProviderType; name: string; enabled: boolean; autoProvision: boolean; config: Record<string, unknown> },
-    actorId: string,
+    actorId: string | null,
     ctx: RequestContext,
   ): Promise<AuthProviderAdminDto> {
     const secretFields = AUTH_PROVIDER_SECRET_FIELDS[input.type];
