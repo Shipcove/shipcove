@@ -62,7 +62,7 @@ export class OidcAdapter {
     return {
       subject: claims.sub,
       email: str(cfg.emailClaim),
-      emailVerified: all['email_verified'] === true,
+      emailVerified: typeof all['email_verified'] === 'boolean' ? (all['email_verified'] as boolean) : all['email_verified'] === 'true' ? true : all['email_verified'] === 'false' ? false : null,
       username: str(cfg.usernameClaim),
       displayName: str(cfg.nameClaim),
       mfa: amrIndicatesMfa(claims.amr, claims.acr),

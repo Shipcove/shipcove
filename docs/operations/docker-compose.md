@@ -14,6 +14,15 @@ docker pull "$CAP_SANDBOX_IMAGE"
 docker compose up -d              # --profile dev : Mailpit + LLM factice
 ```
 
+## Configuration par variables d'environnement
+
+Le service `api` lit aussi `.env` : la connexion LiteLLM et les modèles (création, découverte au
+démarrage, activation, modèle par défaut), les fournisseurs SSO, les forges Git, le SMTP et les
+paramètres plateforme peuvent y être déclarés et sont appliqués à chaque démarrage. Toutes ces
+variables sont facultatives ; liste complète dans [`environment.md`](environment.md), modèle commenté
+en fin de `.env.example`. Un LiteLLM existant remplace celui fourni avec `CAP_LITELLM_URL` et
+`LITELLM_MASTER_KEY`.
+
 ## Ordre de démarrage
 
 1. `postgres`, `vault`, `garage` ;

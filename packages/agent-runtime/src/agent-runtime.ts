@@ -70,4 +70,6 @@ export interface AgentRuntime {
   /** Gestionnaire des requêtes de l'extension plateforme ; renvoie la réponse (JSON). */
   setBridgeHandler(handler: (req: BridgeRequest) => Promise<string>): void;
   close(): Promise<void>;
+  /** Fin constatée de l'extérieur (sandbox arrêtée) : requêtes en cours rejetées, `process_exit` émis. */
+  terminate(reason: string): void;
 }

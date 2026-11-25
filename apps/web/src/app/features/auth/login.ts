@@ -124,6 +124,7 @@ export const SSO_ERRORS: Record<string, string> = {
   sso_expired: t('La demande de connexion a expiré ou a déjà été utilisée. Recommencez.'),
   sso_denied: t('Le fournisseur d’identité a refusé la connexion.'),
   provider_disabled: t('Ce fournisseur d’identité est désactivé.'),
+  email_unverified: t('Votre fournisseur d’identité n’atteste pas votre adresse email : vérifiez-la chez lui, ou demandez à votre administrateur de vous créer un compte.'),
   account_exists: t('Un compte utilise déjà cette adresse email. Connectez-vous avec ce compte puis rattachez cette identité depuis vos paramètres.'),
   account_suspended: t('Ce compte est suspendu.'),
   email_missing: t('Le fournisseur ne transmet pas d’adresse email : impossible de créer le compte.'),

@@ -25,6 +25,12 @@ Les comptes Git des utilisateurs se rattachent **par OAuth**, via les forges dé
 
 Supprimer une forge révoque toutes les connexions des utilisateurs qui en dépendent.
 
+**Par variables d'environnement** : une forge GitLab ou GitHub se déclare aussi avec
+`GIT_GITLAB_HOST`, `GIT_GITLAB_CLIENT_ID`, `GIT_GITLAB_CLIENT_SECRET` (et `GIT_GITHUB_*`), ou
+plusieurs avec `GIT_FORGES` en JSON ; elle est créée (activée) au démarrage de l'API. Il reste à
+déclarer chez la forge l'URL de rappel affichée par la console. Voir
+[`environment.md`](environment.md#forges-git).
+
 **Jetons d'accès personnels** : ils sont désactivés par défaut. L'administrateur peut les autoriser
 dans **Forges Git → Réglages Git** (`git.allowPersonalTokens`), par exemple pour une forge
 dépourvue d'OAuth.
@@ -47,15 +53,30 @@ sandboxes (ADR 0013).
 - Pi est autonome :
   - push de branches de travail ;
   - PR/MR, commentaires et revues ;
-  - CI (état, journaux, relance) ;
-  - tickets et releases.
+  - CI (état, journaux, relance, annulation) ;
+  - tickets.
+- Les écritures de l'agent sur l'API de la forge sont une **liste blanche** : toute autre écriture
+  est refusée. Elles ne sont relayées que pendant un run en cours.
+- **Portée** (`git.agentWriteScope`, **Forges Git → Réglages Git**) : par défaut
+  `workspace_repository`, l'agent ne pousse et n'écrit par l'API que dans le dépôt de la
+  conversation (lecture partout). `any` lui ouvre tous les dépôts de l'utilisateur. Les mutations
+  GraphQL autorisées (commentaires, tickets, PR) ne désignent pas leur dépôt dans le chemin : elles
+  restent soumises aux seules règles d'opérations.
 - La gateway refuse les opérations suivantes, qui passent par les outils de la plateforme
   **après approbation humaine** :
   - push sur la branche par défaut ou sur une branche protégée ;
   - fusion ;
-  - suppression de branche ou de tag ;
+  - suppression de branche ou de tag.
+- Elle refuse aussi, sans alternative pour l'agent (réservé à un humain sur la forge) :
+  - approbation d'une PR/MR, approbation de déploiements, déclenchement de workflows ou de
+    pipelines, statuts de CI, publications (releases) ;
+  - réécriture d'un tag existant ;
   - réglages et suppression du dépôt ;
   - clés, jetons, runners et secrets de CI.
+- Ce que l'humain approuve (commits et diff d'un push, d'une PR/MR) est calculé par le worker ou
+  par la forge, jamais par la sandbox.
+- **GitLab** : une branche poussée par l'agent déclenche la CI ; marquez « protégées » les
+  variables CI sensibles pour qu'elles ne soient fournies qu'aux branches protégées.
 - Chaque écriture et chaque refus sont audités (`git.agent_write`).
 
 ## Forges auto-hébergées

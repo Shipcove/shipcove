@@ -84,6 +84,9 @@ export class WorkspaceStore {
 
   private handle: SseHandle | null = null;
   private filesTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Dernier événement reçu (horloge locale) : sert à repérer un flux silencieux pendant un run. */
+  private lastEventAt = Date.now();
+  private staleTimer: ReturnType<typeof setInterval> | null = null;
 
   async open(workspaceId: string): Promise<void> {
     this.close();
@@ -97,9 +100,37 @@ export class WorkspaceStore {
       void this.refreshUsage();
     }
     this.handle = this.sse.connect(workspaceId, this.lastEventId(), (e) => this.apply(e), (s) => this.streamState.set(s));
+    this.lastEventAt = Date.now();
+    this.staleTimer = setInterval(() => void this.checkStaleRun().catch(() => undefined), 15_000);
+  }
+
+  /**
+   * Filet de sécurité : un run affiché « en cours » sans aucun événement depuis un moment (fin de run
+   * manquée par le flux : veille, proxy qui coupe les connexions inactives) est revérifié auprès du
+   * serveur. L'état n'est remplacé que si ce run est réellement terminé : un run vivant mais
+   * silencieux (long outil) n'est pas perturbé.
+   */
+  private async checkStaleRun(): Promise<void> {
+    const run = this.activeRun();
+    const ws = this.workspace();
+    if (!run || !ws || run.status === 'paused_quota') return;
+    const quietMs = Date.now() - this.lastEventAt;
+    if (quietMs < (run.status === 'interrupting' ? 15_000 : 60_000)) return;
+    this.lastEventAt = Date.now();
+    const c = await this.api.get<ConversationDto>(`/workspaces/${ws.id}/conversation`);
+    const server = c.runs.find((r) => r.id === run.id);
+    if (server && ['queued', 'running', 'interrupting', 'paused_quota'].includes(server.status)) return;
+    this.messages.set(c.messages);
+    this.runs.set(c.runs);
+    this.queued.set(c.queued ?? []);
+    this.lastEventId.set(c.lastEventId);
+    this.contextPercent.set(c.context.percent);
+    this.compacting.set(false);
   }
 
   close(): void {
+    if (this.staleTimer) clearInterval(this.staleTimer);
+    this.staleTimer = null;
     this.subagentPane.set(null);
     this.handle?.close();
     this.handle = null;
@@ -258,6 +289,7 @@ export class WorkspaceStore {
 
   private apply(e: EventEnvelope): void {
     this.lastEventId.set(e.id);
+    this.lastEventAt = Date.now();
     const d = e.data as never as Record<string, unknown>;
     switch (e.type) {
       case 'stream.resync':

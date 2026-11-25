@@ -73,6 +73,7 @@ export const SETTINGS: PlatformSettings = {
   "git": {
     "insecureHttpHosts": [],
     "allowPersonalTokens": false,
+    "agentWriteScope": "workspace_repository",
     "coAuthorEmail": "shipcove@example.com"
   },
   "subagents": {

@@ -77,6 +77,13 @@ interface RunContext {
    * fenêtre jusqu'au message suivant).
    */
   endPending?: { error: string | null; timer: NodeJS.Timeout } | null;
+  /**
+   * Compaction terminée avec relance du tour (`willRetry`) : si Pi ne relance jamais le tour, le run
+   * est clos au bout de la borne de sécurité au lieu d'attendre indéfiniment.
+   */
+  retryWatch?: NodeJS.Timeout | null;
+  /** Sandbox arrêtée ou redémarrée pendant le run (constaté par la surveillance). */
+  sandboxLost?: string;
 }
 
 /**
@@ -101,6 +108,21 @@ export function nothingToCompact(error: string): string | null {
 const COMPACTION_GRACE_MS = 5_000;
 /** Borne de sécurité : durée maximale d'attente d'une compaction automatique avant de clore le run. */
 const COMPACTION_MAX_WAIT_MS = 10 * 60_000;
+/** Borne de sécurité : délai maximal de relance du tour par Pi après une compaction pour dépassement de contexte. */
+const RETRY_MAX_WAIT_MS = 5 * 60_000;
+
+/** Surveillance de la sandbox pendant un run : un conteneur tué (mémoire…) n'est pas toujours signalé par le flux d'exécution. */
+const SANDBOX_WATCH_MS = 20_000;
+
+/** Raison lisible de la perte de la sandbox, ou `null` si elle tourne toujours (même démarrage). */
+export function sandboxLossReason(info: { state: string; exitCode: number | null; startedAt: string | null }, startedAt: string | null): string | null {
+  if (info.state === 'running') {
+    return startedAt && info.startedAt && info.startedAt !== startedAt ? 'la sandbox a redémarré pendant le run' : null;
+  }
+  if (info.state === 'creating') return null;
+  const code = info.exitCode !== null && info.exitCode !== undefined ? ` (code ${info.exitCode}${info.exitCode === 137 ? ', probablement faute de mémoire' : ''})` : '';
+  return info.state === 'missing' ? 'la sandbox a disparu pendant le run' : `la sandbox s’est arrêtée pendant le run${code}`;
+}
 
 /** Commande shell qui clone un dépôt (git, gh, glab). */
 const CLONE_RE = /\b(?:git|gh\s+repo|glab\s+repo)\s+clone\b/;
@@ -156,8 +178,10 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     if (msg.action === 'interrupt') {
       ctx.interruptRequested = true;
       await ctx.runtime.abort();
-      // Tour déjà fini, run en attente de la compaction automatique (que `abort` n'arrête pas) : clos tout de suite.
+      // Tour déjà fini, run en attente de la compaction automatique (que `abort` n'arrête pas) ou de
+      // la relance du tour après compaction : clos tout de suite.
       if (ctx.endPending) this.finishRun(ctx, { error: ctx.endPending.error });
+      else if (ctx.retryWatch) this.finishRun(ctx, { error: null });
       return;
     }
     // Les messages « à la suite » passent par la file durable (RunQueueService), pas par Pi.
@@ -175,6 +199,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
       ctx.interruptRequested = true;
       await ctx.runtime.abort();
       if (ctx.endPending) this.finishRun(ctx, { error: ctx.endPending.error });
+      else if (ctx.retryWatch) this.finishRun(ctx, { error: null });
     }
   }
 
@@ -297,6 +322,10 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     };
     this.active.set(runId, ctx);
     const flusher = setInterval(() => void this.flush(ctx), FLUSH_MS);
+    // Surveillance de la sandbox : si son conteneur s'arrête (mémoire, redémarrage du moteur), le
+    // flux d'exécution de Pi peut rester ouvert sans fin ; le run serait alors bloqué « en cours ».
+    const sandboxStartedAt = (await this.sandboxes.provider.inspect(sandbox.handle).catch(() => null))?.startedAt ?? null;
+    const watchdog = setInterval(() => void this.watchSandbox(ctx, sandboxStartedAt).catch(() => undefined), SANDBOX_WATCH_MS);
     // Battement : un échec ponctuel est rattrapé au suivant (le bail couvre plusieurs battements).
     const heartbeat = setInterval(() => void this.heartbeat(ctx).catch((e: Error) => this.logger.warn(`battement (${runId}) : ${e.message}`)), RUN_LEASE_MS / 4);
 
@@ -353,6 +382,9 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     } finally {
       clearInterval(heartbeat);
       clearInterval(flusher);
+      clearInterval(watchdog);
+      if (ctx.retryWatch) clearTimeout(ctx.retryWatch);
+      if (ctx.sandboxLost) outcome = { error: `Run arrêté : ${ctx.sandboxLost}. Renvoyez votre message pour reprendre (la conversation repart du dernier point de sauvegarde).` };
       // Tous les événements reçus sont appliqués avant la clôture du run.
       await ctx.queue;
       await this.flush(ctx);
@@ -623,6 +655,7 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     try {
       switch (e.type) {
         case 'assistant_start': {
+          this.clearRetryWatch(ctx);
           const [m] = await this.db
             .insert(messages)
             .values({ conversationId: ctx.conversationId, runId: ctx.runId, role: 'assistant', text: '' })
@@ -765,14 +798,26 @@ export class RunOrchestrator implements OnApplicationBootstrap {
           if (ctx.endPending) {
             if (e.willRetry) {
               // Contexte dépassé : Pi relance le tour après la compaction, une nouvelle fin de tour suivra.
+              // Borne de sécurité si le tour n'est jamais relancé (annulée au redémarrage du tour).
+              const pendingError = ctx.endPending.error;
               clearTimeout(ctx.endPending.timer);
               ctx.endPending = null;
+              if (ctx.retryWatch) clearTimeout(ctx.retryWatch);
+              ctx.retryWatch = setTimeout(() => {
+                ctx.retryWatch = null;
+                this.logger.warn(`Run ${ctx.runId} : tour non relancé après la compaction, run clos`);
+                this.finishRun(ctx, { error: pendingError });
+              }, RETRY_MAX_WAIT_MS);
             } else {
               this.finishRun(ctx, { error: ctx.endPending.error });
             }
           }
           break;
         }
+        case 'agent_start':
+          // Tour relancé après une compaction : la borne de sécurité n'a plus lieu d'être.
+          this.clearRetryWatch(ctx);
+          break;
         case 'agent_end': {
           // Compaction automatique probable (contexte au-delà du seuil de Pi, ou erreur pouvant venir
           // d'un dépassement) : le run attend qu'elle démarre, puis qu'elle se termine.
@@ -797,8 +842,30 @@ export class RunOrchestrator implements OnApplicationBootstrap {
     }
   }
 
+  /**
+   * Sandbox perdue pendant le run : l'agent est déclaré terminé (requêtes en cours rejetées) et le
+   * run clos avec une erreur explicite, au lieu de rester « en cours » indéfiniment.
+   */
+  private async watchSandbox(ctx: RunContext, startedAt: string | null): Promise<void> {
+    if (ctx.sandboxLost) return;
+    const info = await this.sandboxes.provider.inspect(ctx.sandbox.handle);
+    const reason = sandboxLossReason(info, startedAt);
+    if (!reason || ctx.sandboxLost) return;
+    ctx.sandboxLost = reason;
+    this.logger.warn(`Run ${ctx.runId} : ${reason}`);
+    this.finishRun(ctx, { error: reason });
+    ctx.runtime.terminate(reason);
+  }
+
+  private clearRetryWatch(ctx: RunContext): void {
+    if (!ctx.retryWatch) return;
+    clearTimeout(ctx.retryWatch);
+    ctx.retryWatch = null;
+  }
+
   /** Clôt le run (fin de tour, éventuellement après la compaction automatique de Pi). */
   private finishRun(ctx: RunContext, result: { error: string | null }): void {
+    this.clearRetryWatch(ctx);
     if (ctx.endPending) clearTimeout(ctx.endPending.timer);
     ctx.endPending = null;
     ctx.done(result);

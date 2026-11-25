@@ -163,6 +163,11 @@ export const PlatformSettingsSchema = z.object({
       /** Rattachement par jeton d'accès personnel (désactivé : OAuth via les forges configurées). */
       allowPersonalTokens: z.boolean().default(false),
       /**
+       * Portée des écritures de l'agent sur les forges (push, API) : `workspace_repository` limite au
+       * dépôt de la conversation ; `any` permet tout dépôt accessible à l'utilisateur.
+       */
+      agentWriteScope: z.enum(['workspace_repository', 'any']).default('workspace_repository'),
+      /**
        * Adresse de la mention « Co-Authored-By: Shipcove <adresse> » ajoutée à chaque commit fait
        * dans les sandboxes (vide : aucune mention). Elle ne doit correspondre à aucun compte d'une
        * forge, qui lui attribuerait ces commits.
@@ -256,6 +261,12 @@ export const OidcConfigSchema = z.object({
   emailClaim: z.string().max(100).default('email'),
   nameClaim: z.string().max(100).default('name'),
   mfa: FederatedMfaSchema.default('auto'),
+  /**
+   * Création automatique de compte seulement si le fournisseur atteste l'email (`email_verified`).
+   * Sans cette option, un email explicitement non vérifié est refusé, un email sans attestation
+   * (Entra ID…) est accepté.
+   */
+  requireVerifiedEmail: z.boolean().default(false),
   /** Émetteur en HTTP (développement / tests uniquement). */
   allowInsecureHttp: z.boolean().default(false),
 });
@@ -313,6 +324,8 @@ export const GitLabOAuthConfigSchema = z.object({
   allowLogin: z.boolean().default(true),
   /** Restreint la connexion aux membres de ces groupes (chemin complet ; vide = tous). */
   allowedGroups: z.array(z.string().min(1).max(255)).max(50).default([]),
+  /** Création automatique de compte seulement si GitLab atteste l'email (`confirmed_at`). */
+  requireVerifiedEmail: z.boolean().default(false),
   mfa: z.enum(['local']).default('local'),
 });
 

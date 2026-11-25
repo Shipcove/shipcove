@@ -42,6 +42,7 @@ export class PiAgentRuntime implements AgentRuntime {
   private messageSeq = 0;
   private currentMessageKey: string | null = null;
   private closed = false;
+  private exitedOnce = false;
 
   constructor(private readonly io: PiProcessIo) {}
 
@@ -51,15 +52,7 @@ export class PiAgentRuntime implements AgentRuntime {
       this.stderrTail = (this.stderrTail + c.toString('utf8')).slice(-8000);
     });
     // Fin du processus, y compris si l'attente échoue (flux d'exécution coupé) : sinon le run attendrait.
-    void this.io.wait().catch(() => -1).then((code) => {
-      this.closed = true;
-      for (const [, p] of this.pending) {
-        clearTimeout(p.timer);
-        p.reject(new PiRpcError('process', `processus terminé (code ${code})`));
-      }
-      this.pending.clear();
-      this.emit({ type: 'process_exit', code, stderr: this.stderrTail });
-    });
+    void this.io.wait().catch(() => -1).then((code) => this.exited(code, `processus terminé (code ${code})`, this.stderrTail));
     // Vérifie que Pi répond et que la session est chargée.
     await this.send('get_state', {}, 60_000);
   }
@@ -119,6 +112,28 @@ export class PiAgentRuntime implements AgentRuntime {
   async sessionFile(): Promise<string | null> {
     const d = (await this.send('get_state', {})) as { sessionFile?: string };
     return d?.sessionFile ?? null;
+  }
+
+  /**
+   * Fin de l'agent constatée de l'extérieur (sandbox arrêtée, conteneur tué) : le flux d'exécution
+   * peut ne jamais se fermer, `wait()` ne rendrait alors jamais la main. Les requêtes en cours sont
+   * rejetées, `process_exit` est émis, puis le processus est tué au mieux.
+   */
+  terminate(reason: string): void {
+    this.exited(-1, reason, reason);
+    void this.io.kill().catch(() => undefined);
+  }
+
+  private exited(code: number | null, reason: string, stderr: string): void {
+    if (this.exitedOnce) return;
+    this.exitedOnce = true;
+    this.closed = true;
+    for (const [, p] of this.pending) {
+      clearTimeout(p.timer);
+      p.reject(new PiRpcError('process', reason));
+    }
+    this.pending.clear();
+    this.emit({ type: 'process_exit', code, stderr });
   }
 
   async close(): Promise<void> {

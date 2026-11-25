@@ -87,10 +87,18 @@ api:
   # Proxys dont l API accepte X-Forwarded-For : restreignez aux adresses de l Ingress controller
   # (mots-clés, adresses, plages CIDR ou noms DNS) ; uniquelocal = tout le réseau privé du cluster.
   trustProxy: "loopback, linklocal, uniquelocal"
+  # Espace temporaire (/tmp) : pièces jointes reçues, écrites sur disque avant analyse et envoi
+  # vers S3. Prévoir (envois simultanés) × (fichiers par message × taille max).
+  tmpSize: 4Gi
   resources:
     requests: { cpu: 200m, memory: 384Mi }
     limits: { cpu: "2", memory: 1Gi }
+  # Variables supplémentaires, dont la configuration déclarative appliquée au démarrage
+  # (LiteLLM et modèles, SSO, forges Git, SMTP, paramètres : docs/operations/environment.md).
   extraEnv: []
+  # Mêmes variables depuis un Secret ou une ConfigMap, ex. :
+  #   - secretRef: { name: shipcove-provisioning }
+  envFrom: []
 
 worker:
   replicas: 1

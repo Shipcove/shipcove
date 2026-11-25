@@ -50,7 +50,32 @@ cp .env.example .env</code></pre>
           <tr><td><code>CAP_ADMIN_EMAIL</code>, <code>CAP_ADMIN_PASSWORD</code></td><td>Initial administrator, created only if no administrator exists.</td></tr>
         </tbody>
       </table>
-      <div class="callout"><p>The <code>.env</code> file contains no infrastructure secret. <code>./scripts/init-secrets.sh</code> generates the bootstrap secrets in <code>.secrets/</code> (never committed, to be backed up); the rest is created in Vault on first start.</p></div>
+      <div class="callout"><p>The <code>.env</code> file contains no infrastructure secret. <code>./scripts/init-secrets.sh</code> generates the bootstrap secrets in <code>.secrets/</code> (never committed, to be backed up); the rest is created in Vault on first start. If you add the optional variables below with secrets in them, restrict the file (<code>chmod 600 .env</code>) or use the <code>_FILE</code> variants.</p></div>
+
+      <h2>Configuration by environment variables (optional)</h2>
+      <p>Instead of the administration console, the API can apply a configuration declared in <code>.env</code> at every start, so that a new instance is usable without any manual step. Every variable is optional; what is not declared stays managed in the console. What is declared is applied again at the next restart, and nothing is rewritten when the value is already in place. Secrets go to Vault, and each variable also accepts <code>&lt;NAME&gt;_FILE</code> (path of a mounted file).</p>
+      <table>
+        <thead><tr><th>Variables</th><th>What they configure</th></tr></thead>
+        <tbody>
+          <tr><td><code>CAP_LITELLM_URL</code>, <code>LITELLM_MASTER_KEY</code></td><td>An existing LiteLLM proxy instead of the bundled one (URL and admin key, written to Vault).</td></tr>
+          <tr><td><code>LITELLM_MODELS</code></td><td>Models created in LiteLLM if missing (JSON, LiteLLM <code>model_list</code> format), enabled on the platform.</td></tr>
+          <tr><td><code>LITELLM_SYNC_ON_START</code>, <code>LITELLM_SYNC_INTERVAL_MINUTES</code></td><td>Model discovery at startup (on by default) and periodically.</td></tr>
+          <tr><td><code>LITELLM_ENABLED_MODELS</code>, <code>LITELLM_DEFAULT_MODEL</code>, <code>LITELLM_TITLE_MODEL</code></td><td>Models enabled (<code>*</code> for all), default model, model for conversation titles.</td></tr>
+          <tr><td><code>SSO_OIDC_*</code>, <code>SSO_SAML_*</code>, <code>SSO_LDAP_*</code>, <code>SSO_GITHUB_*</code>, <code>SSO_GITLAB_*</code>, <code>SSO_PROVIDERS</code></td><td>Identity providers: one per type with flat variables, or several in JSON.</td></tr>
+          <tr><td><code>GIT_GITLAB_*</code>, <code>GIT_GITHUB_*</code>, <code>GIT_FORGES</code></td><td>Git forges (OAuth application: host, client ID, secret), and <code>GIT_ALLOW_PERSONAL_TOKENS</code>, <code>GIT_INSECURE_HTTP_HOSTS</code>, <code>GIT_CO_AUTHOR_EMAIL</code>.</td></tr>
+          <tr><td><code>SMTP_*</code></td><td>Outgoing mail server.</td></tr>
+          <tr><td><code>AUTH_*</code>, <code>PLATFORM_SETTINGS</code></td><td>Local sign-in, registration, MFA policy, and any other platform setting (JSON by section).</td></tr>
+        </tbody>
+      </table>
+      <pre><code>LITELLM_MODELS='[{"model_name":"claude-sonnet","litellm_params":{"model":"anthropic/claude-sonnet-5-5","api_key":"sk-ant-…"}}]'
+LITELLM_DEFAULT_MODEL=claude-sonnet
+SSO_OIDC_ISSUER=https://keycloak.example.com/realms/acme
+SSO_OIDC_CLIENT_ID=shipcove
+SSO_OIDC_CLIENT_SECRET=…
+GIT_GITLAB_HOST=gitlab.example.com
+GIT_GITLAB_CLIENT_ID=…
+GIT_GITLAB_CLIENT_SECRET=…</code></pre>
+      <p>An invalid value stops the API at startup with a message naming the variable; an unreachable LiteLLM does not (discovery is retried in the background). Full reference with every variable and its default: <a href="https://github.com/Shipcove/shipcove/blob/main/docs/operations/environment.md"><code>docs/operations/environment.md</code></a>; commented template at the end of <code>.env.example</code>. With Helm, use <code>api.extraEnv</code> or <code>api.envFrom</code> (a whole Secret).</p>
 
       <h2>Vault in production</h2>
       <p>Choose the unseal mode <strong>before</strong> the first start (<code>CAP_VAULT_UNSEAL_MODE</code>):</p>
@@ -94,7 +119,7 @@ CAP_COOKIE_SECURE=true</code></pre>
       <div class="callout warn"><p>Previews must stay on a <strong>separate</strong> domain from the application (not a subdomain that would share its cookies): the code a preview runs is not trusted.</p></div>
 
       <h2>Emails</h2>
-      <p>Configure the SMTP server in <strong>Administration → Notifications &amp; SMTP</strong> (password stored in Vault) and send a test email. Without SMTP, invitations and password resets are not sent.</p>
+      <p>Configure the SMTP server in <strong>Administration → Notifications &amp; SMTP</strong> (password stored in Vault), or with the <code>SMTP_*</code> variables, and send a test email. Without SMTP, invitations and password resets are not sent.</p>
 
       <h2>Upgrading</h2>
       <ol>

@@ -1,7 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
@@ -36,6 +34,7 @@ import type { WorkerEnv } from '../env.js';
 import { JobRunner, PermanentJobError } from '../jobs/job-runner.service.js';
 import { SandboxManager } from '../sandbox/sandbox-manager.service.js';
 import type { RunContext } from '../runs/run-orchestrator.service.js';
+import { BundleTooLargeError, TrustedBranch } from './trusted-branch.js';
 
 const run = promisify(execFile);
 const APPROVAL_TTL_MS = 24 * 3600_000;
@@ -128,18 +127,25 @@ export class GitBrokerService implements OnApplicationBootstrap {
       if (!BRANCH_RE.test(local) || !BRANCH_RE.test(remote)) throw new AppError('validation_failed', 'Nom de branche invalide');
       const head = await sh(['git', 'rev-parse', '--verify', `refs/heads/${local}`]);
       if (head.code !== 0) throw new AppError('validation_failed', `Branche locale inconnue : ${local}`);
-      commitSha = head.out;
-      await sh(['git', 'fetch', '--quiet', 'origin']);
-      const remoteRef = await sh(['git', 'rev-parse', '--verify', `refs/remotes/origin/${remote}`]);
-      const base = remoteRef.code === 0 ? remoteRef.out : (await sh(['git', 'rev-parse', '--verify', `refs/remotes/origin/${t.repo.defaultBranch}`])).out || null;
-      const range = base ? `${base}..${commitSha}` : commitSha;
-      const log = await sh(['git', 'log', '--format=%H%x1f%s%x1f%an', '-n', '200', range]);
-      commits = log.out ? log.out.split('\n').map((l) => { const [sha, subject, author] = l.split('\x1f'); return { sha, subject, author }; }) : [];
-      if (base) {
-        diffStat = (await sh(['git', 'diff', '--stat', base, commitSha])).out.slice(0, 20_000);
-        patchPreview = (await sh(['git', 'diff', base, commitSha])).out.slice(0, 200_000);
+      // Ce que l'humain approuve est calculé par le worker : la tête vient de la copie de confiance
+      // de la branche, la base de la forge (jamais d'un `git` de la sandbox, que l'agent contrôle).
+      const copy = await TrustedBranch.export(this.sandboxes.provider, sb.handle, local, this.env.GIT_BROKER_TMP || tmpdir()).catch((err: unknown) => {
+        if (err instanceof BundleTooLargeError) throw new AppError('validation_failed', err.message);
+        throw err;
+      });
+      try {
+        commitSha = copy.sha;
+        const remoteHead = await this.git.branchHead(t.conn, t.repo.fullName, remote);
+        const base = remoteHead ?? (await this.git.branchHead(t.conn, t.repo.fullName, t.repo.defaultBranch));
+        if (remoteHead === commitSha) throw new AppError('conflict', 'Rien à publier : la branche distante est à jour');
+        const d = await copy.describe(base);
+        commits = d.commits;
+        diffStat = d.baseKnown ? d.diffStat : 'Diff indisponible : la branche distante contient des commits absents de la branche locale (récupérez-la puis relancez la demande).';
+        patchPreview = d.patch;
+        if (d.baseKnown && remoteHead && commits.length === 0) throw new AppError('conflict', 'Rien à publier : la branche distante est à jour');
+      } finally {
+        await copy.cleanup();
       }
-      if (remoteRef.code === 0 && commits.length === 0) throw new AppError('conflict', 'Rien à publier : la branche distante est à jour');
       target = `${t.repo.fullName}:${remote}`;
       normalized = { localBranch: local, remoteBranch: remote, force: params.force === true };
       // Réécrire l'historique de la branche par défaut n'est jamais proposé à l'approbation.
@@ -151,11 +157,11 @@ export class GitBrokerService implements OnApplicationBootstrap {
       if (!BRANCH_RE.test(source) || !BRANCH_RE.test(targetBranch)) throw new AppError('validation_failed', 'Nom de branche invalide');
       commitSha = await this.git.branchHead(t.conn, t.repo.fullName, source);
       if (!commitSha) throw new AppError('conflict', `La branche ${source} n’existe pas sur le dépôt distant : publiez-la d’abord (platform_git_push)`);
-      await sh(['git', 'fetch', '--quiet', 'origin']);
-      const log = await sh(['git', 'log', '--format=%H%x1f%s%x1f%an', '-n', '200', `origin/${targetBranch}..origin/${source}`]);
-      commits = log.out ? log.out.split('\n').map((l) => { const [sha, subject, author] = l.split('\x1f'); return { sha, subject, author }; }) : [];
-      diffStat = (await sh(['git', 'diff', '--stat', `origin/${targetBranch}...origin/${source}`])).out.slice(0, 20_000) || null;
-      patchPreview = (await sh(['git', 'diff', `origin/${targetBranch}...origin/${source}`])).out.slice(0, 200_000) || null;
+      // Comparaison calculée par la forge : la sandbox ne peut pas fausser ce qui est approuvé.
+      const cmp = await this.git.compare(t.conn, t.repo.fullName, targetBranch, commitSha);
+      commits = cmp.commits;
+      diffStat = cmp.diffStat;
+      patchPreview = cmp.patch;
       target = `${t.repo.fullName}:${source} → ${targetBranch}`;
       normalized = {
         sourceBranch: source,
@@ -284,29 +290,23 @@ export class GitBrokerService implements OnApplicationBootstrap {
     }
   }
 
-  /** Push via bundle exporté de la sandbox : le credential reste côté worker. */
+  /**
+   * Push depuis la copie de confiance de la branche (bundle exporté de la sandbox, écrit sur disque) :
+   * le credential reste côté worker et seul le commit approuvé est publié.
+   */
   private async push(a: typeof gitApprovalRequests.$inferSelect, t: PreparedTarget, local: string, remote: string, force: boolean) {
     const sb = await this.sandboxes.ensureRunning(a.workspaceId);
-    const head = await execCollect(this.sandboxes.provider, sb.handle, ['git', 'rev-parse', '--verify', `refs/heads/${local}`]);
-    if (head.stdout.toString().trim() !== a.commitSha) throw new PermanentJobError('La branche locale a changé depuis l’approbation : nouvelle approbation nécessaire');
-    const bundle = await execCollect(this.sandboxes.provider, sb.handle, ['git', 'bundle', 'create', '-', `refs/heads/${local}`], { maxBytes: 2 * 1024 * 1024 * 1024, timeoutMs: 600_000 });
-    if (bundle.exitCode !== 0) throw new Error(`git bundle : ${bundle.stderr.toString().slice(0, 300)}`);
-    const dir = await mkdtemp(join(this.env.GIT_BROKER_TMP || tmpdir(), 'push-'));
-    const gitEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1', HOME: dir };
+    const copy = await TrustedBranch.export(this.sandboxes.provider, sb.handle, local, this.env.GIT_BROKER_TMP || tmpdir()).catch((err: unknown) => {
+      throw err instanceof BundleTooLargeError ? new PermanentJobError(err.message) : err;
+    });
     try {
-      await writeFile(join(dir, 'x.bundle'), bundle.stdout);
-      await run('git', ['init', '--bare', '-q', join(dir, 'repo.git')], { env: gitEnv });
-      const repo = join(dir, 'repo.git');
-      await run('git', ['-C', repo, 'bundle', 'verify', join(dir, 'x.bundle')], { env: gitEnv });
-      await run('git', ['-C', repo, 'fetch', '-q', join(dir, 'x.bundle'), `refs/heads/${local}:refs/heads/cap-push`], { env: gitEnv });
-      const { stdout } = await run('git', ['-C', repo, 'rev-parse', 'refs/heads/cap-push'], { env: gitEnv });
-      if (stdout.trim() !== a.commitSha) throw new PermanentJobError('Contenu du bundle différent du commit approuvé');
+      if (copy.sha !== a.commitSha) throw new PermanentJobError('La branche locale a changé depuis l’approbation : nouvelle approbation nécessaire');
       // Jeton dans l'environnement du processus (lisible par son seul propriétaire), pas dans ses
       // arguments (visibles de tous dans /proc).
       const remoteAuth = await this.git.authenticatedRemote(t.conn, t.repo.cloneUrl);
       try {
-        const res = await run('git', ['-C', repo, '-c', 'credential.helper=', 'push', '--porcelain', ...(force ? ['--force'] : []), remoteAuth.url, `${a.commitSha}:refs/heads/${remote}`], {
-          env: { ...gitEnv, ...remoteAuth.env },
+        const res = await run('git', ['-C', copy.repo, '-c', 'credential.helper=', 'push', '--porcelain', ...(force ? ['--force'] : []), remoteAuth.url, `${a.commitSha}:refs/heads/${remote}`], {
+          env: { ...TrustedBranch.env(copy.dir), ...remoteAuth.env },
           timeout: 300_000,
         });
         await execCollect(this.sandboxes.provider, sb.handle, ['git', 'fetch', '--quiet', 'origin'], { env: this.sandboxes.forgeEnv(sb) }).catch(() => undefined);
@@ -318,7 +318,7 @@ export class GitBrokerService implements OnApplicationBootstrap {
         throw new UncertainError(`Push au résultat incertain : ${stderr.slice(0, 500)}`);
       }
     } finally {
-      await rm(dir, { recursive: true, force: true });
+      await copy.cleanup();
     }
   }
 

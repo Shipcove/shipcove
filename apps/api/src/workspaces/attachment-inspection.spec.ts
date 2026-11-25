@@ -112,6 +112,11 @@ describe('antivirus clamd (échec fermé)', () => {
   it('sain uniquement sur « stream: OK »', async () => {
     expect(await clamScan(Buffer.from('x'), '127.0.0.1', await fakeClamd('stream: OK\0'))).toMatchObject({ status: 'clean' });
   });
+  it('analyse en flux depuis un fichier (plusieurs Mo, jamais entièrement en mémoire)', async () => {
+    const { Readable } = await import('node:stream');
+    const pieces = Array.from({ length: 30 }, () => Buffer.alloc(100_000, 0x41));
+    expect(await clamScan(() => Readable.from(pieces), '127.0.0.1', await fakeClamd('stream: OK\0'))).toMatchObject({ status: 'clean' });
+  });
   it('infecté avec la signature', async () => {
     expect(await clamScan(Buffer.from('x'), '127.0.0.1', await fakeClamd('stream: Eicar-Test-Signature FOUND\0'))).toMatchObject({ status: 'infected', signature: 'Eicar-Test-Signature' });
   });

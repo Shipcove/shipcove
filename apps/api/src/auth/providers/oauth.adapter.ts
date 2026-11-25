@@ -119,7 +119,7 @@ export class GitLabAdapter {
       subject: String(user.id),
       email: user.email,
       // /user ne renvoie que l'email principal ; `confirmed_at` atteste sa vérification lorsqu'il est présent.
-      emailVerified: !!user.email && user.confirmed_at !== null,
+      emailVerified: !user.email ? null : user.confirmed_at === undefined ? null : user.confirmed_at !== null,
       username: user.username,
       displayName: user.name,
       mfa: false,

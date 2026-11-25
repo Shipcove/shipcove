@@ -48,7 +48,7 @@ export class SettingsService implements OnModuleInit {
   }
 
   /** Met à jour une section (nouvelle version) ; validation complète contre le schéma. */
-  async update<S extends Section>(section: S, patch: Record<string, unknown>, actorId: string): Promise<PlatformSettings[S]> {
+  async update<S extends Section>(section: S, patch: Record<string, unknown>, actorId: string | null): Promise<PlatformSettings[S]> {
     const current = await this.get();
     const merged = { ...current, [section]: { ...(current[section] as object), ...patch } };
     const parsed = PlatformSettingsSchema.safeParse(merged);

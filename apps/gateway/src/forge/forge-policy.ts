@@ -6,6 +6,10 @@
  * l'approbation humaine via les outils de la plateforme.
  */
 
+import { GITHUB_ALLOWED_MUTATIONS, GITHUB_ALLOWED_WRITES, GITLAB_ALLOWED_MUTATIONS, GITLAB_ALLOWED_WRITES, mutationFields } from './forge-allowlist.js';
+
+export { mutationFields, reviewEventAllowed } from './forge-allowlist.js';
+
 export type ForgeFamily = 'github' | 'gitlab';
 
 export interface Decision {
@@ -16,6 +20,11 @@ export interface Decision {
    * branche par défaut si absent) doit être vérifiée comme pour un push.
    */
   branchWrite?: { repo: string };
+  /**
+   * Revue de PR via l'API REST : le champ `event` du corps doit être vérifié (jamais `APPROVE`,
+   * réservé à un humain).
+   */
+  reviewEvent?: true;
 }
 
 const ALLOW: Decision = { allowed: true, reason: '' };
@@ -128,7 +137,11 @@ export function decideRefUpdate(u: RefUpdate, facts: BranchFacts): Decision {
     if (facts.protectedBranches.has(branch)) return deny(`branche protégée « ${branch} » : push soumis à approbation (outil platform_git_push)`);
     return ALLOW;
   }
-  if (u.ref.startsWith('refs/tags/')) return ALLOW;
+  if (u.ref.startsWith('refs/tags/')) {
+    // Un tag existant (release) ne se réécrit pas depuis la sandbox : création seulement.
+    if (!ZERO.test(u.oldSha)) return deny(`le tag ${u.ref.slice('refs/tags/'.length)} existe déjà : sa réécriture est réservée à un humain`);
+    return ALLOW;
+  }
   return deny(`référence ${u.ref} non autorisée`);
 }
 
@@ -164,7 +177,7 @@ const WRITE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  * segments `.`/`..`, suffixe de format (`.json`), barre finale, casse.
  */
 export function normalizeApiPath(path: string): string {
-  const raw = path.split('?')[0].replace(/%2e/gi, '.').replace(/%5c/gi, '/').replace(/\\/g, '/');
+  const raw = decodePath(path.split('?')[0]).replace(/\\/g, '/');
   const out: string[] = [];
   for (const seg of raw.split('/')) {
     if (seg === '' || seg === '.') continue;
@@ -174,6 +187,27 @@ export function normalizeApiPath(path: string): string {
   let p = '/' + out.join('/');
   p = p.replace(/\.(json|xml)$/i, '');
   return p.toLowerCase();
+}
+
+/**
+ * Décode les `%XX` d'un chemin comme le ferait le routeur de la forge (`m%65rge` = `merge`), en
+ * plusieurs passes contre le double encodage. `%2F` reste encodé : il fait partie d'un segment
+ * (identifiant de projet GitLab `groupe%2Fprojet`) ; `%5C` (antislash) devient `/`.
+ */
+function decodePath(p: string): string {
+  let cur = p;
+  for (let i = 0; i < 4; i++) {
+    const next = cur.replace(/%([0-9a-f]{2})/gi, (m, hex: string) => {
+      const c = Number.parseInt(hex, 16);
+      if (c === 0x2f) return '%2f';
+      if (c === 0x5c) return '/';
+      // Octets de contrôle ou non ASCII : laissés encodés (aucune route n'en contient).
+      return c >= 0x20 && c < 0x7f ? String.fromCharCode(c) : m.toLowerCase();
+    });
+    if (next === cur) break;
+    cur = next;
+  }
+  return cur;
 }
 
 interface Rule {
@@ -186,8 +220,11 @@ const MERGE = 'fusion soumise à approbation (outil platform_merge_pull_request)
 const BRANCH_DELETE = 'suppression de branche soumise à approbation (outil platform_delete_remote_branch)';
 const SETTINGS = 'réglages, accès et suppression du dépôt réservés à un humain';
 const PERSISTENT = "création d'un accès durable (clé, jeton, runner) interdite depuis une sandbox";
+const HUMAN = 'approbation, déploiement, publication et statut de CI réservés à un humain';
 
 const GITHUB_RULES: Rule[] = [
+  { methods: '*write', path: /^\/repos\/[^/]+\/[^/]+\/(actions\/runs\/\d+\/(pending_deployments|approve|deployment_protection_rule)|actions\/workflows\/[^/]+\/dispatches|dispatches|deployments|statuses|check-runs|check-suites|releases)(\/.*)?$/, reason: HUMAN },
+  { methods: '*write', path: /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/reviews\/\d+\/dismissals$/, reason: HUMAN },
   { methods: ['PUT'], path: /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/merge$/, reason: MERGE },
   { methods: ['PUT', 'POST'], path: /^\/repos\/[^/]+\/[^/]+\/merges$/, reason: MERGE },
   { methods: ['POST'], path: /^\/repos\/[^/]+\/[^/]+\/merge-upstream$/, reason: MERGE },
@@ -209,6 +246,7 @@ const GITHUB_MUTATIONS =
   /\b(mergePullRequest|enablePullRequestAutoMerge|enqueuePullRequest|mergeBranch|deleteRef|updateRef|updateRefs|deleteRepository|updateRepository|archiveRepository|transferRepository|createBranchProtectionRule|updateBranchProtectionRule|deleteBranchProtectionRule|createRepositoryRuleset|updateRepositoryRuleset|deleteRepositoryRuleset|addDeployKey|createDeployKey|updateRepositoryWebCommitSignoffSetting|addPublicKey|updateEnterprise\w*|createEnvironment|deleteEnvironment)\b/i;
 
 const GITLAB_RULES: Rule[] = [
+  { methods: '*write', path: /^\/projects\/[^/]+\/(merge_requests\/\d+\/(approve|unapprove|approvals|reset_approvals)|pipeline|trigger\/pipeline|jobs\/\d+\/play|deployments(\/.*)?|releases(\/.*)?|statuses\/.+)$/, reason: HUMAN },
   { methods: ['PUT', 'POST'], path: /^\/projects\/[^/]+\/merge_requests\/\d+\/(merge|merge_when_pipeline_succeeds|rebase)$/, reason: MERGE },
   { methods: ['DELETE'], path: /^\/projects\/[^/]+\/repository\/(branches\/.+|merged_branches|tags\/.+)$/, reason: BRANCH_DELETE },
   { methods: ['DELETE', 'PUT'], path: /^\/projects\/[^/]+$/, reason: SETTINGS },
@@ -233,11 +271,17 @@ const GITLAB_MUTATIONS =
 export function decideApi(family: ForgeFamily, method: string, apiPath: string, graphqlQuery?: string): Decision {
   const m = method.toUpperCase();
   if (graphqlQuery !== undefined) {
-    const isMutation = /\bmutation\b/i.test(graphqlQuery);
-    const forbidden = (family === 'github' ? GITHUB_MUTATIONS : GITLAB_MUTATIONS).exec(graphqlQuery);
-    if (forbidden && isMutation) return deny(`mutation GraphQL ${forbidden[1]} : opération soumise à approbation ou réservée à un humain`);
-    if (isMutation && /\b(createCommitOnBranch|commitCreate)\b/i.test(graphqlQuery)) {
-      return deny('commit direct par GraphQL non pris en charge : utilisez git push');
+    if (!/\bmutation\b/i.test(graphqlQuery)) return ALLOW;
+    // Champs réellement appelés (hors chaînes et commentaires) : un texte qui cite une mutation
+    // interdite (corps d'un commentaire) n'est pas refusé, un alias ou un fragment ne la cache pas.
+    const fields = mutationFields(graphqlQuery);
+    if (fields === null) return deny('document GraphQL non contrôlable (fragment au premier niveau d’une mutation ou syntaxe invalide)');
+    const forbiddenRe = family === 'github' ? GITHUB_MUTATIONS : GITLAB_MUTATIONS;
+    const allowed = family === 'github' ? GITHUB_ALLOWED_MUTATIONS : GITLAB_ALLOWED_MUTATIONS;
+    for (const f of fields) {
+      if (/^(createCommitOnBranch|commitCreate)$/i.test(f)) return deny('commit direct par GraphQL non pris en charge : utilisez git push');
+      if (forbiddenRe.exec(f)?.[0].length === f.length) return deny(`mutation GraphQL ${f} : opération soumise à approbation ou réservée à un humain`);
+      if (!allowed.has(f.toLowerCase())) return deny(`mutation GraphQL ${f} non prévue pour l’agent (réservée à un humain)`);
     }
     return ALLOW;
   }
@@ -254,7 +298,9 @@ export function decideApi(family: ForgeFamily, method: string, apiPath: string, 
     const methodOk = r.methods === '*write' ? true : r.methods.includes(m);
     if (methodOk && r.path.test(apiPath)) return deny(r.reason);
   }
-  return ALLOW;
+  const hit = (family === 'github' ? GITHUB_ALLOWED_WRITES : GITLAB_ALLOWED_WRITES).find((a) => a.methods.includes(m) && a.path.test(apiPath));
+  if (!hit) return deny(`écriture ${m} ${apiPath} non prévue pour l’agent (réservée à un humain)`);
+  return hit.reviewEvent ? { allowed: true, reason: '', reviewEvent: true } : ALLOW;
 }
 
 /**
@@ -312,4 +358,31 @@ export function methodOverride(headers: Record<string, string | string[] | undef
 /** Les pages web d'une forge (hors API et Git) : lecture seule depuis la sandbox. */
 export function decideWeb(method: string): Decision {
   return WRITE.has(method.toUpperCase()) ? deny('interface web de la forge en lecture seule depuis la sandbox (utilisez gh, glab ou l’API)') : ALLOW;
+}
+
+/**
+ * Dépôt visé par une écriture (`owner/repo`, chemin GitLab ou identifiant numérique GitLab), en
+ * minuscules ; `null` si l'écriture ne vise pas un dépôt identifiable par son chemin (GraphQL,
+ * rendu Markdown).
+ */
+export function writeTargetRepo(family: ForgeFamily, host: string, path: string): string | null {
+  const git = gitRequest(path);
+  if (git) return git.repo.toLowerCase().replace(/\.git$/, '');
+  const pathname = normalizeApiPath(path);
+  const lfs = /^\/(.+?)(?:\.git)?\/info\/lfs(\/|$)/.exec(pathname);
+  if (lfs) return lfs[1];
+  const api = apiTarget(family, host, path);
+  if (api?.kind !== 'rest') return null;
+  if (family === 'github') {
+    const m = /^\/repos\/([^/]+)\/([^/]+)(\/|$)/.exec(api.path);
+    return m ? `${m[1]}/${m[2]}` : null;
+  }
+  const m = /^\/projects\/([^/]+)(\/|$)/.exec(api.path);
+  return m ? m[1].replace(/%2f/g, '/') : null;
+}
+
+/** Le dépôt visé est-il celui de la conversation (nom complet, ou identifiant numérique GitLab) ? */
+export function isWorkspaceRepo(candidate: string, repo: { fullName: string; externalId: string | null }): boolean {
+  const c = candidate.toLowerCase();
+  return c === repo.fullName.toLowerCase() || (!!repo.externalId && /^\d+$/.test(c) && c === repo.externalId);
 }

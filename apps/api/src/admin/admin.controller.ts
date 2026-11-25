@@ -26,6 +26,7 @@ import {
   creditLedger,
   emailTemplates,
   localCredentials,
+  oneTimeTokens,
   mfaFactors,
   quotaPolicies,
   retentionPolicies,
@@ -37,7 +38,7 @@ import {
   workspaces,
   type Database,
 } from '@cap/database';
-import { AppError, AuditService, DB, JobsService, NotificationService, ObjectStorage, QuotaService, SECRETS, SettingsService, randomToken, sha256Hex } from '@cap/server-core';
+import { AppError, AuditService, DB, ENV, JobsService, NotificationService, ObjectStorage, QuotaService, SECRETS, SettingsService, randomToken, sha256Hex } from '@cap/server-core';
 import { isUniqueViolation } from '@cap/server-core';
 import { CurrentUser, PlatformAdmin, ReqCtx, type RequestContext } from '../common/decorators.js';
 import type { AuthUser } from '../common/request.js';
@@ -46,6 +47,7 @@ import { SessionService } from '../auth/session.service.js';
 import { MfaService } from '../auth/mfa.service.js';
 import { SandboxRpcClient } from '../workspaces/sandbox-rpc.client.js';
 import { LiteLlmAdminService } from './litellm.service.js';
+import type { ApiEnv } from '../env.js';
 
 const uuid = { schema: z.uuid() };
 
@@ -60,6 +62,7 @@ export class AdminController {
   constructor(
     @Inject(DB) private readonly db: Database,
     @Inject(SECRETS) private readonly secrets: SecretProvider,
+    @Inject(ENV) private readonly env: ApiEnv,
     private readonly settings: SettingsService,
     private readonly audit: AuditService,
     private readonly quotas: QuotaService,
@@ -216,29 +219,34 @@ export class AdminController {
 
   @Post('users')
   async createUser(@Body({ schema: AdminCreateUserSchema }) body: z.infer<typeof AdminCreateUserSchema>, @CurrentUser() user: AuthUser, @ReqCtx() ctx: RequestContext) {
-    const [u] = await this.db
-      .insert(users)
-      .values({ email: body.email.toLowerCase(), username: body.username, displayName: body.displayName, platformRole: body.platformRole, status: 'active', emailVerifiedAt: new Date() })
-      .returning()
+    // Mot de passe vérifié AVANT la création : un refus ne laisse pas de compte orphelin.
+    if (body.password) {
+      const e = this.passwords.validate(body.password, body);
+      if (e) throw new AppError('validation_failed', e);
+    }
+    const passwordHash = await this.passwords.hash(body.password ?? randomToken(32));
+    const token = body.password ? null : randomToken(32);
+    const u = await this.db
+      .transaction(async (tx) => {
+        const [row] = await tx
+          .insert(users)
+          .values({ email: body.email.toLowerCase(), username: body.username, displayName: body.displayName, platformRole: body.platformRole, status: 'active', emailVerifiedAt: new Date() })
+          .returning();
+        await tx.insert(localCredentials).values({ userId: row.id, passwordHash });
+        // Sans mot de passe : lien de définition (flux de réinitialisation, valable 7 jours).
+        if (token) await tx.insert(oneTimeTokens).values({ userId: row.id, purpose: 'password_reset', tokenHash: sha256Hex(token), expiresAt: new Date(Date.now() + 7 * 24 * 3600_000) });
+        return row;
+      })
       .catch((err: unknown) => {
         if (isUniqueViolation(err)) throw new AppError('conflict', 'Email ou identifiant déjà utilisé');
         throw err;
       });
-    if (body.password) {
-      const e = this.passwords.validate(body.password, body);
-      if (e) throw new AppError('validation_failed', e);
-      await this.db.insert(localCredentials).values({ userId: u.id, passwordHash: await this.passwords.hash(body.password) });
-    } else {
-      // Lien de définition du mot de passe (réutilise le flux de réinitialisation).
-      await this.db.insert(localCredentials).values({ userId: u.id, passwordHash: await this.passwords.hash(randomToken(32)) });
-      const token = randomToken(32);
-      const { oneTimeTokens } = await import('@cap/database');
-      await this.db.insert(oneTimeTokens).values({ userId: u.id, purpose: 'password_reset', tokenHash: sha256Hex(token), expiresAt: new Date(Date.now() + 7 * 24 * 3600_000) });
+    if (token) {
       await this.notifications.sendEmail({
         to: u.email,
         userId: u.id,
         template: 'auth.password_reset',
-        vars: { name: u.displayName, link: `/auth/reset-password?token=${token}` },
+        vars: { name: u.displayName, link: `${this.env.PUBLIC_URL.replace(/\/+$/, '')}/auth/reset-password?token=${token}` },
         idempotencyKey: `welcome:${u.id}`,
       });
     }
@@ -320,7 +328,7 @@ export class AdminController {
   @Get('audit/export')
   async auditExport(@Query({ schema: AuditQuerySchema }) q: z.infer<typeof AuditQuerySchema>, @Res() res: Response, @CurrentUser() user: AuthUser) {
     const rows = await this.auditSearch({ ...q, limit: 500 });
-    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const esc = (v: unknown) => `"${csvSafe(String(v ?? '')).replace(/"/g, '""')}"`;
     const csv = ['occurred_at,actor_id,actor_label,action,target_type,target_id,outcome,ip,metadata']
       .concat(rows.map((r) => [r.occurredAt, r.actorId, r.actorLabel, r.action, r.targetType, r.targetId, r.outcome, r.ip, JSON.stringify(r.metadata)].map(esc).join(',')))
       .join('\n');
@@ -522,4 +530,12 @@ export class AdminController {
   instances() {
     return this.db.select().from(serviceInstances).orderBy(desc(serviceInstances.heartbeatAt));
   }
+}
+
+/**
+ * Cellule CSV inerte dans un tableur : une valeur qui commence par =, +, -, @ (ou tabulation, retour)
+ * serait interprétée comme une formule (ex. identifiant saisi par un anonyme à la connexion).
+ */
+export function csvSafe(v: string): string {
+  return /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
 }

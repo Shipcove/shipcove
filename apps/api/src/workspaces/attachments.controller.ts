@@ -1,10 +1,15 @@
 import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import { open, readFile, unlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { Controller, Delete, Get, HttpCode, Inject, Injectable, Param, Post, Res, UploadedFiles, UseGuards, UseInterceptors, type CanActivate, type ExecutionContext } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { and, eq, isNull } from 'drizzle-orm';
-import { fileTypeFromBuffer } from 'file-type';
+import { fileTypeFromFile } from 'file-type';
 import { z } from 'zod';
 import { toAttachmentDto, type AttachmentDto } from '@cap/contracts';
 import { attachments, type Database } from '@cap/database';
@@ -20,11 +25,36 @@ const ARCHIVE_TYPES = new Set(['application/zip', 'application/x-tar', 'applicat
 const ALLOWED_BINARY = new Set(['application/pdf']);
 const FORBIDDEN_EXT = /\.(exe|dll|msi|scr|com|bat|cmd|ps1|vbs|jar|apk|dmg|iso)$/i;
 
+/** Fichier reçu par Multer, écrit sur disque (jamais entièrement en mémoire). */
 interface UploadedFile {
   originalname: string;
   mimetype: string;
   size: number;
-  buffer: Buffer;
+  path: string;
+}
+
+/**
+ * Dossier temporaire des envois : chaque fichier y est écrit pendant la réception, puis analysé et
+ * envoyé vers S3 en flux, et supprimé. Plusieurs envois simultanés de 200 Mo ne saturent plus la
+ * mémoire de l'API (dimensionner le disque : Helm `api.tmpSize`).
+ */
+const UPLOAD_DIR = process.env.ATTACHMENTS_TMP_DIR || join(tmpdir(), 'cap-uploads');
+
+async function headOf(path: string, bytes = 8192): Promise<Buffer> {
+  const fh = await open(path, 'r');
+  try {
+    const buf = Buffer.alloc(bytes);
+    const { bytesRead } = await fh.read(buf, 0, bytes, 0);
+    return buf.subarray(0, bytesRead);
+  } finally {
+    await fh.close();
+  }
+}
+
+async function sha256Of(path: string): Promise<string> {
+  const h = createHash('sha256');
+  await pipeline(createReadStream(path), h);
+  return h.digest('hex');
 }
 
 /** Plafond absolu par fichier (le réglage administrateur est borné à cette valeur). */
@@ -70,8 +100,17 @@ export class AttachmentsController {
 
   @Post()
   @UseGuards(UploadSizeGuard)
-  @UseInterceptors(FilesInterceptor('files', 50, { limits: { fileSize: HARD_MAX_FILE_MB * 1024 * 1024, files: 50, fields: 10, parts: 60 } }))
+  @UseInterceptors(FilesInterceptor('files', 50, { dest: UPLOAD_DIR, limits: { fileSize: HARD_MAX_FILE_MB * 1024 * 1024, files: 50, fields: 10, parts: 60 } }))
   async upload(@Param('id', uuid) id: string, @UploadedFiles() files: UploadedFile[], @CurrentUser() user: AuthUser): Promise<AttachmentDto[]> {
+    try {
+      return await this.processUploads(id, files ?? [], user);
+    } finally {
+      // Fichiers temporaires toujours supprimés, y compris en cas de refus ou d'erreur.
+      await Promise.all((files ?? []).map((f) => unlink(f.path).catch(() => undefined)));
+    }
+  }
+
+  private async processUploads(id: string, files: UploadedFile[], user: AuthUser): Promise<AttachmentDto[]> {
     await this.access.requireWorkspaceOwner(user, id);
     const cfg = await this.settings.section('attachments');
     if (!files?.length) throw new AppError('validation_failed', 'Aucun fichier');
@@ -81,8 +120,8 @@ export class AttachmentsController {
       const name = f.originalname.replace(/[/\\\0]/g, '_').slice(0, 200) || 'fichier';
       let status: 'ready' | 'rejected' = 'ready';
       let reason: string | null = null;
-      const detected = await fileTypeFromBuffer(f.buffer);
-      const mime = detected?.mime ?? (isProbablyText(f.buffer) ? 'text/plain' : 'application/octet-stream');
+      const detected = await fileTypeFromFile(f.path);
+      const mime = detected?.mime ?? (isProbablyText(await headOf(f.path)) ? 'text/plain' : 'application/octet-stream');
       const kind: AttachmentDto['kind'] = IMAGE_TYPES.has(mime) ? 'image' : ARCHIVE_TYPES.has(mime) ? 'archive' : mime === 'text/plain' ? 'text' : 'binary';
       if (f.size > cfg.maxFileMb * 1024 * 1024) [status, reason] = ['rejected', `Taille > ${cfg.maxFileMb} Mo`];
       else if (FORBIDDEN_EXT.test(name)) [status, reason] = ['rejected', 'Type de fichier exécutable interdit'];
@@ -90,16 +129,17 @@ export class AttachmentsController {
       else if (kind === 'binary' && !ALLOWED_BINARY.has(mime)) [status, reason] = ['rejected', `Type non autorisé (${mime})`];
       else if (detected && f.mimetype.startsWith('image/') && !IMAGE_TYPES.has(mime)) [status, reason] = ['rejected', 'Type déclaré incohérent avec le contenu'];
       if (status === 'ready' && kind === 'archive') {
-        const verdict = inspectArchive(f.buffer, mime, { maxEntries: cfg.maxArchiveEntries, maxExpandedBytes: cfg.maxArchiveExpandedMb * 1024 * 1024 });
+        // Seules les archives sont lues en entier (une à la fois, bornées par la taille maximale).
+        const verdict = inspectArchive(await readFile(f.path), mime, { maxEntries: cfg.maxArchiveEntries, maxExpandedBytes: cfg.maxArchiveExpandedMb * 1024 * 1024 });
         if (!verdict.ok) [status, reason] = ['rejected', verdict.reason];
       }
       let scan: Record<string, unknown> = { engine: null, status: 'disabled' };
       if (status === 'ready') {
-        scan = await clamScan(f.buffer);
+        scan = await clamScan(() => createReadStream(f.path));
         if (scan.status === 'infected') [status, reason] = ['rejected', `Logiciel malveillant détecté (${scan.signature})`];
         else if (scan.status === 'error') [status, reason] = ['rejected', 'Analyse antivirus indisponible : fichier refusé par précaution'];
       }
-      const sha = createHash('sha256').update(f.buffer).digest('hex');
+      const sha = await sha256Of(f.path);
       const [row] = await this.db
         .insert(attachments)
         .values({
@@ -117,7 +157,7 @@ export class AttachmentsController {
           scan,
         })
         .returning();
-      if (status === 'ready') await this.storage.put(this.storage.attachmentsBucket, row.storageKey, f.buffer, { contentType: mime, contentLength: f.size });
+      if (status === 'ready') await this.storage.put(this.storage.attachmentsBucket, row.storageKey, createReadStream(f.path), { contentType: mime, contentLength: f.size });
       await this.audit.record({ actorId: user.id, action: 'attachment.upload', targetType: 'attachment', targetId: row.id, outcome: status === 'ready' ? 'success' : 'failure', metadata: { name, mime, size: f.size, reason } });
       out.push(toDto(row));
     }

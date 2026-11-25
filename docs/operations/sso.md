@@ -4,6 +4,11 @@ La connexion locale (identifiant + mot de passe, MFA TOTP) fonctionne sans fourn
 Les fournisseurs se gèrent dans **Administration → IAM & connexion** (administrateur plateforme).
 Pour chacun : *Enregistrer* (désactivé par défaut), *Tester*, puis *Activer*.
 
+Ils peuvent aussi être déclarés par variables d'environnement de l'API (`SSO_OIDC_*`, `SSO_SAML_*`,
+`SSO_LDAP_*`, `SSO_GITHUB_*`, `SSO_GITLAB_*`, ou `SSO_PROVIDERS` en JSON), appliquées à chaque
+démarrage : voir [`environment.md`](environment.md#fournisseurs-didentité-sso). Les champs sont
+ceux décrits ci-dessous.
+
 Les exemples ci-dessous ne contiennent aucun secret réel. Les secrets saisis dans la console
 (secret client, mot de passe de liaison, clé privée SAML) sont écrits dans **Vault**
 (`<montage KV>/auth-providers/<id>`). L'API ne les renvoie jamais, et laisser le champ vide conserve
@@ -30,6 +35,11 @@ URL de retour : chaque fournisseur affiche dans la console l'URL à déclarer ch
   Il n'est pas créé si l'adresse email appartient déjà à un compte : l'utilisateur se connecte
   alors avec ce compte, puis va dans **Paramètres → Sécurité → Identités de connexion →
   Rattacher**.
+- **Email non vérifié** : aucun compte n'est créé avec une adresse que le fournisseur déclare non
+  vérifiée (`email_verified: false` en OIDC, email non confirmé sur GitLab). Sinon, n'importe qui
+  pourrait réserver l'adresse d'un collègue. Un fournisseur qui n'envoie pas cette information
+  (Entra ID, par exemple) reste accepté, sauf avec `requireVerifiedEmail: true` dans la
+  configuration OIDC ou GitLab. LDAP et SAML (annuaires gérés par l'entreprise) ne sont pas concernés.
 - Un utilisateur ne peut pas retirer sa dernière méthode de connexion.
 
 ## OIDC / Keycloak

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildSettingsJson, PI_KEEP_RECENT_TOKENS, PI_RESERVE_TOKENS } from '@cap/agent-runtime';
 import { contextPercent } from '@cap/contracts';
-import { nothingToCompact } from './run-orchestrator.service.js';
+import { nothingToCompact, sandboxLossReason } from './run-orchestrator.service.js';
 
 describe('compaction', () => {
   it('traduit les refus de Pi qui ne sont pas des échecs', () => {
@@ -20,5 +20,19 @@ describe('compaction', () => {
     expect(contextPercent(null, 100_000)).toBeNull();
     expect(contextPercent(1000, 0)).toBeNull();
     expect(contextPercent(1000, null)).toBeNull();
+  });
+});
+
+describe('surveillance de la sandbox pendant un run', () => {
+  const t0 = '2026-11-25T10:00:00Z';
+  it('sandbox en marche, même démarrage : rien à signaler', () => {
+    expect(sandboxLossReason({ state: 'running', exitCode: null, startedAt: t0 }, t0)).toBeNull();
+    expect(sandboxLossReason({ state: 'creating', exitCode: null, startedAt: null }, t0)).toBeNull();
+  });
+  it('arrêt, disparition ou redémarrage : run à clore, avec la cause', () => {
+    expect(sandboxLossReason({ state: 'stopped', exitCode: 137, startedAt: t0 }, t0)).toMatch(/arrêtée.*code 137.*mémoire/);
+    expect(sandboxLossReason({ state: 'stopped', exitCode: 0, startedAt: t0 }, t0)).toMatch(/arrêtée.*code 0\)/);
+    expect(sandboxLossReason({ state: 'missing', exitCode: null, startedAt: null }, t0)).toMatch(/disparu/);
+    expect(sandboxLossReason({ state: 'running', exitCode: null, startedAt: '2026-11-25T10:05:00Z' }, t0)).toMatch(/redémarré/);
   });
 });

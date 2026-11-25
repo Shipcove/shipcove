@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ForgeCaService } from './forge-ca.service.js';
 import { ForgeProxyService } from './forge-proxy.service.js';
 
+const IDLE_TOKEN = `cap_rt_${'i'.repeat(30)}`;
 const RUN_TOKEN = 'cap_rt_' + 'x'.repeat(32);
 const REAL = 'gho_REALTOKEN_never_in_sandbox';
 const A = 'a'.repeat(40);
@@ -29,6 +30,9 @@ describe('proxy des forges (interception TLS)', () => {
   let proxy: http.Server;
   const seen: Seen[] = [];
   const audits: unknown[] = [];
+  const scope = { value: 'workspace_repository' };
+  const GH_REPO = { host: 'github.com', fullName: 'O/R', externalId: '42' };
+  const wsRepo = { value: GH_REPO };
 
   beforeAll(async () => {
     const store = new Map<string, Record<string, string>>();
@@ -64,7 +68,12 @@ describe('proxy des forges (interception TLS)', () => {
     await new Promise<void>((r) => plainUpstream.listen(0, '127.0.0.1', () => r()));
 
     const tokens = {
-      authenticate: async (h: string) => (h === `Bearer ${RUN_TOKEN}` ? { tokenId: 't', workspaceId: 'w', userId: 'u', teamId: 'tm', runId: 'r', runStatus: 'running' } : null),
+      authenticate: async (h: string) =>
+        h === `Bearer ${RUN_TOKEN}`
+          ? { tokenId: 't', workspaceId: 'w', userId: 'u', teamId: 'tm', runId: 'r', runStatus: 'running' }
+          : h === `Bearer ${IDLE_TOKEN}`
+            ? { tokenId: 't2', workspaceId: 'w', userId: 'u', teamId: 'tm', runId: null, runStatus: null }
+            : null,
     };
     const git = {
       token: async () => REAL,
@@ -74,8 +83,10 @@ describe('proxy des forges (interception TLS)', () => {
     };
     const audit = { record: async (e: unknown) => void audits.push(e) };
     const env = { EGRESS_BLOCK_PRIVATE: true };
-    forge = new ForgeProxyService(env as never, {} as never, tokens as never, git as never, ca, audit as never);
+    const settings = { section: async () => ({ agentWriteScope: scope.value }) };
+    forge = new ForgeProxyService(env as never, {} as never, tokens as never, git as never, ca, audit as never, settings as never);
     Object.assign(forge, {
+      workspaceRepo: async () => wsRepo.value,
       selfHosted: async () => new Map([['forge.test:8929', { family: 'gitlab', connHost: 'forge.test:8929' }]]),
       connection: async () => ({ id: 'c1', provider: 'github', host: 'github.com' }),
     });
@@ -144,6 +155,43 @@ describe('proxy des forges (interception TLS)', () => {
     expect(audits.at(-1)).toMatchObject({ action: 'git.agent_write', outcome: 'success' });
   });
 
+  it('écritures limitées au dépôt de la conversation (git.agentWriteScope)', async () => {
+    const h = { authorization: `token ${RUN_TOKEN}`, 'content-type': 'application/json' };
+    const before = seen.length;
+    const other = await request('api.github.com', 'POST', '/repos/autre/depot/issues', h, '{"title":"t"}');
+    expect(other.status).toBe(403);
+    expect(JSON.parse(other.body.toString()).message).toContain('dépôt de la conversation (O/R)');
+    expect(seen.length).toBe(before);
+    expect((await request('api.github.com', 'POST', '/repos/o/r/issues', h, '{"title":"t"}')).status).toBe(200);
+    expect((await request('api.github.com', 'GET', '/repos/autre/depot', h)).status).toBe(200);
+    scope.value = 'any';
+    try {
+      expect((await request('api.github.com', 'POST', '/repos/autre/depot/issues', h, '{"title":"t"}')).status).toBe(200);
+    } finally {
+      scope.value = 'workspace_repository';
+    }
+  });
+
+  it('aucune écriture hors run ; lecture toujours possible', async () => {
+    const before = seen.length;
+    const w = await request('api.github.com', 'POST', '/repos/o/r/pulls', { authorization: `token ${IDLE_TOKEN}`, 'content-type': 'application/json' }, '{"title":"t"}');
+    expect(w.status).toBe(403);
+    expect(JSON.parse(w.body.toString()).message).toContain('pendant un run');
+    expect(seen.length).toBe(before);
+    expect((await request('api.github.com', 'GET', '/user', { authorization: `token ${IDLE_TOKEN}` })).status).toBe(200);
+  });
+
+  it('revue : approbation refusée, commentaire relayé ; corps compressé refusé', async () => {
+    const before = seen.length;
+    const h = { authorization: `token ${RUN_TOKEN}`, 'content-type': 'application/json' };
+    expect((await request('api.github.com', 'POST', '/repos/o/r/pulls/3/reviews', h, '{"event":"APPROVE"}')).status).toBe(403);
+    expect(seen.length).toBe(before);
+    expect((await request('api.github.com', 'POST', '/repos/o/r/pulls/3/reviews', h, '{"event":"COMMENT","body":"x"}')).status).toBe(200);
+    expect(seen.at(-1)!.body).toBe('{"event":"COMMENT","body":"x"}');
+    const gz = await request('api.github.com', 'POST', '/graphql', { ...h, 'content-encoding': 'gzip' }, zlib.gzipSync('{"query":"mutation{mergePullRequest(input:{}){clientMutationId}}"}'));
+    expect(gz.status).toBe(415);
+  });
+
   it('refuse la fusion sans contacter la forge', async () => {
     const before = seen.length;
     const r = await request('api.github.com', 'PUT', '/repos/o/r/pulls/1/merge', { authorization: `token ${RUN_TOKEN}` });
@@ -207,6 +255,8 @@ describe('proxy des forges (interception TLS)', () => {
   });
 
   it.each([['https://github.com/o/r.git'], ['http://forge.test:8929/g/r.git']])('git réel (%s) : le refus d’un push sur main s’affiche et git se termine', async (remote) => {
+    // Dépôt de la conversation : celui du remote testé (portée des écritures par défaut).
+    wsRepo.value = remote.includes('forge.test') ? { host: 'forge.test:8929', fullName: 'g/r', externalId: '7' } : GH_REPO;
     const { execFileSync, spawn } = await import('node:child_process');
     const { mkdtempSync, writeFileSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');

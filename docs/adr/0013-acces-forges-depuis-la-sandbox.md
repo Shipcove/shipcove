@@ -60,6 +60,20 @@ entrer le jeton de l'utilisateur.
    - **Accès durables** : clés SSH ou GPG, clés et jetons de déploiement, jetons d'accès, runners,
      secrets et variables de CI, Codespaces.
    - **Écritures dans l'interface web** de la forge, hors API, Git et LFS.
+   - **Approbations et déploiements** : approbation d'une PR/MR (revue `APPROVE`, `approve` GitLab),
+     approbation de déploiements, déclenchement de workflows ou de pipelines, statuts de CI,
+     publications (releases), rejet des revues d'autrui.
+   - **Réécriture d'un tag existant** (création de tag autorisée).
+
+   Depuis la revue de sécurité de novembre 2026, les écritures d'API sont une **liste blanche**
+   (`apps/gateway/src/forge/forge-allowlist.ts`) : toute écriture qui n'y figure pas est refusée,
+   y compris une API nouvelle de la forge. Les chemins sont entièrement décodés avant les règles
+   (`m%65rge` = `merge`) ; les mutations GraphQL sont analysées champ par champ (alias, fragments).
+   Par défaut (`git.agentWriteScope = workspace_repository`), une écriture ne vise que le dépôt de
+   la conversation (git, LFS, REST) ; `any` rétablit l'accès à tous les dépôts de l'utilisateur.
+   Une écriture n'est relayée que **pendant un run en cours** : un processus resté en arrière-plan
+   ne publie plus rien une fois le run terminé. Les corps compressés ne sont pas acceptés sur les
+   écritures d'API.
 
    Ces actions restent possibles par les outils de la plateforme, avec approbation humaine :
    `platform_git_push`, `platform_merge_pull_request` et `platform_delete_remote_branch`.
@@ -83,12 +97,17 @@ entrer le jeton de l'utilisateur.
   - push de branches de travail ;
   - PR/MR, commentaires et revues ;
   - CI : journaux et relances ;
-  - tickets et releases.
-- Une injection de prompt réussie peut agir sur la forge au nom de l'utilisateur pendant la vie de
-  la sandbox : pousser des branches, ouvrir des PR, commenter. Elle ne peut ni toucher la branche
-  par défaut, ni fusionner, ni supprimer, ni obtenir un accès durable, ni emporter le jeton.
-- Les listes de refus (REST et GraphQL) sont maintenues dans `apps/gateway/src/forge/forge-policy.ts`.
-  Une nouvelle API des forges qui donnerait l'un de ces pouvoirs doit y être ajoutée.
+  - tickets.
+- Une injection de prompt réussie peut agir sur la forge au nom de l'utilisateur pendant un run :
+  pousser des branches, ouvrir des PR, commenter. Elle ne peut ni toucher la branche par défaut, ni
+  fusionner, ni approuver, ni déployer, ni supprimer, ni obtenir un accès durable, ni emporter le
+  jeton.
+- Risque résiduel : une branche poussée déclenche la CI de la forge. Sur GitLab, un
+  `.gitlab-ci.yml` modifié s'exécute avec les variables CI **non protégées** : marquez « protégées »
+  les variables sensibles (elles ne sont alors fournies qu'aux branches protégées). Sur GitHub, la
+  portée OAuth `workflow` n'est pas demandée : un push qui modifie `.github/workflows` est refusé.
+- Les écritures autorisées sont dans `apps/gateway/src/forge/forge-allowlist.ts`, les refus
+  explicites (avec leur message) dans `forge-policy.ts`.
 - Les protections propres à la forge (branches protégées, règles) restent appliquées par la forge
   elle-même.
 

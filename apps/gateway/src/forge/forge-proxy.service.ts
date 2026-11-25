@@ -6,8 +6,8 @@ import zlib from 'node:zlib';
 import { lookup } from 'node:dns/promises';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import { gitConnections, type Database } from '@cap/database';
-import { AuditService, DB, ENV, GitProviderClient, redactString } from '@cap/server-core';
+import { gitConnections, repositories, workspaces, type Database } from '@cap/database';
+import { AuditService, DB, ENV, GitProviderClient, SettingsService, redactString } from '@cap/server-core';
 import type { GatewayEnv } from '../env.js';
 import { RunTokenService, type RunPrincipal } from '../run-token.service.js';
 import { isPrivateAddress } from '../egress/egress-policy.js';
@@ -19,11 +19,14 @@ import {
   decideWeb,
   extractRunToken,
   gitRequest,
+  isWorkspaceRepo,
+  writeTargetRepo,
   graphqlText,
   methodOverride,
   normalizeApiPath,
   parseReceivePack,
   receivePackRejection,
+  reviewEventAllowed,
   type Decision,
   type ForgeFamily,
 } from './forge-policy.js';
@@ -87,8 +90,25 @@ export class ForgeProxyService {
     private readonly git: GitProviderClient,
     private readonly ca: ForgeCaService,
     private readonly audit: AuditService,
+    private readonly settings: SettingsService,
   ) {
     this.server.on('clientError', (_e, s) => s.destroy());
+  }
+
+  /**
+   * Portée des écritures (`git.agentWriteScope`) : par défaut, l'agent n'écrit que dans le dépôt
+   * de la conversation. Une écriture sans dépôt identifiable par son chemin (GraphQL, Markdown)
+   * reste soumise aux seules règles d'opérations.
+   */
+  private async assertWriteScope(principal: RunPrincipal, target: ForgeTarget, path: string): Promise<void> {
+    const { agentWriteScope } = await this.settings.section('git');
+    if (agentWriteScope === 'any') return;
+    const candidate = writeTargetRepo(target.family, target.host, path);
+    if (candidate === null) return;
+    const row = await this.workspaceRepo(principal.workspaceId);
+    if (!row || row.host.toLowerCase() !== target.connHost.toLowerCase() || !isWorkspaceRepo(candidate, row)) {
+      throw new Denied(403, `Refusé par la plateforme : l’agent n’écrit que dans le dépôt de la conversation${row ? ` (${row.fullName})` : ' (aucun dépôt rattaché)'} ; réglage git.agentWriteScope.`);
+    }
   }
 
   /* ------------------------------ forges ------------------------------ */
@@ -168,6 +188,12 @@ export class ForgeProxyService {
         // Git demande alors ses identifiants (assistant de la sandbox → jeton de run).
         if (git || write) throw new Denied(401, 'Authentification requise : utilisez le jeton de run de la sandbox (configuré pour git, gh et glab).');
       } else {
+        // Écriture seulement pendant un run en cours : un processus laissé en arrière-plan par
+        // l'agent (ou une dépendance piégée) ne publie plus rien une fois le run terminé.
+        if ((write || git?.kind === 'receive-pack' || git?.service === 'git-receive-pack') && principal.runStatus !== 'running') {
+          throw new Denied(403, 'Refusé par la plateforme : écriture vers la forge possible seulement pendant un run de l’agent.');
+        }
+        if (write || git?.kind === 'receive-pack' || git?.service === 'git-receive-pack') await this.assertWriteScope(principal, target, path);
         conn = await this.connection(principal.userId, target.connHost);
         if (!conn && (write || git?.kind === 'receive-pack' || git?.service === 'git-receive-pack')) {
           throw new Denied(403, `Aucun compte ${target.connHost} rattaché : Paramètres → Connexions Git.`);
@@ -178,6 +204,10 @@ export class ForgeProxyService {
       let decision: Decision = { allowed: true, reason: '' };
       const search = path.includes('?') ? path.slice(path.indexOf('?')) : '';
       if (methodOverride(req.headers, search)) throw new Denied(403, 'Refusé par la plateforme : surcharge de méthode HTTP non acceptée.');
+      // Corps inspectés par les garde-fous (API) : jamais compressés, sinon le contrôle serait aveugle.
+      if (!git && write && req.headers['content-encoding'] && !/^identity$/i.test(String(req.headers['content-encoding']))) {
+        throw new Denied(415, 'Refusé par la plateforme : corps de requête compressé non contrôlable (Content-Encoding).');
+      }
       if (git?.kind === 'receive-pack') {
         const r = await this.inspectReceivePack(req, res, target, conn!, git.repo);
         if (!r) return; // refus déjà envoyé au format git
@@ -195,6 +225,12 @@ export class ForgeProxyService {
           if (decision.allowed && decision.branchWrite) {
             body = await readBody(req, MAX_INSPECT);
             await this.checkApiBranch(conn!, decision.branchWrite.repo, parseJson<{ branch?: string }>(body)?.branch);
+          }
+          if (decision.allowed && decision.reviewEvent) {
+            body = await readBody(req, 2 * 1024 * 1024);
+            if (!reviewEventAllowed(parseJson<unknown>(body))) {
+              decision = { allowed: false, reason: 'approbation d’une PR réservée à un humain (revue « COMMENT » ou « REQUEST_CHANGES » seulement)' };
+            }
           }
         } else {
           // Interface web : lecture seule ; Git LFS (batch, verrous) sur le chemin seul, jamais la requête.
@@ -226,6 +262,15 @@ export class ForgeProxyService {
       if (status === 401) headers['WWW-Authenticate'] = 'Basic realm="Shipcove"';
       res.writeHead(status, headers).end(JSON.stringify({ message, documentation_url: 'https://github.com/Shipcove/shipcove' }));
     }
+  }
+
+  private async workspaceRepo(workspaceId: string): Promise<{ host: string; fullName: string; externalId: string | null } | null> {
+    const [row] = await this.db
+      .select({ host: repositories.host, fullName: repositories.fullName, externalId: repositories.externalId })
+      .from(workspaces)
+      .innerJoin(repositories, eq(repositories.id, workspaces.repositoryId))
+      .where(eq(workspaces.id, workspaceId));
+    return row ?? null;
   }
 
   private async connection(userId: string, host: string): Promise<Conn | null> {

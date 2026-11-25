@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LdapConfigSchema, OidcConfigSchema } from '@cap/contracts';
-import { safeReturnTo } from './federation.service.js';
+import { emailAcceptedForProvisioning, safeReturnTo } from './federation.service.js';
 import { amrIndicatesMfa } from './federation.types.js';
 import { escapeLdapFilter } from './ldap.adapter.js';
 import { originOf } from './oauth.adapter.js';
@@ -41,5 +41,15 @@ describe('fédération : fonctions de sécurité', () => {
     expect(LdapConfigSchema.parse({ url: 'ldaps://x', bindDn: 'cn=a', searchBase: 'dc=x' }).searchFilter).toContain('{{username}}');
     expect(OidcConfigSchema.safeParse({ issuer: 'javascript:alert(1)', clientId: 'x' }).success).toBe(false);
     expect(OidcConfigSchema.parse({ issuer: 'https://kc/realms/r', clientId: 'x' }).mfa).toBe('auto');
+  });
+});
+
+describe('création automatique de compte fédéré : email', () => {
+  it('refuse un email non vérifié ; sans attestation, selon requireVerifiedEmail', () => {
+    expect(emailAcceptedForProvisioning(true, {})).toBe(true);
+    expect(emailAcceptedForProvisioning(false, {})).toBe(false);
+    expect(emailAcceptedForProvisioning(null, {})).toBe(true);
+    expect(emailAcceptedForProvisioning(null, { requireVerifiedEmail: true })).toBe(false);
+    expect(emailAcceptedForProvisioning(true, { requireVerifiedEmail: true })).toBe(true);
   });
 });

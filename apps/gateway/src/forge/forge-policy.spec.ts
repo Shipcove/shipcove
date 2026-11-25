@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { apiTarget, decideApi, graphqlText, methodOverride, normalizeApiPath, decideRefUpdate, extractRunToken, gitRequest, parseReceivePack, receivePackRejection } from './forge-policy.js';
+import { apiTarget, decideApi, graphqlText, methodOverride, mutationFields, normalizeApiPath, decideRefUpdate, extractRunToken, gitRequest, isWorkspaceRepo, parseReceivePack, receivePackRejection, reviewEventAllowed, writeTargetRepo } from './forge-policy.js';
 
 const RT = 'cap_rt_' + 'a'.repeat(32);
 const pkt = (s: string) => (s.length + 4).toString(16).padStart(4, '0') + s;
@@ -134,5 +134,111 @@ describe('contournements des garde-fous (revue de sécurité)', () => {
     expect(methodOverride({ 'x-http-method-override': 'PUT' }, '')).toBe(true);
     expect(methodOverride({}, '?_method=PUT')).toBe(true);
     expect(methodOverride({}, '?state=open')).toBe(false);
+  });
+});
+
+describe('liste blanche des écritures (revue de sécurité 2)', () => {
+  it('encodage d’URL : décodé avant les règles (%65 = e, double encodage), %2F conservé', () => {
+    expect(normalizeApiPath('/repos/o/r/pulls/1/m%65rge')).toBe('/repos/o/r/pulls/1/merge');
+    expect(normalizeApiPath('/repos/o/r/pulls/1/m%2565rge')).toBe('/repos/o/r/pulls/1/merge');
+    expect(normalizeApiPath('/projects/g%2Fr/merge_requests/2/%6Derge')).toBe('/projects/g%2fr/merge_requests/2/merge');
+    expect(decideApi('github', 'PUT', '/repos/o/r/pulls/1/m%65rge').allowed).toBe(false);
+    expect(decideApi('gitlab', 'PUT', '/projects/g%2Fr/merge_requests/2/m%65rge').allowed).toBe(false);
+    expect(decideApi('gitlab', 'POST', '/projects/g%2Fr/deploy%5fkeys').allowed).toBe(false);
+  });
+
+  it('GitHub : approbations, déploiements, workflows, statuts et publications refusés', () => {
+    const ok = (m: string, p: string) => decideApi('github', m, p).allowed;
+    for (const [m, p] of [
+      ['POST', '/repos/o/r/actions/runs/9/pending_deployments'],
+      ['POST', '/repos/o/r/actions/runs/9/approve'],
+      ['POST', '/repos/o/r/actions/workflows/deploy.yml/dispatches'],
+      ['POST', '/repos/o/r/dispatches'],
+      ['POST', '/repos/o/r/deployments'],
+      ['POST', '/repos/o/r/statuses/abc'],
+      ['POST', '/repos/o/r/releases'],
+      ['PUT', '/repos/o/r/pulls/3/reviews/4/dismissals'],
+      ['POST', '/gists'],
+      ['PUT', '/user/starred/o/r'],
+      ['POST', '/repos/o/r/some-new-endpoint'],
+    ]) expect(ok(m, p), `${m} ${p}`).toBe(false);
+    expect(ok('POST', '/repos/o/r/issues')).toBe(true);
+    expect(ok('POST', '/repos/o/r/git/refs')).toBe(true);
+    expect(ok('POST', '/repos/o/r/pulls/3/comments')).toBe(true);
+    expect(decideApi('github', 'POST', '/repos/o/r/pulls/3/reviews')).toEqual({ allowed: true, reason: '', reviewEvent: true });
+  });
+
+  it('revue REST : commentaire oui, approbation non', () => {
+    expect(reviewEventAllowed({ event: 'COMMENT', body: 'x' })).toBe(true);
+    expect(reviewEventAllowed({ event: 'request_changes' })).toBe(true);
+    expect(reviewEventAllowed({ body: 'brouillon' })).toBe(true);
+    expect(reviewEventAllowed({ event: 'APPROVE' })).toBe(false);
+    expect(reviewEventAllowed({ event: 'approve' })).toBe(false);
+    expect(reviewEventAllowed(null)).toBe(false);
+  });
+
+  it('GitLab : approbation de MR, pipeline, job manuel et déploiement refusés', () => {
+    const ok = (m: string, p: string) => decideApi('gitlab', m, p).allowed;
+    for (const [m, p] of [
+      ['POST', '/projects/g%2Fr/merge_requests/2/approve'],
+      ['POST', '/projects/g%2Fr/pipeline'],
+      ['POST', '/projects/g%2Fr/jobs/7/play'],
+      ['POST', '/projects/g%2Fr/deployments/3/approval'],
+      ['POST', '/projects/g%2Fr/releases'],
+      ['POST', '/projects/g%2Fr/statuses/abc'],
+      ['POST', '/projects/g%2Fr/variables'],
+    ]) expect(ok(m, p), `${m} ${p}`).toBe(false);
+    expect(ok('POST', '/projects/g%2Fr/issues')).toBe(true);
+    expect(ok('POST', '/projects/g%2Fr/merge_requests/2/discussions/abc/notes')).toBe(true);
+    expect(ok('POST', '/projects/g%2Fr/jobs/7/retry')).toBe(true);
+    expect(ok('POST', '/projects/g%2Fr/repository/branches')).toBe(true);
+  });
+
+  it('GraphQL : seules les mutations prévues passent (alias, fragments, chaînes)', () => {
+    const gql = (q: string, family: 'github' | 'gitlab' = 'github') => decideApi(family, 'POST', '/graphql', q).allowed;
+    expect(gql('mutation { a: addComment(input:{subjectId:"x", body:"mergePullRequest"}) { clientMutationId } }')).toBe(true);
+    expect(gql('mutation($e: PullRequestReviewEvent!) { addPullRequestReview(input:{event:$e}) { clientMutationId } }')).toBe(false);
+    expect(gql('mutation { submitPullRequestReview(input:{event: APPROVE}) { clientMutationId } }')).toBe(false);
+    expect(gql('mutation { approveDeployments(input:{}) { deployments { id } } }')).toBe(false);
+    expect(gql('mutation { ...F } fragment F on Mutation { mergePullRequest(input:{}) { clientMutationId } }')).toBe(false);
+    expect(gql('mutation { ... on Mutation { createRef(input:{}) { ref { id } } } }')).toBe(false);
+    expect(gql('mutation { addComment(input:{}) { clientMutationId } x: createRef(input:{}) { ref { id } } }')).toBe(false);
+    expect(gql('query { viewer { login } } mutation M { addReaction(input:{}) { reaction { content } } }')).toBe(true);
+    expect(gql('mutation { createNote(input:{}) { errors } }', 'gitlab')).toBe(true);
+    expect(gql('mutation { mergeRequestSetAutoMerge(input:{}) { errors } }', 'gitlab')).toBe(false);
+    expect(gql('mutation { pipelineRetry(input:{}) { errors } }', 'gitlab')).toBe(false);
+    expect(mutationFields('mutation { a { b } c: d(x: 1) { e } }')).toEqual(['a', 'd']);
+    expect(mutationFields('mutation { a { b }')).toBeNull();
+  });
+
+  it('tags : création oui, réécriture d’un tag existant non', () => {
+    const facts = { defaultBranch: 'main', protectedBranches: new Set<string>() };
+    const Z = '0'.repeat(40);
+    const A = 'a'.repeat(40);
+    const B = 'b'.repeat(40);
+    expect(decideRefUpdate({ oldSha: Z, newSha: A, ref: 'refs/tags/v2' }, facts).allowed).toBe(true);
+    expect(decideRefUpdate({ oldSha: A, newSha: B, ref: 'refs/tags/v1' }, facts).allowed).toBe(false);
+  });
+});
+
+describe('portée des écritures de l’agent', () => {
+  it('identifie le dépôt visé par git, LFS et l’API REST', () => {
+    expect(writeTargetRepo('github', 'github.com', '/O/R.git/git-receive-pack')).toBe('o/r');
+    expect(writeTargetRepo('github', 'github.com', '/o/r.git/info/lfs/locks')).toBe('o/r');
+    expect(writeTargetRepo('github', 'api.github.com', '/repos/O/R/issues')).toBe('o/r');
+    expect(writeTargetRepo('github', 'ghe.corp', '/api/v3/repos/o/r/pulls')).toBe('o/r');
+    expect(writeTargetRepo('gitlab', 'gl.corp', '/api/v4/projects/grp%2Fsub%2Fproj/merge_requests')).toBe('grp/sub/proj');
+    expect(writeTargetRepo('gitlab', 'gl.corp', '/api/v4/projects/42/issues')).toBe('42');
+    expect(writeTargetRepo('gitlab', 'gl.corp', '/grp/sub/proj.git/git-receive-pack')).toBe('grp/sub/proj');
+    expect(writeTargetRepo('github', 'api.github.com', '/graphql')).toBeNull();
+    expect(writeTargetRepo('github', 'api.github.com', '/markdown')).toBeNull();
+  });
+
+  it('compare au dépôt de la conversation (nom ou identifiant GitLab)', () => {
+    const repo = { fullName: 'Grp/Proj', externalId: '42' };
+    expect(isWorkspaceRepo('grp/proj', repo)).toBe(true);
+    expect(isWorkspaceRepo('42', repo)).toBe(true);
+    expect(isWorkspaceRepo('43', repo)).toBe(false);
+    expect(isWorkspaceRepo('grp/autre', repo)).toBe(false);
   });
 });
