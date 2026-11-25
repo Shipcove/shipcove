@@ -111,6 +111,7 @@ L'URL de retour à déclarer chez le fournisseur est affichée dans **Administra
 | `SSO_OIDC_SCOPES` | `openid,profile,email` |
 | `SSO_OIDC_USERNAME_CLAIM`, `SSO_OIDC_EMAIL_CLAIM`, `SSO_OIDC_NAME_CLAIM` | `preferred_username`, `email`, `name` |
 | `SSO_OIDC_MFA` | `auto` (`require_idp`, `trust_idp`, `local`) |
+| `SSO_OIDC_REQUIRE_VERIFIED_EMAIL` | `false` (`true` : compte créé seulement si `email_verified` est attesté) |
 | `SSO_OIDC_ALLOW_INSECURE_HTTP` | `false` (émetteur en HTTP : tests uniquement) |
 
 ### SAML 2.0 — déclaré par `SSO_SAML_ENTRY_POINT`
@@ -155,6 +156,7 @@ L'URL de retour à déclarer chez le fournisseur est affichée dans **Administra
 | `SSO_GITLAB_NAME` | `GitLab` |
 | `SSO_GITLAB_ALLOW_LOGIN` | `true` |
 | `SSO_GITLAB_ALLOWED_GROUPS` | — (tous) |
+| `SSO_GITLAB_REQUIRE_VERIFIED_EMAIL` | `false` |
 
 Ces fournisseurs servent à **se connecter** à la plateforme. Le rattachement des dépôts passe par les
 forges Git ci-dessous, avec leur propre application OAuth (ou la même, si la forge accepte plusieurs

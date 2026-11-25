@@ -250,6 +250,11 @@ export class FederationService {
     }
     if (!p.row.autoProvision) throw new FederationError('provisioning_disabled', `Aucun compte rattaché à ${profile.subject}`);
     if (!profile.email) throw new FederationError('email_missing', 'Adresse email absente du profil fédéré');
+    // Un email non attesté ne crée pas de compte : sinon n'importe qui réserverait l'adresse d'un
+    // collègue (qui serait ensuite refusé, et que les partages viseraient par erreur).
+    if (!emailAcceptedForProvisioning(profile.emailVerified, p.config as { requireVerifiedEmail?: boolean })) {
+      throw new FederationError('email_unverified', `Adresse ${profile.email} non vérifiée par le fournisseur : création de compte refusée`);
+    }
     const [existing] = await this.db.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = lower(${profile.email})`);
     // Jamais de fusion implicite par email (prise de contrôle de compte) : rattachement explicite requis.
     if (existing) throw new FederationError('account_exists', `L’adresse ${profile.email} appartient déjà à un compte`);
@@ -265,7 +270,7 @@ export class FederationService {
               username,
               displayName: (profile.displayName ?? profile.username ?? username).slice(0, 120),
               status: 'active',
-              emailVerifiedAt: profile.emailVerified ? new Date() : null,
+              emailVerifiedAt: profile.emailVerified === true ? new Date() : null,
             })
             .returning({ id: users.id });
           await tx.insert(authIdentities).values({ userId: u.id, providerId: p.row.id, subject: profile.subject, email: profile.email, rawProfile: profile.raw, lastLoginAt: new Date() });
@@ -485,4 +490,13 @@ function usernameFrom(p: FederatedProfile): string {
 function safeEqualHex(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   return timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'));
+}
+
+/**
+ * Création automatique de compte : un email explicitement non vérifié est toujours refusé ; un
+ * email sans attestation l'est aussi si le fournisseur l'exige (`requireVerifiedEmail`).
+ */
+export function emailAcceptedForProvisioning(emailVerified: boolean | null, config: { requireVerifiedEmail?: boolean }): boolean {
+  if (emailVerified === false) return false;
+  return emailVerified === true || config.requireVerifiedEmail !== true;
 }

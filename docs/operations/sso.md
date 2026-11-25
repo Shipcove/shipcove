@@ -35,6 +35,11 @@ URL de retour : chaque fournisseur affiche dans la console l'URL à déclarer ch
   Il n'est pas créé si l'adresse email appartient déjà à un compte : l'utilisateur se connecte
   alors avec ce compte, puis va dans **Paramètres → Sécurité → Identités de connexion →
   Rattacher**.
+- **Email non vérifié** : aucun compte n'est créé avec une adresse que le fournisseur déclare non
+  vérifiée (`email_verified: false` en OIDC, email non confirmé sur GitLab). Sinon, n'importe qui
+  pourrait réserver l'adresse d'un collègue. Un fournisseur qui n'envoie pas cette information
+  (Entra ID, par exemple) reste accepté, sauf avec `requireVerifiedEmail: true` dans la
+  configuration OIDC ou GitLab. LDAP et SAML (annuaires gérés par l'entreprise) ne sont pas concernés.
 - Un utilisateur ne peut pas retirer sa dernière méthode de connexion.
 
 ## OIDC / Keycloak

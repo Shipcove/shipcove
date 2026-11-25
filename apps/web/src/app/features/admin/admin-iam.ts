@@ -7,11 +7,11 @@ import { SettingsSection } from './settings-section';
 import { t, tr } from '../../core/i18n';
 
 const TEMPLATES: Record<string, object> = {
-  oidc: { issuer: 'https://keycloak.exemple.com/realms/entreprise', clientId: 'shipcove', scopes: ['openid', 'profile', 'email'], usernameClaim: 'preferred_username', emailClaim: 'email', nameClaim: 'name', mfa: 'auto' },
+  oidc: { issuer: 'https://keycloak.exemple.com/realms/entreprise', clientId: 'shipcove', scopes: ['openid', 'profile', 'email'], usernameClaim: 'preferred_username', emailClaim: 'email', nameClaim: 'name', mfa: 'auto', requireVerifiedEmail: false },
   saml: { entryPoint: 'https://idp.exemple.com/realms/entreprise/protocol/saml', issuer: 'shipcove', idpCert: 'MIIC…', emailAttribute: 'email', nameAttribute: 'displayName', usernameAttribute: 'username', wantAssertionsSigned: true, wantAuthnResponseSigned: false, mfa: 'auto' },
   ldap: { url: 'ldaps://ldap.exemple.com', bindDn: 'cn=svc,dc=exemple,dc=com', searchBase: 'ou=people,dc=exemple,dc=com', searchFilter: '(|(uid={{username}})(sAMAccountName={{username}}))', usernameAttribute: 'uid', emailAttribute: 'mail', nameAttribute: 'cn', startTls: false, tlsRejectUnauthorized: true },
   github: { host: 'github.com', clientId: '', allowLogin: true, allowedOrganizations: [] },
-  gitlab: { host: 'gitlab.com', clientId: '', allowLogin: true, allowedGroups: [] },
+  gitlab: { host: 'gitlab.com', clientId: '', allowLogin: true, allowedGroups: [], requireVerifiedEmail: false },
 };
 
 /** Champ secret par type (écrit dans Vault, jamais relu par l'interface). */

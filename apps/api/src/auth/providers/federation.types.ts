@@ -3,7 +3,11 @@ export interface FederatedProfile {
   /** Identifiant stable et unique chez le fournisseur (jamais l'email). */
   subject: string;
   email: string | null;
-  emailVerified: boolean;
+  /**
+   * `true` : email attesté par le fournisseur (ou annuaire géré par l'entreprise) ; `false` :
+   * explicitement non vérifié ; `null` : le fournisseur ne dit rien.
+   */
+  emailVerified: boolean | null;
   username: string | null;
   displayName: string | null;
   /** Le fournisseur atteste une authentification multifacteur (amr / AuthnContext). */
@@ -31,6 +35,7 @@ export type FederationErrorCode =
   | 'account_exists'
   | 'account_suspended'
   | 'email_missing'
+  | 'email_unverified'
   | 'provisioning_disabled'
   | 'mfa_required_by_idp'
   | 'not_allowed'

@@ -155,6 +155,7 @@ const PROVIDER_SPECS: ProviderSpec[] = [
       EMAIL_CLAIM: ['emailClaim', 'string'],
       NAME_CLAIM: ['nameClaim', 'string'],
       MFA: ['mfa', 'string'],
+      REQUIRE_VERIFIED_EMAIL: ['requireVerifiedEmail', 'bool'],
       ALLOW_INSECURE_HTTP: ['allowInsecureHttp', 'bool'],
     },
   },
@@ -220,6 +221,7 @@ const PROVIDER_SPECS: ProviderSpec[] = [
       CLIENT_SECRET: ['clientSecret', 'raw'],
       ALLOW_LOGIN: ['allowLogin', 'bool'],
       ALLOWED_GROUPS: ['allowedGroups', 'list'],
+      REQUIRE_VERIFIED_EMAIL: ['requireVerifiedEmail', 'bool'],
     },
   },
 ];

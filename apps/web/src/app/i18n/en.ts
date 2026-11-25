@@ -960,6 +960,7 @@ export const en: Record<string, string> = {
   "Services lancés par l’agent : nombre max. par sandbox": "Services started by the agent: max per sandbox",
   "Durée max. du script de démarrage (min)": "Max startup script duration (min)",
   "Script bash exécuté au démarrage de chaque sandbox": "Bash script run when each sandbox starts",
+  "Votre fournisseur d’identité n’atteste pas votre adresse email : vérifiez-la chez lui, ou demandez à votre administrateur de vous créer un compte.": "Your identity provider does not vouch for your email address: verify it with the provider, or ask your administrator to create an account for you.",
   "Autoriser les jetons d’accès personnels (sinon : OAuth uniquement)": "Allow personal access tokens (otherwise: OAuth only)",
   "Écritures de l’agent sur les forges (workspace_repository : dépôt de la conversation seulement ; any : tout dépôt de l’utilisateur)": "Agent writes to forges (workspace_repository: the conversation's repository only; any: any repository of the user)",
   "Adresse du co-auteur « Shipcove » ajouté à chaque commit (vide : aucune mention)": "Address of the “Shipcove” co-author added to every commit (empty: no mention)",
