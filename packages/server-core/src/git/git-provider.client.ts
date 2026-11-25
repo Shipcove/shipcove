@@ -470,6 +470,53 @@ export class GitProviderClient {
     }
   }
 
+  /**
+   * Comparaison `base...head` calculée par la forge (approbation d'une PR/MR : ce qui est montré
+   * à l'humain ne vient jamais de la sandbox). Patch tronqué à 200 000 caractères.
+   */
+  async compare(conn: Conn, fullName: string, base: string, head: string): Promise<{ commits: Array<{ sha: string; subject: string; author: string }>; diffStat: string | null; patch: string | null }> {
+    const enc = (b: string) => b.split('/').map(encodeURIComponent).join('/');
+    const files: Array<{ path: string; additions: number | null; deletions: number | null; patch: string | null; header: string }> = [];
+    let commits: Array<{ sha: string; subject: string; author: string }>;
+    if (isGitHub(conn.provider)) {
+      const r = await this.call<{ commits?: Array<{ sha: string; commit: { message: string; author?: { name?: string } } }>; files?: Array<{ filename: string; previous_filename?: string; additions: number; deletions: number; patch?: string }> }>(
+        conn,
+        'GET',
+        `/repos/${fullName.split('/').map(encodeURIComponent).join('/')}/compare/${enc(base)}...${enc(head)}`,
+        undefined,
+        60_000,
+      );
+      commits = (r.commits ?? []).slice(-200).map((c) => ({ sha: c.sha, subject: c.commit.message.split('\n')[0], author: c.commit.author?.name ?? '' }));
+      for (const f of r.files ?? []) {
+        files.push({ path: f.filename, additions: f.additions, deletions: f.deletions, patch: f.patch ?? null, header: `diff --git a/${f.previous_filename ?? f.filename} b/${f.filename}` });
+      }
+    } else {
+      const r = await this.call<{ commits?: Array<{ id: string; title: string; author_name?: string }>; diffs?: Array<{ old_path: string; new_path: string; diff?: string }> }>(
+        conn,
+        'GET',
+        `/projects/${encodeURIComponent(fullName)}/repository/compare?from=${encodeURIComponent(base)}&to=${encodeURIComponent(head)}&straight=false`,
+        undefined,
+        60_000,
+      );
+      commits = (r.commits ?? []).slice(-200).map((c) => ({ sha: c.id, subject: c.title, author: c.author_name ?? '' }));
+      for (const d of r.diffs ?? []) {
+        const lines = (d.diff ?? '').split('\n');
+        files.push({
+          path: d.new_path,
+          additions: lines.filter((l) => l.startsWith('+') && !l.startsWith('+++')).length,
+          deletions: lines.filter((l) => l.startsWith('-') && !l.startsWith('---')).length,
+          patch: d.diff ?? null,
+          header: `diff --git a/${d.old_path} b/${d.new_path}`,
+        });
+      }
+    }
+    // Les plus récents d'abord, comme `git log`.
+    commits.reverse();
+    const diffStat = files.length ? files.map((f) => ` ${f.path} | +${f.additions ?? '?'} -${f.deletions ?? '?'}`).join('\n').slice(0, 20_000) : null;
+    const patch = files.length ? files.map((f) => `${f.header}\n${f.patch ?? '(diff non fourni par la forge : fichier binaire ou trop volumineux)'}`).join('\n').slice(0, 200_000) : null;
+    return { commits, diffStat, patch };
+  }
+
   /** États CI/CD du dernier commit d'une branche. */
   async ciStatus(conn: Conn, fullName: string, ref: string): Promise<Array<{ name: string; status: string; url: string | null }>> {
     if (isGitHub(conn.provider)) {

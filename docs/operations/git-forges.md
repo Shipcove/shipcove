@@ -53,15 +53,25 @@ sandboxes (ADR 0013).
 - Pi est autonome :
   - push de branches de travail ;
   - PR/MR, commentaires et revues ;
-  - CI (état, journaux, relance) ;
-  - tickets et releases.
+  - CI (état, journaux, relance, annulation) ;
+  - tickets.
+- Les écritures de l'agent sur l'API de la forge sont une **liste blanche** : toute autre écriture
+  est refusée. Elles ne sont relayées que pendant un run en cours.
 - La gateway refuse les opérations suivantes, qui passent par les outils de la plateforme
   **après approbation humaine** :
   - push sur la branche par défaut ou sur une branche protégée ;
   - fusion ;
-  - suppression de branche ou de tag ;
+  - suppression de branche ou de tag.
+- Elle refuse aussi, sans alternative pour l'agent (réservé à un humain sur la forge) :
+  - approbation d'une PR/MR, approbation de déploiements, déclenchement de workflows ou de
+    pipelines, statuts de CI, publications (releases) ;
+  - réécriture d'un tag existant ;
   - réglages et suppression du dépôt ;
   - clés, jetons, runners et secrets de CI.
+- Ce que l'humain approuve (commits et diff d'un push, d'une PR/MR) est calculé par le worker ou
+  par la forge, jamais par la sandbox.
+- **GitLab** : une branche poussée par l'agent déclenche la CI ; marquez « protégées » les
+  variables CI sensibles pour qu'elles ne soient fournies qu'aux branches protégées.
 - Chaque écriture et chaque refus sont audités (`git.agent_write`).
 
 ## Forges auto-hébergées
