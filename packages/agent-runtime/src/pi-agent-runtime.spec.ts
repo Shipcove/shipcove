@@ -100,3 +100,28 @@ describe('PiAgentRuntime', () => {
   });
 });
 
+
+describe('PiAgentRuntime : sandbox arrêtée sous l’agent', () => {
+  it('terminate() rejette les requêtes en cours et émet process_exit même si le flux ne se ferme jamais', async () => {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    // Conteneur tué : le flux d'exécution reste ouvert, aucune réponse, `wait()` ne rend jamais la main.
+    attachJsonlReader(stdin, (line) => {
+      const cmd = JSON.parse(line) as Record<string, unknown>;
+      if (cmd.type === 'get_state') stdout.write(`${JSON.stringify({ id: cmd.id, type: 'response', command: 'get_state', success: true, data: {} })}\n`);
+    });
+    let killed = false;
+    const rt = new PiAgentRuntime({ stdin, stdout, stderr, wait: () => new Promise<number>(() => undefined), kill: async () => void (killed = true) });
+    const events: RuntimeEvent[] = [];
+    rt.onEvent((e) => events.push(e));
+    await rt.initialize();
+    const compaction = rt.compact('résumé');
+    rt.terminate('sandbox arrêtée');
+    rt.terminate('deuxième appel ignoré');
+    await expect(compaction).rejects.toThrow(/sandbox arrêtée/);
+    expect(events.filter((e) => e.type === 'process_exit')).toEqual([{ type: 'process_exit', code: -1, stderr: 'sandbox arrêtée' }]);
+    expect(killed).toBe(true);
+    await expect(rt.sessionStats()).rejects.toThrow();
+  });
+});
