@@ -24,6 +24,7 @@ import {
   normalizeApiPath,
   parseReceivePack,
   receivePackRejection,
+  reviewEventAllowed,
   type Decision,
   type ForgeFamily,
 } from './forge-policy.js';
@@ -168,6 +169,11 @@ export class ForgeProxyService {
         // Git demande alors ses identifiants (assistant de la sandbox → jeton de run).
         if (git || write) throw new Denied(401, 'Authentification requise : utilisez le jeton de run de la sandbox (configuré pour git, gh et glab).');
       } else {
+        // Écriture seulement pendant un run en cours : un processus laissé en arrière-plan par
+        // l'agent (ou une dépendance piégée) ne publie plus rien une fois le run terminé.
+        if ((write || git?.kind === 'receive-pack' || git?.service === 'git-receive-pack') && principal.runStatus !== 'running') {
+          throw new Denied(403, 'Refusé par la plateforme : écriture vers la forge possible seulement pendant un run de l’agent.');
+        }
         conn = await this.connection(principal.userId, target.connHost);
         if (!conn && (write || git?.kind === 'receive-pack' || git?.service === 'git-receive-pack')) {
           throw new Denied(403, `Aucun compte ${target.connHost} rattaché : Paramètres → Connexions Git.`);
@@ -178,6 +184,10 @@ export class ForgeProxyService {
       let decision: Decision = { allowed: true, reason: '' };
       const search = path.includes('?') ? path.slice(path.indexOf('?')) : '';
       if (methodOverride(req.headers, search)) throw new Denied(403, 'Refusé par la plateforme : surcharge de méthode HTTP non acceptée.');
+      // Corps inspectés par les garde-fous (API) : jamais compressés, sinon le contrôle serait aveugle.
+      if (!git && write && req.headers['content-encoding'] && !/^identity$/i.test(String(req.headers['content-encoding']))) {
+        throw new Denied(415, 'Refusé par la plateforme : corps de requête compressé non contrôlable (Content-Encoding).');
+      }
       if (git?.kind === 'receive-pack') {
         const r = await this.inspectReceivePack(req, res, target, conn!, git.repo);
         if (!r) return; // refus déjà envoyé au format git
@@ -195,6 +205,12 @@ export class ForgeProxyService {
           if (decision.allowed && decision.branchWrite) {
             body = await readBody(req, MAX_INSPECT);
             await this.checkApiBranch(conn!, decision.branchWrite.repo, parseJson<{ branch?: string }>(body)?.branch);
+          }
+          if (decision.allowed && decision.reviewEvent) {
+            body = await readBody(req, 2 * 1024 * 1024);
+            if (!reviewEventAllowed(parseJson<unknown>(body))) {
+              decision = { allowed: false, reason: 'approbation d’une PR réservée à un humain (revue « COMMENT » ou « REQUEST_CHANGES » seulement)' };
+            }
           }
         } else {
           // Interface web : lecture seule ; Git LFS (batch, verrous) sur le chemin seul, jamais la requête.

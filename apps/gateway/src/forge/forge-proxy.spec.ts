@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ForgeCaService } from './forge-ca.service.js';
 import { ForgeProxyService } from './forge-proxy.service.js';
 
+const IDLE_TOKEN = `cap_rt_${'i'.repeat(30)}`;
 const RUN_TOKEN = 'cap_rt_' + 'x'.repeat(32);
 const REAL = 'gho_REALTOKEN_never_in_sandbox';
 const A = 'a'.repeat(40);
@@ -64,7 +65,12 @@ describe('proxy des forges (interception TLS)', () => {
     await new Promise<void>((r) => plainUpstream.listen(0, '127.0.0.1', () => r()));
 
     const tokens = {
-      authenticate: async (h: string) => (h === `Bearer ${RUN_TOKEN}` ? { tokenId: 't', workspaceId: 'w', userId: 'u', teamId: 'tm', runId: 'r', runStatus: 'running' } : null),
+      authenticate: async (h: string) =>
+        h === `Bearer ${RUN_TOKEN}`
+          ? { tokenId: 't', workspaceId: 'w', userId: 'u', teamId: 'tm', runId: 'r', runStatus: 'running' }
+          : h === `Bearer ${IDLE_TOKEN}`
+            ? { tokenId: 't2', workspaceId: 'w', userId: 'u', teamId: 'tm', runId: null, runStatus: null }
+            : null,
     };
     const git = {
       token: async () => REAL,
@@ -142,6 +148,26 @@ describe('proxy des forges (interception TLS)', () => {
     expect(r.status).toBe(200);
     expect(seen.at(-1)!.body).toBe('{"title":"t"}');
     expect(audits.at(-1)).toMatchObject({ action: 'git.agent_write', outcome: 'success' });
+  });
+
+  it('aucune écriture hors run ; lecture toujours possible', async () => {
+    const before = seen.length;
+    const w = await request('api.github.com', 'POST', '/repos/o/r/pulls', { authorization: `token ${IDLE_TOKEN}`, 'content-type': 'application/json' }, '{"title":"t"}');
+    expect(w.status).toBe(403);
+    expect(JSON.parse(w.body.toString()).message).toContain('pendant un run');
+    expect(seen.length).toBe(before);
+    expect((await request('api.github.com', 'GET', '/user', { authorization: `token ${IDLE_TOKEN}` })).status).toBe(200);
+  });
+
+  it('revue : approbation refusée, commentaire relayé ; corps compressé refusé', async () => {
+    const before = seen.length;
+    const h = { authorization: `token ${RUN_TOKEN}`, 'content-type': 'application/json' };
+    expect((await request('api.github.com', 'POST', '/repos/o/r/pulls/3/reviews', h, '{"event":"APPROVE"}')).status).toBe(403);
+    expect(seen.length).toBe(before);
+    expect((await request('api.github.com', 'POST', '/repos/o/r/pulls/3/reviews', h, '{"event":"COMMENT","body":"x"}')).status).toBe(200);
+    expect(seen.at(-1)!.body).toBe('{"event":"COMMENT","body":"x"}');
+    const gz = await request('api.github.com', 'POST', '/graphql', { ...h, 'content-encoding': 'gzip' }, zlib.gzipSync('{"query":"mutation{mergePullRequest(input:{}){clientMutationId}}"}'));
+    expect(gz.status).toBe(415);
   });
 
   it('refuse la fusion sans contacter la forge', async () => {

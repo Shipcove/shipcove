@@ -7,6 +7,30 @@ import { DB, ENV, EventsService, QuotaExceededError, QuotaService, SECRETS, Sett
 import type { GatewayEnv } from '../env.js';
 import { RunTokenService, type RunPrincipal } from '../run-token.service.js';
 
+/**
+ * Paramètres relayés à LiteLLM (format OpenAI chat completions, plus les options de raisonnement).
+ * Tout autre champ est retiré : LiteLLM accepte dans le corps des options propres (`fallbacks`,
+ * `context_window_fallback_dict`, `api_base`, `mock_response`, `num_retries`, `cache`…) qui
+ * permettraient à la sandbox de viser un autre modèle, un autre fournisseur ou un autre coût.
+ */
+export const RELAYED_PARAMS = new Set([
+  'messages', 'model', 'stream', 'stream_options', 'store', 'max_tokens', 'max_completion_tokens', 'temperature', 'top_p',
+  'stop', 'seed', 'frequency_penalty', 'presence_penalty', 'logit_bias', 'logprobs', 'top_logprobs', 'response_format',
+  'tools', 'tool_choice', 'parallel_tool_calls', 'reasoning_effort', 'reasoning', 'thinking', 'n', 'best_of', 'user',
+]);
+
+/** Corps relayé : champs connus seulement (`stream_options` réduit à `include_usage`). */
+export function relayedBody(body: Record<string, unknown>): { body: Record<string, unknown>; dropped: string[] } {
+  const out: Record<string, unknown> = {};
+  const dropped: string[] = [];
+  for (const [k, v] of Object.entries(body ?? {})) {
+    if (RELAYED_PARAMS.has(k)) out[k] = v;
+    else dropped.push(k);
+  }
+  delete out.stream_options;
+  return { body: out, dropped };
+}
+
 function openAiError(res: Response, status: number, code: string, message: string): void {
   if (res.headersSent) return;
   res.status(status).json({ error: { message, type: code, code } });
@@ -20,6 +44,7 @@ function openAiError(res: Response, status: number, code: string, message: strin
 @Controller('llm/v1')
 export class LlmProxyController {
   private readonly logger = new Logger('LlmProxy');
+  private readonly droppedSeen = new Set<string>();
 
   constructor(
     @Inject(DB) private readonly db: Database,
@@ -51,7 +76,13 @@ export class LlmProxyController {
     if (principal.runStatus !== 'running' || !principal.runId) {
       return openAiError(res, 409, 'run_not_active', 'Aucun run actif : appel LLM refusé');
     }
-    const body = req.body as Record<string, unknown>;
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) return openAiError(res, 400, 'invalid_request', 'Corps JSON attendu');
+    const { body, dropped } = relayedBody(req.body as Record<string, unknown>);
+    for (const k of dropped) {
+      if (this.droppedSeen.has(k) || this.droppedSeen.size > 200) continue;
+      this.droppedSeen.add(k);
+      this.logger.warn(`Paramètre LLM non relayé : ${k.slice(0, 60)}`);
+    }
     const modelName = String(body?.model ?? '');
     const model = (await this.allowedModels(principal.userId)).find((m) => m.litellmModel === modelName);
     if (!model) return openAiError(res, 403, 'model_not_allowed', `Modèle non autorisé : ${modelName}`);
@@ -61,6 +92,7 @@ export class LlmProxyController {
     for (const k of ['n', 'best_of'] as const) {
       if (body[k] !== undefined && body[k] !== null && Number(body[k]) !== 1) return openAiError(res, 400, 'unsupported_parameter', `Paramètre ${k} non pris en charge (une seule réponse par appel)`);
     }
+    if (body.stream !== undefined && typeof body.stream !== 'boolean') return openAiError(res, 400, 'invalid_request', 'Paramètre stream booléen attendu');
     const quotaSettings = await this.settings.section('quotas');
     // Pi demande toujours le maximum de sortie du modèle (max_tokens) : réserver ce plafond
     // gonflerait les réservations ouvertes (surtout avec des sous-agents en parallèle). L'estimation
@@ -92,7 +124,7 @@ export class LlmProxyController {
     const upstreamBody = {
       ...body,
       model: model.litellmModel,
-      ...(stream ? { stream_options: { ...(body.stream_options as object | undefined), include_usage: true } } : {}),
+      ...(stream ? { stream_options: { include_usage: true } } : {}),
       user: principal.userId,
       metadata: { cap_request_id: reservation.requestId, cap_workspace_id: principal.workspaceId, cap_run_id: principal.runId },
     };
