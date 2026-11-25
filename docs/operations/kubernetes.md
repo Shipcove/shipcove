@@ -161,6 +161,9 @@ La clé de LiteLLM vient alors de Vault (`vaultSetup.infraSecret`) ou de `LITELL
 ## Exploitation
 
 - **Suivi** : `kubectl -n shipcove get pods`, `kubectl -n shipcove-sandboxes get pods,networkpolicies`.
+- **Pièces jointes** : l'API écrit les fichiers reçus dans `/tmp` (emptyDir, `api.tmpSize`, 4 Gi
+  par défaut) avant analyse et envoi vers S3, au lieu de les garder en mémoire. Prévoir
+  (envois simultanés) × (fichiers par message × taille max).
 - **Quotas du namespace des sandboxes** : `sandbox.quota` (ResourceQuota), en plus des limites par
   sandbox réglées dans l'administration.
 - **Arrêt d'un nœud** : les sandboxes sont des Pods sans contrôleur. Un Pod perdu est détecté par

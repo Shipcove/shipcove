@@ -19,7 +19,7 @@ spec:
     matchLabels: {{- include "shipcove.selector" (dict "ctx" . "component" "api") | nindent 6 }}
   template:
     metadata:
-      labels: {{- include "shipcove.selector" (dict "ctx" . "component" "api") | nindent 8 }}
+      labels: {{- include "shipcove.selector" (dict "ctx" . "component" "api" "tmp" .Values.api.tmpSize) | nindent 8 }}
     spec:
       serviceAccountName: {{ $name }}
       {{- include "shipcove.podDefaults" . | nindent 6 }}
