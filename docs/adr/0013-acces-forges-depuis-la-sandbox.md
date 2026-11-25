@@ -69,6 +69,8 @@ entrer le jeton de l'utilisateur.
    (`apps/gateway/src/forge/forge-allowlist.ts`) : toute écriture qui n'y figure pas est refusée,
    y compris une API nouvelle de la forge. Les chemins sont entièrement décodés avant les règles
    (`m%65rge` = `merge`) ; les mutations GraphQL sont analysées champ par champ (alias, fragments).
+   Par défaut (`git.agentWriteScope = workspace_repository`), une écriture ne vise que le dépôt de
+   la conversation (git, LFS, REST) ; `any` rétablit l'accès à tous les dépôts de l'utilisateur.
    Une écriture n'est relayée que **pendant un run en cours** : un processus resté en arrière-plan
    ne publie plus rien une fois le run terminé. Les corps compressés ne sont pas acceptés sur les
    écritures d'API.

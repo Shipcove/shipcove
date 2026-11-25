@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { apiTarget, decideApi, graphqlText, methodOverride, mutationFields, normalizeApiPath, decideRefUpdate, extractRunToken, gitRequest, parseReceivePack, receivePackRejection, reviewEventAllowed } from './forge-policy.js';
+import { apiTarget, decideApi, graphqlText, methodOverride, mutationFields, normalizeApiPath, decideRefUpdate, extractRunToken, gitRequest, isWorkspaceRepo, parseReceivePack, receivePackRejection, reviewEventAllowed, writeTargetRepo } from './forge-policy.js';
 
 const RT = 'cap_rt_' + 'a'.repeat(32);
 const pkt = (s: string) => (s.length + 4).toString(16).padStart(4, '0') + s;
@@ -218,5 +218,27 @@ describe('liste blanche des écritures (revue de sécurité 2)', () => {
     const B = 'b'.repeat(40);
     expect(decideRefUpdate({ oldSha: Z, newSha: A, ref: 'refs/tags/v2' }, facts).allowed).toBe(true);
     expect(decideRefUpdate({ oldSha: A, newSha: B, ref: 'refs/tags/v1' }, facts).allowed).toBe(false);
+  });
+});
+
+describe('portée des écritures de l’agent', () => {
+  it('identifie le dépôt visé par git, LFS et l’API REST', () => {
+    expect(writeTargetRepo('github', 'github.com', '/O/R.git/git-receive-pack')).toBe('o/r');
+    expect(writeTargetRepo('github', 'github.com', '/o/r.git/info/lfs/locks')).toBe('o/r');
+    expect(writeTargetRepo('github', 'api.github.com', '/repos/O/R/issues')).toBe('o/r');
+    expect(writeTargetRepo('github', 'ghe.corp', '/api/v3/repos/o/r/pulls')).toBe('o/r');
+    expect(writeTargetRepo('gitlab', 'gl.corp', '/api/v4/projects/grp%2Fsub%2Fproj/merge_requests')).toBe('grp/sub/proj');
+    expect(writeTargetRepo('gitlab', 'gl.corp', '/api/v4/projects/42/issues')).toBe('42');
+    expect(writeTargetRepo('gitlab', 'gl.corp', '/grp/sub/proj.git/git-receive-pack')).toBe('grp/sub/proj');
+    expect(writeTargetRepo('github', 'api.github.com', '/graphql')).toBeNull();
+    expect(writeTargetRepo('github', 'api.github.com', '/markdown')).toBeNull();
+  });
+
+  it('compare au dépôt de la conversation (nom ou identifiant GitLab)', () => {
+    const repo = { fullName: 'Grp/Proj', externalId: '42' };
+    expect(isWorkspaceRepo('grp/proj', repo)).toBe(true);
+    expect(isWorkspaceRepo('42', repo)).toBe(true);
+    expect(isWorkspaceRepo('43', repo)).toBe(false);
+    expect(isWorkspaceRepo('grp/autre', repo)).toBe(false);
   });
 });

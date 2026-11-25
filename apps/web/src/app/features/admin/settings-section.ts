@@ -47,6 +47,7 @@ const LABELS: Record<string, string> = {
   setupTimeoutMinutes: t('Durée max. du script de démarrage (min)'),
   startupScript: t('Script bash exécuté au démarrage de chaque sandbox'),
   allowPersonalTokens: t('Autoriser les jetons d’accès personnels (sinon : OAuth uniquement)'),
+  agentWriteScope: t('Écritures de l’agent sur les forges (workspace_repository : dépôt de la conversation seulement ; any : tout dépôt de l’utilisateur)'),
   coAuthorEmail: t('Adresse du co-auteur « Shipcove » ajouté à chaque commit (vide : aucune mention)'),
   maxTasks: t('Sous-agents par appel (max.)'),
   maxParallel: t('Sous-agents d’exploration en même temps (max.)'),
@@ -58,6 +59,7 @@ const LABELS: Record<string, string> = {
 const ENUMS: Record<string, string[]> = {
   mfaPolicy: ['optional', 'required_admins', 'required_all'],
   unknownUsagePolicy: ['charge_estimate_input', 'charge_nothing_flag'],
+  agentWriteScope: ['workspace_repository', 'any'],
 };
 
 /** Éditeur générique d'une section de paramètres plateforme (validation côté serveur). */

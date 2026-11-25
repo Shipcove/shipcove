@@ -359,3 +359,30 @@ export function methodOverride(headers: Record<string, string | string[] | undef
 export function decideWeb(method: string): Decision {
   return WRITE.has(method.toUpperCase()) ? deny('interface web de la forge en lecture seule depuis la sandbox (utilisez gh, glab ou l’API)') : ALLOW;
 }
+
+/**
+ * Dépôt visé par une écriture (`owner/repo`, chemin GitLab ou identifiant numérique GitLab), en
+ * minuscules ; `null` si l'écriture ne vise pas un dépôt identifiable par son chemin (GraphQL,
+ * rendu Markdown).
+ */
+export function writeTargetRepo(family: ForgeFamily, host: string, path: string): string | null {
+  const git = gitRequest(path);
+  if (git) return git.repo.toLowerCase().replace(/\.git$/, '');
+  const pathname = normalizeApiPath(path);
+  const lfs = /^\/(.+?)(?:\.git)?\/info\/lfs(\/|$)/.exec(pathname);
+  if (lfs) return lfs[1];
+  const api = apiTarget(family, host, path);
+  if (api?.kind !== 'rest') return null;
+  if (family === 'github') {
+    const m = /^\/repos\/([^/]+)\/([^/]+)(\/|$)/.exec(api.path);
+    return m ? `${m[1]}/${m[2]}` : null;
+  }
+  const m = /^\/projects\/([^/]+)(\/|$)/.exec(api.path);
+  return m ? m[1].replace(/%2f/g, '/') : null;
+}
+
+/** Le dépôt visé est-il celui de la conversation (nom complet, ou identifiant numérique GitLab) ? */
+export function isWorkspaceRepo(candidate: string, repo: { fullName: string; externalId: string | null }): boolean {
+  const c = candidate.toLowerCase();
+  return c === repo.fullName.toLowerCase() || (!!repo.externalId && /^\d+$/.test(c) && c === repo.externalId);
+}

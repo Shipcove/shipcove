@@ -961,6 +961,7 @@ export const en: Record<string, string> = {
   "Durée max. du script de démarrage (min)": "Max startup script duration (min)",
   "Script bash exécuté au démarrage de chaque sandbox": "Bash script run when each sandbox starts",
   "Autoriser les jetons d’accès personnels (sinon : OAuth uniquement)": "Allow personal access tokens (otherwise: OAuth only)",
+  "Écritures de l’agent sur les forges (workspace_repository : dépôt de la conversation seulement ; any : tout dépôt de l’utilisateur)": "Agent writes to forges (workspace_repository: the conversation's repository only; any: any repository of the user)",
   "Adresse du co-auteur « Shipcove » ajouté à chaque commit (vide : aucune mention)": "Address of the “Shipcove” co-author added to every commit (empty: no mention)",
   "Envoi d’emails": "Email sending",
   "Emails imposés (types)": "Mandatory emails (types)",

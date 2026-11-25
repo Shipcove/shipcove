@@ -350,6 +350,7 @@ function settings(env: Env): Provisioning['settings'] {
   });
   put('git', {
     allowPersonalTokens: bool(env, 'GIT_ALLOW_PERSONAL_TOKENS'),
+    agentWriteScope: str(env, 'GIT_AGENT_WRITE_SCOPE'),
     insecureHttpHosts: list(env, 'GIT_INSECURE_HTTP_HOSTS'),
     coAuthorEmail: env['GIT_CO_AUTHOR_EMAIL'] !== undefined ? env['GIT_CO_AUTHOR_EMAIL'].trim() : undefined,
   });

@@ -193,6 +193,7 @@ autre hôte → GitHub Enterprise ; `gitlab.com` → GitLab, autre hôte → Git
 | `GIT_GITHUB_CLIENT_ID`, `GIT_GITHUB_CLIENT_SECRET`, `GIT_GITHUB_HOST`, `GIT_GITHUB_NAME`, `GIT_GITHUB_ENABLED` | idem (`github.com`) | Forge GitHub. |
 | `GIT_FORGES` | — | Tableau JSON pour plusieurs forges, format de `POST /api/v1/admin/git-forges` (`provider`, `name`, `host`, `clientId`, `clientSecret`, `enabled`). |
 | `GIT_ALLOW_PERSONAL_TOKENS` | — | Paramètre `git.allowPersonalTokens`. |
+| `GIT_AGENT_WRITE_SCOPE` | — | Paramètre `git.agentWriteScope` : `workspace_repository` (défaut de la plateforme : écritures de l'agent limitées au dépôt de la conversation) ou `any`. |
 | `GIT_INSECURE_HTTP_HOSTS` | — | Paramètre `git.insecureHttpHosts` (forges joignables en HTTP). |
 | `GIT_CO_AUTHOR_EMAIL` | — | Paramètre `git.coAuthorEmail` ; vide (`GIT_CO_AUTHOR_EMAIL=`) : aucune mention de co-auteur. |
 

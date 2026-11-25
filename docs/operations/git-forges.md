@@ -57,6 +57,11 @@ sandboxes (ADR 0013).
   - tickets.
 - Les écritures de l'agent sur l'API de la forge sont une **liste blanche** : toute autre écriture
   est refusée. Elles ne sont relayées que pendant un run en cours.
+- **Portée** (`git.agentWriteScope`, **Forges Git → Réglages Git**) : par défaut
+  `workspace_repository`, l'agent ne pousse et n'écrit par l'API que dans le dépôt de la
+  conversation (lecture partout). `any` lui ouvre tous les dépôts de l'utilisateur. Les mutations
+  GraphQL autorisées (commentaires, tickets, PR) ne désignent pas leur dépôt dans le chemin : elles
+  restent soumises aux seules règles d'opérations.
 - La gateway refuse les opérations suivantes, qui passent par les outils de la plateforme
   **après approbation humaine** :
   - push sur la branche par défaut ou sur une branche protégée ;
